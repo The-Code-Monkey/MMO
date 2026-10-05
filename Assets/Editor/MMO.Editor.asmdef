@@ -1,0 +1,19 @@
+{
+    "name": "MMO.Editor",
+    "rootNamespace": "MMO.Editor",
+    "references": [
+        "MMO.Runtime",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
