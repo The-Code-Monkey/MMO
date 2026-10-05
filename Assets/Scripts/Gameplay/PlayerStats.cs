@@ -7,7 +7,7 @@ namespace MMO.Gameplay
 {
     public sealed class PlayerStats : NetworkBehaviour
     {
-        private const int MaxHealth = 100;
+        public const int MaxHealth = 100;
 
         // Clients own a copy; the server owns the authoritative value and
         // replicates deltas automatically. Never write .Value off-server.
@@ -47,7 +47,12 @@ namespace MMO.Gameplay
             if (sender == null || !sender.IsOwner)
                 return;
 
-            _health.Value = Mathf.Clamp(_health.Value - Mathf.Max(0, amount), 0, MaxHealth);
+            _health.Value = ComputeNewHealth(_health.Value, amount);
+        }
+
+        public static int ComputeNewHealth(int current, int amount)
+        {
+            return Mathf.Clamp(current - Mathf.Max(0, amount), 0, MaxHealth);
         }
 
         private void OnHealthChanged(int previous, int current)
