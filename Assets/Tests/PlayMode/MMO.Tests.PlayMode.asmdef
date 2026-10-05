@@ -1,0 +1,25 @@
+{
+    "name": "MMO.Tests.PlayMode",
+    "rootNamespace": "MMO.Tests",
+    "references": [
+        "UnityEngine.TestTools",
+        "UnityEditor.TestRunner",
+        "MMO.Runtime",
+        "FishNet.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,23 @@
+{
+  "dependencies": {
+    "com.firstgeargames.fishnet": "https://github.com/FirstGearGames/FishNet.git?path=Assets/FishNet#4.7.3",
+
+    "com.unity.ugui": "2.0.0",
+    "com.unity.inputsystem": "1.14.2",
+    "com.unity.render-pipelines.universal": "17.3.0",
+    "com.unity.test-framework": "1.5.1",
+
+    "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.audio": "1.0.0",
+    "com.unity.modules.physics": "1.0.0",
+    "com.unity.modules.physics2d": "1.0.0",
+    "com.unity.modules.ui": "1.0.0",
+    "com.unity.modules.uielements": "1.0.0",
+    "com.unity.modules.imageconversion": "1.0.0",
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.unity.modules.unitywebrequesttexture": "1.0.0"
+  },
+  "testables": [
+    "com.firstgeargames.fishnet"
+  ]
+}
