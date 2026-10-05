@@ -5,6 +5,7 @@
         "UnityEditor.TestRunner",
         "UnityEngine.TestTools",
         "MMO.Runtime",
+        "MMO.Editor",
         "FishNet.Runtime"
     ],
     "includePlatforms": [

@@ -1,0 +1,55 @@
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+namespace MMO.Editor
+{
+    public sealed class NetworkManagerBuildGuard : IPreprocessBuildWithReport
+    {
+        public int callbackOrder => 0;
+
+        public void OnPreprocessBuild(BuildReport report)
+        {
+            var violations = NetworkManagerBuildRules.FindViolations(CollectSceneInfo());
+            if (violations.Count > 0)
+            {
+                throw new BuildFailedException(
+                    "Enabled build scenes are missing a NetworkManager: " + string.Join(", ", violations));
+            }
+        }
+
+        internal static IEnumerable<SceneBuildInfo> CollectSceneInfo()
+        {
+            var results = new List<SceneBuildInfo>();
+            foreach (EditorBuildSettingsScene buildScene in EditorBuildSettings.scenes)
+            {
+                bool contains = false;
+                if (buildScene.enabled)
+                {
+                    Scene scene = EditorSceneManager.OpenScene(buildScene.path, OpenSceneMode.Additive);
+                    try
+                    {
+                        foreach (GameObject root in scene.GetRootGameObjects())
+                        {
+                            if (root.GetComponentInChildren<FishNet.Managing.NetworkManager>(true) != null)
+                            {
+                                contains = true;
+                                break;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        EditorSceneManager.CloseScene(scene, true);
+                    }
+                }
+                results.Add(new SceneBuildInfo(buildScene.path, buildScene.enabled, contains));
+            }
+            return results;
+        }
+    }
+}
