@@ -1,6 +1,5 @@
 using System.Collections;
 using NUnit.Framework;
-using UnityEngine;
 using UnityEngine.TestTools;
 
 namespace MMO.Tests
@@ -10,29 +9,22 @@ namespace MMO.Tests
         [UnityTest]
         public IEnumerator NetworkManager_CanStartAndStopAHost()
         {
-            var go = new GameObject("TestNetworkManager");
-            var manager = go.AddComponent<FishNet.NetworkManager>();
-            var transport = go.AddComponent<FishNet.Transporting.Tugboat.Tugboat>();
-
-            manager.TransportManager.Transport = transport;
-            go.SetActive(true);
-
-            Assert.IsTrue(manager.ServerManager.StartConnection(), "Server failed to start.");
-            Assert.IsTrue(manager.ClientManager.StartConnection(), "Client failed to start.");
+            FishNet.Managing.NetworkManager manager = NetworkManagerTestHelper.GetOrCreate();
             yield return null;
+
+            NetworkManagerTestHelper.StartHost(manager);
+            yield return NetworkManagerTestHelper.WaitForHostAuthenticated(manager);
 
             Assert.IsTrue(manager.IsServerStarted, "Expected server started after hosting.");
             Assert.IsTrue(manager.IsHostStarted, "Expected host after hosting.");
             Assert.IsNotNull(manager.ClientManager.Connection, "Local client not connected.");
             Assert.IsTrue(manager.ClientManager.Connection.IsActive, "Local client not connected.");
 
-            manager.ServerManager.StopConnection(true);
-            manager.ClientManager.StopConnection();
+            NetworkManagerTestHelper.StopIfListening(manager);
             yield return null;
 
             Assert.IsFalse(manager.IsServerStarted || manager.IsClientStarted, "Expected shutdown.");
-
-            Object.Destroy(go);
+            Assert.IsTrue(manager.IsOffline);
         }
 
         [Test]
@@ -40,7 +32,7 @@ namespace MMO.Tests
         {
             // Guards against someone removing the git URL dependency.
             var info = UnityEditor.PackageManager.PackageInfo.FindForAssembly(
-                typeof(FishNet.NetworkManager).Assembly);
+                typeof(FishNet.Managing.NetworkManager).Assembly);
 
             Assert.IsNotNull(info, "FishNet package not resolved.");
             StringAssert.StartsWith("4.7.3", info.version,
