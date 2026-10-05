@@ -11,24 +11,25 @@ namespace MMO.Gameplay
 
         // Clients own a copy; the server owns the authoritative value and
         // replicates deltas automatically. Never write .Value off-server.
-        private readonly NetworkVariable<int> _health = new(MaxHealth);
+        private readonly SyncVar<int> _health = new();
 
         public int Health => _health.Value;
 
-        public override void OnNetworkSpawn()
+        public override void OnStartNetwork()
         {
             if (!IsServer)
                 return;
 
-            _health.OnValueChange += OnHealthChanged;
+            _health.Value = MaxHealth;
+            _health.OnChange += OnHealthChanged;
         }
 
-        public override void OnNetworkDespawn()
+        public override void OnStopNetwork()
         {
             if (!IsServer)
                 return;
 
-            _health.OnValueChange -= OnHealthChanged;
+            _health.OnChange -= OnHealthChanged;
         }
 
         /// Called from local input only. The client never changes health itself.
@@ -55,7 +56,7 @@ namespace MMO.Gameplay
             return Mathf.Clamp(current - Mathf.Max(0, amount), 0, MaxHealth);
         }
 
-        private void OnHealthChanged(int previous, int current)
+        private void OnHealthChanged(int previous, int current, bool asServer)
         {
             Debug.Log($"[ClientId {OwnerClientId}] health {previous} -> {current}");
         }
