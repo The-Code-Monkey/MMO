@@ -1,0 +1,31 @@
+name: opencode
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  # The fast execution agent for writing code
+  call-opencode-fast:
+    if: contains(github.event.comment.body, '/oc-fast')
+    uses: The-Code-Monkey/pipeline/.github/workflows/opencode-reusable.yml@main
+    with:
+      mentions: '/oc-fast'
+      model: 'opencode/fledge-alpha-free'
+      agent: 'build'
+    secrets: inherit
+
+  # The slow reasoning agent for planning and architecture
+  call-opencode-slow:
+    # Safely matches /oc without accidentally triggering on /oc-fast
+    if: |
+      contains(github.event.comment.body, '/oc ') || 
+      github.event.comment.body == '/oc' ||
+      (startsWith(github.event.comment.body, '/oc') && !contains(github.event.comment.body, '/oc-'))
+    uses: The-Code-Monkey/pipeline/.github/workflows/opencode-reusable.yml@main
+    with:
+      mentions: '/oc'
+      model: 'opencode/big-pickle'
+      agent: 'plan'
+    secrets: inherit
