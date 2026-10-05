@@ -1,4 +1,4 @@
-using FishNet;
+using FishNet.Managing;
 using UnityEngine;
 
 namespace MMO.Bootstrap
@@ -9,32 +9,33 @@ namespace MMO.Bootstrap
 
         private void Start()
         {
-            // Standalone servers/headless clients report no buttons.
             if (_networkManager == null)
-            {
                 Debug.LogError($"{nameof(ConnectionButtons)}: no NetworkManager assigned.");
-                return;
-            }
         }
 
         public void OnHostClicked()
         {
-            if (_networkManager.IsListening)
+            if (_networkManager.IsServerStarted || _networkManager.IsClientStarted)
                 return;
 
-            bool started = _networkManager.StartHost();
-            Debug.Log(started ? "Host started." : "Failed to start host.");
+            bool serverStarted = _networkManager.ServerManager.StartConnection();
+            bool clientStarted = serverStarted && _networkManager.ClientManager.StartConnection();
+            Debug.Log(serverStarted && clientStarted ? "Host started." : "Failed to start host.");
         }
 
         public void OnClientClicked()
         {
-            if (_networkManager.IsListening)
+            if (_networkManager.IsClientStarted)
                 return;
 
-            bool started = _networkManager.StartClient();
+            bool started = _networkManager.ClientManager.StartConnection();
             Debug.Log(started ? "Client started." : "Failed to start client.");
         }
 
-        public void OnStopClicked() => _networkManager.StopAll();
+        public void OnStopClicked()
+        {
+            _networkManager.ServerManager.StopConnection(true);
+            _networkManager.ClientManager.StopConnection();
+        }
     }
 }

@@ -12,21 +12,25 @@ namespace MMO.Tests
         {
             var go = new GameObject("TestNetworkManager");
             var manager = go.AddComponent<FishNet.NetworkManager>();
-            var transport = go.AddComponent<FishNet.Transport.Tugboat.Tugboat>();
+            var transport = go.AddComponent<FishNet.Transporting.Tugboat.Tugboat>();
 
-            manager.NetworkConfig ??= new();
-            manager.NetworkConfig.Transport = transport;
+            manager.TransportManager.Transport = transport;
             go.SetActive(true);
 
-            Assert.IsTrue(manager.StartHost(), "Host failed to start.");
-            Assert.IsTrue(manager.IsServer, "Expected IsServer after hosting.");
-            Assert.IsTrue(manager.IsHost, "Expected IsHost after hosting.");
-            Assert.IsTrue(manager.LocalClient.IsConnected, "Local client not connected.");
-
-            manager.StopAll();
+            Assert.IsTrue(manager.ServerManager.StartConnection(), "Server failed to start.");
+            Assert.IsTrue(manager.ClientManager.StartConnection(), "Client failed to start.");
             yield return null;
 
-            Assert.IsFalse(manager.IsListening, "Expected shutdown.");
+            Assert.IsTrue(manager.IsServerStarted, "Expected server started after hosting.");
+            Assert.IsTrue(manager.IsHostStarted, "Expected host after hosting.");
+            Assert.IsNotNull(manager.ClientManager.Connection, "Local client not connected.");
+            Assert.IsTrue(manager.ClientManager.Connection.IsActive, "Local client not connected.");
+
+            manager.ServerManager.StopConnection(true);
+            manager.ClientManager.StopConnection();
+            yield return null;
+
+            Assert.IsFalse(manager.IsServerStarted || manager.IsClientStarted, "Expected shutdown.");
 
             Object.Destroy(go);
         }

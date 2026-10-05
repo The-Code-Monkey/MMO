@@ -17,9 +17,8 @@ namespace MMO.Tests
         {
             _go = new GameObject("ConnectionButtonsTest");
             _manager = _go.AddComponent<FishNet.NetworkManager>();
-            var transport = _go.AddComponent<FishNet.Transport.Tugboat.Tugboat>();
-            _manager.NetworkConfig ??= new();
-            _manager.NetworkConfig.Transport = transport;
+            var transport = _go.AddComponent<FishNet.Transporting.Tugboat.Tugboat>();
+            _manager.TransportManager.Transport = transport;
             _buttons = _go.AddComponent<ConnectionButtons>();
             _go.SetActive(true);
         }
@@ -27,8 +26,11 @@ namespace MMO.Tests
         [TearDown]
         public void TearDown()
         {
-            if (_manager != null && _manager.IsListening)
-                _manager.StopAll();
+            if (_manager != null && (_manager.IsServerStarted || _manager.IsClientStarted))
+            {
+                _manager.ServerManager.StopConnection(true);
+                _manager.ClientManager.StopConnection();
+            }
             if (_go != null)
                 Object.Destroy(_go);
         }
@@ -41,12 +43,12 @@ namespace MMO.Tests
             _buttons.OnHostClicked();
             yield return null;
 
-            Assert.IsTrue(_manager.IsListening, "Expected host to be listening.");
+            Assert.IsTrue(_manager.IsServerStarted || _manager.IsClientStarted, "Expected host to be listening.");
 
             _buttons.OnStopClicked();
             yield return null;
 
-            Assert.IsFalse(_manager.IsListening, "Expected shutdown.");
+            Assert.IsFalse(_manager.IsServerStarted || _manager.IsClientStarted, "Expected shutdown.");
         }
 
         [UnityTest]
@@ -56,13 +58,13 @@ namespace MMO.Tests
 
             _buttons.OnHostClicked();
             yield return null;
-            Assert.IsTrue(_manager.IsListening);
+            Assert.IsTrue(_manager.IsServerStarted || _manager.IsClientStarted);
 
-            var clientState = _manager.IsClient;
+            var clientState = _manager.IsClientStarted;
             _buttons.OnClientClicked();
             yield return null;
 
-            Assert.AreEqual(clientState, _manager.IsClient,
+            Assert.AreEqual(clientState, _manager.IsClientStarted,
                 "OnClientClicked should be a no-op while already listening.");
         }
 
