@@ -45,7 +45,8 @@ namespace MMO.Gameplay
         private void RpcRequestDamage(int amount, NetworkConnection sender = null)
         {
             // Server is the only writer. Validate here, not on the client.
-            if (sender == null || !sender.IsOwner)
+            // NetworkConnection has no IsOwner in FishNet 4.x; compare against our owner.
+            if (sender == null || !OwnerMatches(sender))
                 return;
 
             _health.Value = ComputeNewHealth(_health.Value, amount);
@@ -58,7 +59,7 @@ namespace MMO.Gameplay
 
         private void OnHealthChanged(int previous, int current, bool asServer)
         {
-            Debug.Log($"[ClientId {OwnerClientId}] health {previous} -> {current}");
+            Debug.Log($"[ClientId {OwnerId}] health {previous} -> {current}");
         }
     }
 }
