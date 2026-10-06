@@ -28,15 +28,29 @@ namespace MMO.Inventory
     /// the list *without* the moving item, so the moving item's own cell counts as free and no
     /// half-applied rollback can flash on screen). After any change,
     /// <see cref="RecalculateEquipmentStats"/> sums what is worn and pushes it into
-    /// <c>PlayerStats</c>, whose caps then govern every health and mana clamp.
+    /// <see cref="PlayerStats"/>, whose caps then govern every health and mana clamp.
+    ///
+    /// <para>
+    /// As an <see cref="IInventorySource"/> the component is also what a grid view binds to.
+    /// The bag view subscribes to <see cref="ContainersChanged"/> — which the two
+    /// <c>SyncList.OnChange</c> callbacks below already raise — and repaints from that, so the
+    /// grid moves only when the server actually moved something.
+    /// </para>
     /// </summary>
-    public sealed class PlayerInventory : NetworkBehaviour
+    public sealed class PlayerInventory : NetworkBehaviour, IInventorySource
     {
         /// <summary>Bag columns.</summary>
         public const int GridWidth = 8;
 
         /// <summary>Bag rows.</summary>
         public const int GridHeight = 6;
+
+        // The constants above cannot satisfy an interface property, so the geometry is handed to
+        // IInventorySource readers through these explicit implementations instead. A bag screen
+        // that only ever sees the interface still measures the same grid the server validates in.
+        int IInventorySource.GridWidth => GridWidth;
+
+        int IInventorySource.GridHeight => GridHeight;
 
         // Both lists are server-owned SyncTypes: clients hold a replicated copy and are refused
         // if they try to write (the base class warns and the next delta overwrites them).

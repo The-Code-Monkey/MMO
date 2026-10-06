@@ -4,7 +4,7 @@ using UnityEngine.EventSystems;
 namespace MMO.Inventory
 {
     /// <summary>
-    /// One cell of a bag view. Wires the cell's coordinates to a <see cref="PlayerInventory"/>
+    /// One cell of a bag view. Wires the cell's coordinates to an <see cref="IInventorySource"/>
     /// and turns a right-click into the owner-side equip request — the issue's
     /// "right-click to equip" path.
     ///
@@ -16,16 +16,21 @@ namespace MMO.Inventory
     /// Coordinates are stored rather than an item reference: by the time the server reads them
     /// the bag may have shifted, and <c>PlayerInventory.TryEquip</c> re-resolves the cell against
     /// its own authoritative list, so a stale click can never move the wrong item.
+    ///
+    /// The source is held as the interface rather than the concrete component, so a grid screen
+    /// can wire its cells to whatever backs it — the networked inventory in a live game, a plain
+    /// fake in a test. The reference is code-wired through <see cref="SetInventory"/>; Unity
+    /// cannot serialize an interface field, and cells are built at runtime by the grid view.
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("MMO/Inventory/Inventory Slot View")]
     public class InventorySlotView : MonoBehaviour, IPointerClickHandler
     {
-        [SerializeField] private PlayerInventory _inventory;
+        private IInventorySource _inventory;
         [SerializeField] private int _gridX;
         [SerializeField] private int _gridY;
 
-        public PlayerInventory Inventory => _inventory;
+        public IInventorySource Inventory => _inventory;
         public int GridX => _gridX;
         public int GridY => _gridY;
 
@@ -33,7 +38,7 @@ namespace MMO.Inventory
         /// Points this view at a specific inventory; public so a bag screen can populate cells
         /// at runtime and so tests can wire a fixture without going through the Inspector.
         /// </summary>
-        public void SetInventory(PlayerInventory inventory) => _inventory = inventory;
+        public void SetInventory(IInventorySource inventory) => _inventory = inventory;
 
         /// <summary>Declares which bag cell this view represents.</summary>
         public void SetCell(int gridX, int gridY)
@@ -59,7 +64,10 @@ namespace MMO.Inventory
         /// </summary>
         public virtual void HandleRightClick()
         {
-            if (_inventory == null)
+            // An interface reference cannot use Unity's null overload, so a destroyed inventory
+            // behind it would otherwise look alive and throw when the request touches the
+            // despawned NetworkBehaviour. Check both null states before asking for anything.
+            if (_inventory == null || (_inventory is UnityEngine.Object unityObject && unityObject == null))
                 return;
 
             _inventory.RequestEquip(_gridX, _gridY);

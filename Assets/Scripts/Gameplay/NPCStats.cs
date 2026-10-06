@@ -1,3 +1,4 @@
+using System;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
@@ -17,8 +18,14 @@ namespace MMO.Gameplay
     /// Nothing here exposes a setter. Clients read <see cref="Health"/> for a health bar and, at
     /// most, *ask* for an effect through an RPC; only the <c>[Server]</c> mutators ever write the
     /// real number.
+    ///
+    /// <para>
+    /// As an <see cref="ITargetSource"/> it is also what a target frame binds to: the frame
+    /// repaints from <see cref="Changed"/>, which the <c>SyncVar.OnChange</c> callback below
+    /// raises, so an untouched target costs nothing after the frame's first paint.
+    /// </para>
     /// </summary>
-    public sealed class NPCStats : NetworkBehaviour
+    public sealed class NPCStats : NetworkBehaviour, ITargetSource
     {
         public const int MaxHealth = 50;
 
@@ -27,6 +34,18 @@ namespace MMO.Gameplay
 
         public int Health => _health.Value;
         public bool IsAlive => _health.Value > 0;
+
+        /// <summary>What a target frame titles this target with: its GameObject name.</summary>
+        public string TargetName => name;
+
+        /// <summary>
+        /// Raised whenever replicated health changes — the <c>SyncVar.OnChange</c> callback
+        /// forwarded into a plain C# event, so a bound target frame repaints on the change
+        /// itself rather than sampling this component every frame.
+        /// </summary>
+        public event Action Changed;
+
+        int ITargetSource.MaxHealth => MaxHealth;
 
         public override void OnStartNetwork()
         {
@@ -73,6 +92,7 @@ namespace MMO.Gameplay
         private void OnHealthChanged(int previous, int current, bool asServer)
         {
             Debug.Log($"[ClientId {OwnerId}] {name} health {previous} -> {current}");
+            Changed?.Invoke();
         }
     }
 }
