@@ -83,7 +83,7 @@ namespace MMO.Tests
             if (manager == null || !manager.IsServerStarted)
                 return null;
 
-            foreach (NetworkObject nob in manager.ServerManager.Spawned.Values)
+            foreach (NetworkObject nob in manager.ServerManager.Objects.Spawned.Values)
             {
                 // The host owns exactly one spawned object: its own player.
                 if (nob != null && nob.IsSpawned && nob.IsOwner)

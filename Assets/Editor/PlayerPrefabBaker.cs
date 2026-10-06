@@ -2,6 +2,7 @@ using System.IO;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Gameplay;
 using MMO.Net;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -27,6 +28,12 @@ namespace MMO.Editor
 
         /// <summary>Where the saved prefab asset ends up.</summary>
         public const string PrefabAssetPath = PrefabFolder + "/" + PlayerPrefabFactory.PrefabName + ".prefab";
+
+        /// <summary>
+        /// The weapon a freshly baked player holds on spawn. Kept as an asset path so the editor
+        /// can resolve it with the AssetDatabase and the tests can assert on it in the same units.
+        /// </summary>
+        public const string DefaultWeaponAssetPath = "Assets/Data/Weapons/Broadsword.asset";
 
         /// <summary>
         /// <see cref="PrefabAssetPath"/> resolved against the project root, for callers that need
@@ -63,6 +70,7 @@ namespace MMO.Editor
             NetworkObject built = PlayerPrefabFactory.Create();
             try
             {
+                EquipDefaultWeapon(built);
                 GameObject asset = PrefabUtility.SaveAsPrefabAsset(built.gameObject, PrefabAssetPath);
                 if (asset == null)
                 {
@@ -150,6 +158,32 @@ namespace MMO.Editor
             // DeleteAsset answers false when there is nothing there, so there is no need to test
             // the filesystem first — and no way for the two to disagree.
             return AssetDatabase.DeleteAsset(PrefabAssetPath);
+        }
+
+        /// <summary>
+        /// Assigns the default weapon to the player object before it is saved as a prefab, so the
+        /// spawned player already holds a blade instead of unarmed. Written through a
+        /// <see cref="SerializedObject"/> because <c>_equippedWeapon</c> is a private serialized
+        /// field — the same path the Inspector uses, applied to the built object before the save,
+        /// so the reference persists into the prefab asset.
+        /// </summary>
+        private static void EquipDefaultWeapon(NetworkObject player)
+        {
+            PlayerCombat combat = player != null ? player.GetComponent<PlayerCombat>() : null;
+            if (combat == null)
+                return;
+
+            WeaponData weapon = AssetDatabase.LoadAssetAtPath<WeaponData>(DefaultWeaponAssetPath);
+            if (weapon == null)
+            {
+                Debug.LogWarning(
+                    $"No weapon found at '{DefaultWeaponAssetPath}' — the player will spawn unarmed.");
+                return;
+            }
+
+            var inspector = new SerializedObject(combat);
+            inspector.FindProperty("_equippedWeapon").objectReferenceValue = weapon;
+            inspector.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>

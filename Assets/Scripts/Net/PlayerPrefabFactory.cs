@@ -6,14 +6,14 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Gameplay;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace MMO.Net
 {
     /// <summary>
-    /// Builds the network player object — a capsule carrying a FishNet
-    /// <see cref="NetworkObject"/> — and wires it into a <see cref="NetworkManager"/> so the
-    /// server spawns one for every client that connects.
+    /// Builds the network player object — a capsule carrying a FishNet <see cref="NetworkObject"/>
+    /// and the project's own <see cref="PlayerStats"/> and <see cref="PlayerCombat"/> — and wires
+    /// it into a <see cref="NetworkManager"/> so the server spawns one for every client that
+    /// connects.
     ///
     /// FishNet 4.x removed <c>NetworkManager.PlayerPrefab</c>; spawning on connect is the job of
     /// <see cref="PlayerSpawner"/>, which spawns when a client finishes loading its start scenes.
@@ -50,7 +50,7 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>
-        /// and the project's own networked <see cref="PlayerStats"/>.
+        /// and the project's own networked <see cref="PlayerStats"/> and <see cref="PlayerCombat"/>.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -71,8 +71,9 @@ namespace MMO.Net
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
+            go.AddComponent<PlayerCombat>();
 
-            ApplyRenderPipelineMaterial(go);
+            PrimitiveAppearance.ApplyRenderPipelineMaterial(go);
             return networkObject;
         }
 
@@ -136,23 +137,6 @@ namespace MMO.Net
                 spawner.SetPlayerPrefab(playerPrefab);
 
             return spawner;
-        }
-
-        /// <summary>
-        /// Swaps the primitive's built-in material for the active render pipeline's default.
-        /// Without this a capsule in a URP project renders magenta.
-        /// </summary>
-        private static void ApplyRenderPipelineMaterial(GameObject go)
-        {
-            RenderPipelineAsset pipeline = GraphicsSettings.currentRenderPipeline;
-            Material pipelineDefault = pipeline != null ? pipeline.defaultMaterial : null;
-            if (pipelineDefault == null)
-                return;
-
-            // sharedMaterial, not material: no per-renderer material instance to leak.
-            var renderer = go.GetComponent<MeshRenderer>();
-            if (renderer != null)
-                renderer.sharedMaterial = pipelineDefault;
         }
     }
 }

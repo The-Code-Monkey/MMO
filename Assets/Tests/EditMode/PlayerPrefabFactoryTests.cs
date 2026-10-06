@@ -193,6 +193,16 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Create_AddsTheProjectsNetworkedCombat()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Assert.IsNotNull(nob.GetComponent<PlayerCombat>(),
+                "PlayerCombat makes the spawned player attackable and belongs on the player object.");
+        }
+
+        [Test]
         public void Create_PutsTheStatsNextToTheNetworkObject()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
@@ -201,10 +211,14 @@ namespace MMO.Tests
             // A NetworkBehaviour resolves its NetworkObject through its own GameObject; a mismatch
             // is the classic "stats never replicate" bug.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(1, behaviours.Length, "Only the project's own behaviour belongs here.");
+            Assert.AreEqual(2, behaviours.Length,
+                "The project's own behaviours (PlayerStats, PlayerCombat) are the only ones here.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
+            Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
+            Assert.AreSame(nob.gameObject, behaviours[1].gameObject,
+                "The combat state and the NetworkObject must be on the same object.");
         }
 
         [Test]

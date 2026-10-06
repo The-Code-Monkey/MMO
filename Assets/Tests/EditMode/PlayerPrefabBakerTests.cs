@@ -187,6 +187,24 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void EnsurePlayerPrefab_EquipsTheShippedDefaultWeapon()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            // The whole reason the baked prefab arms the player is that the code-built player
+            // leaves the factory unarmed; only the saved asset carries the ship's weapon.
+            var combat = prefab.GetComponent<PlayerCombat>();
+            Assert.IsNotNull(combat, "The baked prefab must carry the combat behaviour.");
+
+            Assert.IsNotNull(combat.EquippedWeapon,
+                "A freshly baked player must not spawn unarmed.");
+
+            Assert.AreEqual(PlayerPrefabBaker.DefaultWeaponAssetPath,
+                AssetDatabase.GetAssetPath(combat.EquippedWeapon),
+                "The equipped weapon has to be the shipped Broadsword asset, not a scene copy.");
+        }
+
+        [Test]
         public void EnsurePlayerPrefab_ReusesTheAssetOnLaterCalls()
         {
             NetworkObject first = PlayerPrefabBaker.EnsurePlayerPrefab();
