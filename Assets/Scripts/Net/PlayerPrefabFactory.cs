@@ -54,8 +54,10 @@ namespace MMO.Net
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
         /// the project's own networked <see cref="PlayerStats"/>, <see cref="PlayerCombat"/>, its
         /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, its
-        /// <see cref="PlayerAbilities"/> that carries this player's ability slots, and the
-        /// <see cref="LocalPlayerCamera"/> that gives the owning client something to look through.
+        /// <see cref="PlayerAbilities"/> that carries this player's ability slots, its
+        /// <see cref="PlayerGathering"/> that runs the server-side gathering loop this player
+        /// started, and the <see cref="LocalPlayerCamera"/> that gives the owning client
+        /// something to look through.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -79,11 +81,14 @@ namespace MMO.Net
             // container changes, and PlayerAbilities comes after the inventory its slots are
             // filled from: equipment-injected abilities ride along with the vitals they spend, so
             // the server fills these slots from gear before it validates any cast through them.
+            // PlayerGathering comes after PlayerInventory because that is the bag its server-side
+            // tick awards harvested items into and the equipment its tool checks read.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
             go.AddComponent<PlayerCombat>();
             go.AddComponent<PlayerInventory>();
             go.AddComponent<PlayerAbilities>();
+            go.AddComponent<PlayerGathering>();
 
             // Travels with the prefab so a client that receives its player object has something to
             // look through. It decides whether it may drive the camera by asking IsOwner, which is
