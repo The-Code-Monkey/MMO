@@ -5,6 +5,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Client;
 using MMO.Gameplay;
 using MMO.Net;
 using NUnit.Framework;
@@ -193,6 +194,16 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Create_AddsTheLocalPlayerCameraScript()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Assert.IsNotNull(nob.GetComponent<LocalPlayerCamera>(),
+                "The owning client only gets a camera if the prefab carries the script that claims it.");
+        }
+
+        [Test]
         public void Create_PutsTheStatsNextToTheNetworkObject()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
@@ -201,10 +212,43 @@ namespace MMO.Tests
             // A NetworkBehaviour resolves its NetworkObject through its own GameObject; a mismatch
             // is the classic "stats never replicate" bug.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(1, behaviours.Length, "Only the project's own behaviour belongs here.");
+            Assert.AreEqual(2, behaviours.Length,
+                "The player carries its networked stats and its networked camera script, nothing else.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
+            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[1]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
+            Assert.AreSame(nob.gameObject, behaviours[1].gameObject,
+                "The camera script and the NetworkObject must be on the same object.");
+        }
+
+        [Test]
+        public void Create_AddsExactlyOneLocalPlayerCameraScript()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            // A second script would mean two NetworkBehaviours racing to drive the same camera.
+            Assert.AreEqual(1, nob.GetComponents<LocalPlayerCamera>().Length);
+        }
+
+        [Test]
+        public void Create_PutsTheNetworkObjectBeforeAnyNetworkBehaviour()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Component[] components = nob.GetComponents<Component>();
+            int networkObjectIndex = Array.IndexOf(components, nob);
+            Assert.GreaterOrEqual(networkObjectIndex, 0, "The prefab is supposed to carry a NetworkObject.");
+
+            foreach (NetworkBehaviour behaviour in nob.GetComponents<NetworkBehaviour>())
+            {
+                // FishNet numbers NetworkBehaviours in component order, so a NetworkBehaviour added
+                // ahead of the NetworkObject shifts every id after it.
+                Assert.Less(networkObjectIndex, Array.IndexOf(components, behaviour),
+                    $"{behaviour.GetType().Name} sits ahead of the NetworkObject.");
+            }
         }
 
         [Test]
