@@ -2,7 +2,8 @@
     "name": "MMO.Runtime",
     "rootNamespace": "MMO",
     "references": [
-        "FishNet.Runtime"
+        "FishNet.Runtime",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

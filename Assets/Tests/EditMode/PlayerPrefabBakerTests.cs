@@ -5,6 +5,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Client;
 using MMO.Editor;
 using MMO.Gameplay;
 using MMO.Net;
@@ -25,7 +26,7 @@ namespace MMO.Tests
     public sealed class PlayerPrefabBakerTests
     {
         private Scene _scene;
-        private PlayerPrefabTestAsset _prefabAsset;
+        private SpawnablePrefabTestAsset _prefabAsset;
 
         private readonly List<GameObject> _sceneObjects = new();
         private readonly List<Object> _scratch = new();
@@ -34,7 +35,7 @@ namespace MMO.Tests
         public void SetUp()
         {
             _scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            _prefabAsset = new PlayerPrefabTestAsset();
+            _prefabAsset = new SpawnablePrefabTestAsset();
         }
 
         [TearDown]
@@ -184,6 +185,17 @@ namespace MMO.Tests
             NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
 
             Assert.IsNotNull(prefab.GetComponent<PlayerStats>());
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_ProducesThePlayerObjectWithTheCameraScript()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            // The camera script has to survive the bake: the prefab asset, not the scene copy, is
+            // what every client receives.
+            Assert.IsNotNull(prefab.GetComponent<LocalPlayerCamera>(),
+                "Without the script on the prefab, the owning client never gets a camera.");
         }
 
         [Test]

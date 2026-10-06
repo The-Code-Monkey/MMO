@@ -11,7 +11,9 @@ namespace MMO.Editor
     /// <summary>
     /// Materialises the object <see cref="NetworkManagerFactory"/> builds into the active
     /// scene, so the scene is saved with a NetworkManager already in it — including the player
-    /// prefab registration and PlayerSpawner that make a connecting client receive a player object.
+    /// prefab registration and PlayerSpawner that make a connecting client receive a player
+    /// object, and the target dummy registration and spawner that put a server-spawned enemy
+    /// in the world when the server starts.
     /// </summary>
     public static class NetworkManagerSceneBaker
     {
@@ -38,7 +40,8 @@ namespace MMO.Editor
 
         /// <summary>
         /// Returns the scene's NetworkManager, creating one if the scene has none, and wires the
-        /// player object into it so every admitted client is spawned one.
+        /// player object into it so every admitted client is spawned one, plus the target dummy
+        /// that the server instantiates and spawns when it starts listening.
         /// Idempotent: a second call reuses the existing object and does not duplicate the wiring.
         /// </summary>
         public static NetworkManager CreateInActiveScene(MMOConnectionSettings settings)
@@ -52,14 +55,17 @@ namespace MMO.Editor
 
                 // Already in the scene, so it has no prefab wiring of ours to inherit; give it one.
                 PlayerPrefabBaker.WirePlayerPrefab(existing);
+                TargetDummyBaker.WireTargetDummy(existing);
                 return existing;
             }
 
-            // Bake first so the factory registers the saved asset rather than building a second,
-            // scene-local player object that would then be serialized into the scene.
+            // Bake first so the factory registers the saved assets rather than building second,
+            // scene-local objects that would then be serialized into the scene.
             NetworkObject playerPrefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+            NetworkObject targetDummyPrefab = TargetDummyBaker.EnsureTargetDummyPrefab();
 
-            NetworkManager manager = NetworkManagerFactory.Create(settings, out _, playerPrefab);
+            NetworkManager manager = NetworkManagerFactory.Create(
+                settings, out _, playerPrefab, targetDummyPrefab);
 
             // A freshly constructed GameObject already lands in the active scene, so only
             // move it when it genuinely ended up somewhere else.
