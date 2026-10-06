@@ -1,11 +1,14 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MMO.Gameplay
 {
     /// <summary>
-    /// Pure data for one weapon archetype: its name, how hard the auto-attack hits, and how far
-    /// away the target can stand. This is the "you are what you wear" data half — an asset you
-    /// right-click into existence from the Project window, never a scene object.
+    /// Pure data for one weapon archetype: its name, how hard the auto-attack hits, how far
+    /// away the target can stand, and which active skills the weapon injects into the wearer's
+    /// ability slots. This is the "you are what you wear" data half — an asset you right-click
+    /// into existence from the Project window, never a scene object.
     ///
     /// Deliberately carries no networking. A balance number is not state: the server reads the
     /// same asset the client reads, so there is nothing to replicate and nothing for a client to
@@ -22,9 +25,16 @@ namespace MMO.Gameplay
         [SerializeField] private string _weaponName = string.Empty;
         [SerializeField, Min(0)] private int _autoAttackDamage;
         [SerializeField, Min(0f)] private float _attackRange;
+        [SerializeField] private AbilityData[] _abilities = Array.Empty<AbilityData>();
 
         public string WeaponName => _weaponName;
         public int AutoAttackDamage => _autoAttackDamage;
         public float AttackRange => _attackRange;
+
+        /// <summary>
+        /// The skills this weapon injects into the wearer's active ability slots, in authoring
+        /// order. Read-only: the asset grants abilities, nothing at runtime rewrites it.
+        /// </summary>
+        public IReadOnlyList<AbilityData> Abilities => _abilities ?? Array.Empty<AbilityData>();
     }
 }

@@ -6,14 +6,25 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Client;
 using MMO.Gameplay;
+using MMO.Inventory;
 using UnityEngine;
 
 namespace MMO.Net
 {
     /// <summary>
-    /// Builds the network player object — a capsule carrying a FishNet
-    /// <see cref="NetworkObject"/> — and wires it into a <see cref="NetworkManager"/> so the
-    /// server spawns one for every client that connects.
+    /// Builds the network player object — a capsule carrying a FishNet <see cref="NetworkObject"/>
+    /// and the project's own <see cref="PlayerStats"/> and <see cref="PlayerCombat"/> — and wires
+    /// it into a <see cref="NetworkManager"/> so the server spawns one for every client that
+    /// connects.
+    ///
+    /// FishNet 4.x removed <c>NetworkManager.PlayerPrefab</c>; spawning on connect is the job of
+    /// <see cref="PlayerSpawner"/>, which spawns when a client finishes loading its start scenes.
+    /// Joining here is gated by <see cref="MMOConnectionGate"/>, so a player object is only ever
+    /// spawned for a client the server has already admitted.
+    ///
+    /// Everything is built in code so a scene, a fresh process and a test all produce the same
+    /// object. The editor baker (<c>MMO.Editor.PlayerPrefabBaker</c>) saves what
+    /// <see cref="Create"/> returns to disk as a prefab asset.
     /// </summary>
     public static class PlayerPrefabFactory
     {
@@ -41,7 +52,9 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
-        /// the project's own networked <see cref="PlayerStats"/>, <see cref="PlayerCombat"/>, and the
+        /// the project's own networked <see cref="PlayerStats"/>, <see cref="PlayerCombat"/>, its
+        /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, its
+        /// <see cref="PlayerAbilities"/> that carries this player's ability slots, and the
         /// <see cref="LocalPlayerCamera"/> that gives the owning client something to look through.
         /// </summary>
         /// <remarks>
@@ -52,17 +65,33 @@ namespace MMO.Net
         /// </remarks>
         public static NetworkObject Create()
         {
+            // CreatePrimitive is what supplies the capsule mesh, renderer and a CapsuleCollider
+            // whose dimensions already match the mesh.
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             go.name = PrefabName;
             go.tag = PlayerTag;
             go.transform.localScale = DefaultScale;
 
+            // NetworkObject before any NetworkBehaviour: behaviours resolve their owning
+            // NetworkObject through it, and this is the order the FishNet editor tooling writes.
+            // PlayerCombat spends the vitals it sits next to. PlayerInventory follows PlayerStats
+            // because it pushes recalculated equipment bonuses into PlayerStats whenever either
+            // container changes, and PlayerAbilities comes after the inventory its slots are
+            // filled from: equipment-injected abilities ride along with the vitals they spend, so
+            // the server fills these slots from gear before it validates any cast through them.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
             go.AddComponent<PlayerCombat>();
+            go.AddComponent<PlayerInventory>();
+            go.AddComponent<PlayerAbilities>();
 
+            // Travels with the prefab so a client that receives its player object has something to
+            // look through. It decides whether it may drive the camera by asking IsOwner, which is
+            // why it is safe for every client's copy of this prefab to carry it.
             go.AddComponent<LocalPlayerCamera>();
 
+            // The material swap is shared with the other primitive factories, so a player and a
+            // dummy never end up with different pipeline handling.
             PrimitiveAppearance.ApplyRenderPipelineMaterial(go);
             return networkObject;
         }
@@ -70,6 +99,10 @@ namespace MMO.Net
         /// <summary>
         /// True when <paramref name="playerPrefab"/> is already one of the spawnables.
         /// </summary>
+        /// <remarks>
+        /// Only <see cref="SinglePrefabObjects"/> is searched: this project uses it exclusively,
+        /// and the base <see cref="PrefabObjects"/> exposes no way to enumerate its contents.
+        /// </remarks>
         public static bool Contains(PrefabObjects prefabs, NetworkObject playerPrefab)
         {
             if (prefabs is not SinglePrefabObjects single || playerPrefab == null)
@@ -92,6 +125,8 @@ namespace MMO.Net
             if (playerPrefab == null || Contains(prefabs, playerPrefab))
                 return false;
 
+            // initializeAdded: false leaves prefab id assignment to NetworkManager.Awake, which is
+            // the only place that knows the final list order and whether the game is playing.
             prefabs.AddObject(playerPrefab, checkForDuplicates: true, initializeAdded: false);
             return true;
         }
@@ -101,6 +136,13 @@ namespace MMO.Net
         /// points it at <paramref name="playerPrefab"/>, which is how FishNet 4.x is told to spawn
         /// a prefab whenever a player connects.
         /// </summary>
+        /// <remarks>
+        /// The spawner must be on the NetworkManager object or a child of it — it resolves the
+        /// manager with <c>GetComponentInParent&lt;NetworkManager&gt;()</c>. It is also added only
+        /// after <c>NetworkManager.Awake</c> has run, because it subscribes to
+        /// <c>SceneManager.OnClientLoadedStartScenes</c> during its own Awake and that manager
+        /// sub-object only exists once the NetworkManager has initialised.
+        /// </remarks>
         public static PlayerSpawner Attach(NetworkManager manager, NetworkObject playerPrefab)
         {
             if (manager == null)

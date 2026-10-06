@@ -186,7 +186,7 @@ namespace MMO.Editor
             inspector.ApplyModifiedPropertiesWithoutUndo();
         }
 
-
+        /// <summary>
         /// Creates the folder the prefab is saved into. <see cref="AssetDatabase.CreateFolder"/>
         /// rather than <c>Directory.CreateDirectory</c> so Unity generates the matching .meta.
         /// </summary>

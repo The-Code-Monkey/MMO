@@ -9,7 +9,8 @@ namespace MMO.Net
     /// <summary>
     /// Single source of truth for the "NetworkManager" GameObject. Both the editor baker
     /// and the tests build the object through here so a scene and a fresh process end up
-    /// wired identically — including the server-spawned target dummy that every client sees in the exact same state because it only ever exists through <c>ServerManager.Spawn</c>.
+    /// wired identically — including the server-spawned target dummy that every client sees
+    /// in the exact same state because it only ever exists through <c>ServerManager.Spawn</c>.
     /// </summary>
     public static class NetworkManagerFactory
     {

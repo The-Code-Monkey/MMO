@@ -27,5 +27,5 @@ jobs:
     with:
       mentions: '/oc'
       model: 'opencode/big-pickle'
-      agent: 'plan'
+      agent: 'build'
     secrets: inherit

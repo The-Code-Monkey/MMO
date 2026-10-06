@@ -219,8 +219,12 @@ namespace MMO.Tests
             NetworkObject prefab = EnsureDummyPrefab();
 
             // Spawned code-side with the server's authority, as a level designer or a combat
-            // director would; FishNet elides a full client-side round-trip.
+            // director would; FishNet elides a full client-side round-trip. The source prefab is
+            // deactivated (FishNet's pool activates the clone it spawns), so a manually
+            // instantiated clone has to be activated before the server spawns it — the same
+            // order TargetDummySpawner uses.
             NetworkObject instance = Object.Instantiate(prefab, position, Quaternion.identity);
+            instance.gameObject.SetActive(true);
             _spawnedDummies.Add(instance);
             _manager.ServerManager.Spawn(instance);
             return instance.GetComponent<TargetDummy>();

@@ -6,6 +6,7 @@
         "UnityEditor.TestRunner",
         "MMO.Runtime",
         "FishNet.Runtime",
+        "UnityEngine.UI",
         "Unity.Cinemachine"
     ],
     "includePlatforms": [

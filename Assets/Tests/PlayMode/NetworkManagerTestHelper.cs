@@ -103,5 +103,35 @@ namespace MMO.Tests
             for (int i = 0; i < maxFrames && FindPlayerObject(manager) == null; i++)
                 yield return null;
         }
+
+        /// <summary>
+        /// Every target dummy the server has spawned. Present only while the server listens: the
+        /// dummy is a server-spawned entity, so it exists solely through ServerManager.Spawn.
+        /// </summary>
+        public static List<NetworkObject> FindTargetDummies(NetworkManager manager)
+        {
+            var dummies = new List<NetworkObject>();
+            if (manager == null || !manager.IsServerStarted)
+                return dummies;
+
+            foreach (NetworkObject nob in manager.ServerManager.Objects.Spawned.Values)
+            {
+                // Only the red capsule the spawner builds carries NPCStats; other spawned
+                // behaviour, like a combat test's dummy, is filtered out by the GetComponent check.
+                if (nob != null && nob.IsSpawned && nob.GetComponent<NPCStats>() != null)
+                    dummies.Add(nob);
+            }
+
+            return dummies;
+        }
+
+        /// <summary>
+        /// Waits for the server to spawn its target dummy.
+        /// </summary>
+        public static IEnumerator WaitForTargetDummy(NetworkManager manager, int maxFrames = 600)
+        {
+            for (int i = 0; i < maxFrames && FindTargetDummies(manager).Count == 0; i++)
+                yield return null;
+        }
     }
 }
