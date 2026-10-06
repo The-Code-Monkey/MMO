@@ -9,7 +9,8 @@ namespace MMO.Net
     /// <summary>
     /// Single source of truth for the "NetworkManager" GameObject. Both the editor baker
     /// and the tests build the object through here so a scene and a fresh process end up
-    /// wired identically.
+    /// wired identically — including the server-spawned target dummy that every client sees
+    /// in the exact same state because it only ever exists through <c>ServerManager.Spawn</c>.
     /// </summary>
     public static class NetworkManagerFactory
     {
@@ -18,8 +19,9 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the "NetworkManager" GameObject: transport, spawnables, join gate, the client
-        /// half of the handshake, and the player spawner that hands every admitted client a
-        /// player object.
+        /// half of the handshake, the player spawner that hands every admitted client a player
+        /// object, and the target-dummy spawner that puts a server-spawned enemy in the world when
+        /// the server starts.
         /// </summary>
         /// <param name="settings">Gate rules; null falls back to the defaults.</param>
         /// <param name="gate">The join gate added to the object.</param>
@@ -28,10 +30,16 @@ namespace MMO.Net
         /// which is what a fresh process does. The editor baker passes the saved prefab asset so a
         /// scene references an asset instead of carrying a scene copy.
         /// </param>
+        /// <param name="targetDummyPrefab">
+        /// The prefab the server spawns as an enemy when it starts. Pass null and one is built in
+        /// memory, which is what a fresh process does. The editor baker passes the saved prefab
+        /// asset so a scene references an asset instead of carrying a scene copy.
+        /// </param>
         public static NetworkManager Create(
             MMOConnectionSettings settings,
             out MMOConnectionGate gate,
-            NetworkObject playerPrefab = null)
+            NetworkObject playerPrefab = null,
+            NetworkObject targetDummyPrefab = null)
         {
             settings ??= new MMOConnectionSettings();
 
@@ -43,6 +51,7 @@ namespace MMO.Net
             go.SetActive(false);
 
             NetworkObject builtPlayerPrefab = null;
+            NetworkObject builtTargetDummyPrefab = null;
 
             try
             {
@@ -67,9 +76,18 @@ namespace MMO.Net
                     playerPrefab.gameObject.SetActive(false);
                 }
 
-                // Before activation, so the prefab is in the collection when Awake hands out
-                // prefab ids from the list order.
+                if (targetDummyPrefab == null)
+                {
+                    builtTargetDummyPrefab = TargetDummyPrefabFactory.Create();
+                    targetDummyPrefab = builtTargetDummyPrefab;
+                    targetDummyPrefab.gameObject.SetActive(false);
+                }
+
+                // Before activation, so the prefabs are in the collection when Awake hands out
+                // prefab ids from the list order. Both ends build through this same factory, so
+                // the player is always id 0 and the target dummy id 1.
                 PlayerPrefabFactory.Register(prefabs, playerPrefab);
+                TargetDummyPrefabFactory.Register(prefabs, targetDummyPrefab);
 
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
@@ -83,8 +101,10 @@ namespace MMO.Net
                 // Deliberately after activation. PlayerSpawner subscribes to
                 // SceneManager.OnClientLoadedStartScenes from its own Awake, and SceneManager is
                 // only created by NetworkManager.Awake — so this must not race component Awake
-                // order on the same object.
+                // order on the same object. The target dummy spawner needs ServerManager to exist
+                // for the same reason.
                 PlayerPrefabFactory.Attach(manager, playerPrefab);
+                TargetDummyPrefabFactory.Attach(manager, targetDummyPrefab);
 
                 return manager;
             }
@@ -92,6 +112,9 @@ namespace MMO.Net
             {
                 if (builtPlayerPrefab != null)
                     Object.DestroyImmediate(builtPlayerPrefab.gameObject);
+
+                if (builtTargetDummyPrefab != null)
+                    Object.DestroyImmediate(builtTargetDummyPrefab.gameObject);
 
                 Object.DestroyImmediate(go);
                 throw;

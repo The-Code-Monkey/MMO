@@ -25,7 +25,7 @@ namespace MMO.Tests
     public sealed class PlayerPrefabBakerTests
     {
         private Scene _scene;
-        private PlayerPrefabTestAsset _prefabAsset;
+        private SpawnablePrefabTestAsset _prefabAsset;
 
         private readonly List<GameObject> _sceneObjects = new();
         private readonly List<Object> _scratch = new();
@@ -34,7 +34,7 @@ namespace MMO.Tests
         public void SetUp()
         {
             _scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            _prefabAsset = new PlayerPrefabTestAsset();
+            _prefabAsset = new SpawnablePrefabTestAsset();
         }
 
         [TearDown]
