@@ -6,6 +6,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Gameplay;
+using MMO.Inventory;
 using MMO.Net;
 using NUnit.Framework;
 using UnityEngine;
@@ -193,18 +194,33 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Create_AddsTheProjectsInventoryContainer()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Assert.IsNotNull(nob.GetComponent<PlayerInventory>(),
+                "PlayerInventory owns the bag and equipment containers and belongs beside the stats.");
+        }
+
+        [Test]
         public void Create_PutsTheStatsNextToTheNetworkObject()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
 
             // A NetworkBehaviour resolves its NetworkObject through its own GameObject; a mismatch
-            // is the classic "stats never replicate" bug.
+            // is the classic "stats never replicate" bug. FishNet also wires SyncTypes in
+            // NetworkBehaviour-index order, so both of the project's behaviours belong here —
+            // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(1, behaviours.Length, "Only the project's own behaviour belongs here.");
+            Assert.AreEqual(2, behaviours.Length, "Exactly the project's two behaviours belong here.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
+            Assert.IsInstanceOf<PlayerInventory>(behaviours[1]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
+            Assert.AreSame(nob.gameObject, behaviours[1].gameObject,
+                "The inventory and the NetworkObject must be on the same object.");
         }
 
         [Test]

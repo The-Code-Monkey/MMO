@@ -142,6 +142,30 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void PureHelpers_HonorARaisedEquipmentCap()
+        {
+            // The inventory system hands these helpers an effective maximum (base pool plus
+            // whatever is worn); without the optional cap, an equipped bonus could never hold a
+            // value above the base max and the whole recalculation would be invisible.
+            Assert.AreEqual(105, PlayerStats.ComputeNewHealth(105, 0, 110),
+                "Health already above the base pool survives damage while the raised cap holds.");
+            Assert.AreEqual(110, PlayerStats.ComputeHealedHealth(105, 10, 110),
+                "Healing fills the raised cap, not the base one.");
+            Assert.AreEqual(55, PlayerStats.ComputeNewMana(60, 5, 60),
+                "Mana above the base pool is spendable while an item raises the cap.");
+            Assert.AreEqual(60, PlayerStats.ComputeRestoredMana(55, 10, 60),
+                "Restoration fills the raised cap as well.");
+        }
+
+        [Test]
+        public void PureHelpers_TreatANegativeCapAsZero()
+        {
+            // Mathf.Clamp with min above max is undefined; a caller passing a nonsense cap should
+            // get the safe answer (everything drains to zero) rather than a garbage one.
+            Assert.AreEqual(0, PlayerStats.ComputeNewHealth(50, 10, -5));
+        }
+
+        [Test]
         public void MaxMana_IsGreaterThanZero()
         {
             Assert.Greater(PlayerStats.MaxMana, 0, "A mana pool of zero makes the stat meaningless.");
@@ -164,8 +188,9 @@ namespace MMO.Tests
                 }
             }
 
-            Assert.AreEqual(2, syncVars.Count,
-                "PlayerStats should hold exactly two SyncVars: health and mana.");
+            Assert.AreEqual(5, syncVars.Count,
+                "PlayerStats should hold exactly five SyncVars: health, mana, level, and the two " +
+                "equipment bonus caps — the inventory system recalculates those from what is worn.");
         }
 
         [Test]
@@ -183,12 +208,46 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void EquipmentStats_ExposeNoPublicSetter()
+        {
+            // The level and the equipment bonus caps are server-owned for the same reason the
+            // vitals are: only PlayerInventory's recalculated totals may move them, never a client.
+            foreach (string stat in new[]
+                     {
+                         "Level", "MaxHealthBonus", "MaxManaBonus",
+                         "EffectiveMaxHealth", "EffectiveMaxMana",
+                     })
+            {
+                PropertyInfo property = typeof(PlayerStats).GetProperty(stat, BindingFlags.Public | BindingFlags.Instance);
+
+                Assert.IsNotNull(property, $"{stat} should be readable by clients.");
+                Assert.IsNull(property.SetMethod,
+                    $"{stat} must be read-only publicly; a setter would let a client forge its own progression.");
+            }
+        }
+
+        [Test]
+        public void EffectiveMaxima_IncludeTheBasePools()
+        {
+            // Before any gear is worn the effective caps are just the base pools; the equipment
+            // bonuses start at zero because SyncVars default-initialise.
+            PlayerStats stats = AttachStats();
+
+            Assert.AreEqual(PlayerStats.MaxHealth, stats.EffectiveMaxHealth);
+            Assert.AreEqual(PlayerStats.MaxMana, stats.EffectiveMaxMana);
+        }
+
+        [Test]
         public void Mutators_ArePublicAndCarryTheServerAttribute()
         {
             // [Server] is enforced by FishNet's codegen, which injects an IsServer check into the
             // method body at compile time. Nothing reads the attribute back at runtime, so this is
             // the only way to catch someone deleting it in a later refactor.
-            foreach (string name in new[] { "TakeDamage", "Heal", "SpendMana", "RestoreMana" })
+            foreach (string name in new[]
+                     {
+                         "TakeDamage", "Heal", "SpendMana", "RestoreMana",
+                         "SetLevel", "ApplyEquipmentBonuses",
+                     })
             {
                 MethodInfo method = GetMutator(name);
 
@@ -243,10 +302,12 @@ namespace MMO.Tests
 
         private static MethodInfo GetMutator(string name)
         {
+            // Name only: the mutators take different parameter lists (RestoreMana(int) beside
+            // ApplyEquipmentBonuses(int, int)), and none of them are overloads of one another.
             MethodInfo method = typeof(PlayerStats).GetMethod(name,
-                BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(int) }, null);
+                BindingFlags.Public | BindingFlags.Instance);
 
-            Assert.IsNotNull(method, $"Expected a public {name}(int amount) server mutator.");
+            Assert.IsNotNull(method, $"Expected a public {name} server mutator.");
 
             return method;
         }

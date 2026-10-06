@@ -5,6 +5,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Gameplay;
+using MMO.Inventory;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -49,8 +50,9 @@ namespace MMO.Net
             DefaultRadius * 2f);
 
         /// <summary>
-        /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>
-        /// and the project's own networked <see cref="PlayerStats"/>.
+        /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
+        /// the project's own networked <see cref="PlayerStats"/>, and the
+        /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -69,8 +71,11 @@ namespace MMO.Net
 
             // NetworkObject before any NetworkBehaviour: behaviours resolve their owning
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
+            // PlayerInventory follows PlayerStats because it pushes recalculated equipment
+            // bonuses into PlayerStats whenever either container changes.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
+            go.AddComponent<PlayerInventory>();
 
             ApplyRenderPipelineMaterial(go);
             return networkObject;
