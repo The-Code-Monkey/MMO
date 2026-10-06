@@ -1,3 +1,4 @@
+using System;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
@@ -20,10 +21,17 @@ namespace MMO.Gameplay
     /// <see cref="Level"/> and the equipment caps for UI and, at most, *ask* for an effect
     /// through an RPC; only the mutators below, which are all <c>[Server]</c>, ever write the
     /// real numbers. Equipment bonuses are not written by this class either: it exposes them to
-    /// <c>PlayerInventory</c> through <see cref="ApplyEquipmentBonuses"/>, which recalculates the
+    /// <see cref="PlayerInventory"/> through <see cref="ApplyEquipmentBonuses"/>, which recalculates the
     /// caps from what is actually worn and clamps vitals down when a cap shrinks.
+    ///
+    /// <para>
+    /// The four values a HUD shows are published as <see cref="VitalsChanged"/>, raised from the
+    /// <c>SyncVar.OnChange</c> callbacks below rather than sampled from an <c>Update</c>. A bound
+    /// health bar therefore repaints exactly when the server's numbers arrive — once per real
+    /// change, and not at all in the frames between them.
+    /// </para>
     /// </summary>
-    public sealed class PlayerStats : NetworkBehaviour
+    public sealed class PlayerStats : NetworkBehaviour, IVitalsSource
     {
         public const int MaxHealth = 100;
         public const int MaxMana = 50;
@@ -54,6 +62,15 @@ namespace MMO.Gameplay
         /// <summary>Mana cap in force: the base <see cref="MaxMana"/> plus equipment bonuses.</summary>
         public int EffectiveMaxMana => MaxMana + _maxManaBonus.Value;
 
+        /// <summary>
+        /// Raised whenever replicated vitals change: health or mana moving, or a cap shifting
+        /// because gear was equipped. This is the whole UI update path — a subscriber repaints
+        /// from here, the FishNet <c>OnChange</c> callbacks below forward into it, and nothing
+        /// anywhere samples these values on a frame timer. Fires on the server as well as on
+        /// clients, so a host's own HUD and the server's bookkeeping share one hook.
+        /// </summary>
+        public event Action VitalsChanged;
+
         public override void OnStartNetwork()
         {
             if (IsServer)
@@ -68,12 +85,19 @@ namespace MMO.Gameplay
             // server needs it to broadcast death and regeneration events.
             _health.OnChange += OnHealthChanged;
             _mana.OnChange += OnManaChanged;
+
+            // The caps are HUD state too: equipment raising or lowering a maximum has to repaint
+            // the bar's fill even when the current value itself did not move.
+            _maxHealthBonus.OnChange += OnMaxChanged;
+            _maxManaBonus.OnChange += OnMaxChanged;
         }
 
         public override void OnStopNetwork()
         {
             _health.OnChange -= OnHealthChanged;
             _mana.OnChange -= OnManaChanged;
+            _maxHealthBonus.OnChange -= OnMaxChanged;
+            _maxManaBonus.OnChange -= OnMaxChanged;
         }
 
         /// <summary>
@@ -185,11 +209,18 @@ namespace MMO.Gameplay
         private void OnHealthChanged(int previous, int current, bool asServer)
         {
             Debug.Log($"[ClientId {OwnerId}] health {previous} -> {current}");
+            VitalsChanged?.Invoke();
         }
 
         private void OnManaChanged(int previous, int current, bool asServer)
         {
             Debug.Log($"[ClientId {OwnerId}] mana {previous} -> {current}");
+            VitalsChanged?.Invoke();
+        }
+
+        private void OnMaxChanged(int previous, int current, bool asServer)
+        {
+            VitalsChanged?.Invoke();
         }
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
@@ -28,8 +29,15 @@ namespace MMO.Gameplay
     /// refuses any second cast in the meantime. Zero-cast-time skills resolve in the same call
     /// that accepted them.
     /// </para>
+    ///
+    /// <para>
+    /// As an <see cref="IAbilityBarSource"/> this component is also what an action bar binds to:
+    /// the six replicated names are subscribed for <c>OnChange</c> like every other view hook in
+    /// this project, and their callback raises <see cref="SlotsChanged"/> so the bar repaints the
+    /// moment equipment reshapes it — not on the next frame the UI happens to look.
+    /// </para>
     /// </summary>
-    public sealed class PlayerAbilities : NetworkBehaviour
+    public sealed class PlayerAbilities : NetworkBehaviour, IAbilityBarSource
     {
         private readonly AbilityCaster _caster = new();
 
@@ -51,6 +59,17 @@ namespace MMO.Gameplay
 
         /// <summary>Server-side cooldown state. Read by server code, never written off-server.</summary>
         public AbilityCooldownTracker Cooldowns => _caster.Cooldowns;
+
+        /// <inheritdoc />
+        public int SlotCount => AbilityLoadout.MaxSlots;
+
+        /// <summary>
+        /// Raised whenever a replicated slot name changes — the six <c>SyncVar.OnChange</c>
+        /// callbacks below funnelling into one plain C# event an action bar can repaint from.
+        /// Publishing a bar writes all six names, so a subscriber may well see this several
+        /// times in a single server tick; each raise is still a real change, never a heartbeat.
+        /// </summary>
+        public event Action SlotsChanged;
 
         /// <summary>
         /// The ability name replicated into <paramref name="slot"/>, or an empty string when the
@@ -79,6 +98,25 @@ namespace MMO.Gameplay
             // client that joins later still receives the bar it is entitled to see.
             if (IsServer)
                 PublishSlots();
+
+            // Both sides subscribe: the server broadcasts its own publishes, a client repaints
+            // the action bar from the names as they arrive.
+            _slot0Name.OnChange += OnSlotChanged;
+            _slot1Name.OnChange += OnSlotChanged;
+            _slot2Name.OnChange += OnSlotChanged;
+            _slot3Name.OnChange += OnSlotChanged;
+            _slot4Name.OnChange += OnSlotChanged;
+            _slot5Name.OnChange += OnSlotChanged;
+        }
+
+        public override void OnStopNetwork()
+        {
+            _slot0Name.OnChange -= OnSlotChanged;
+            _slot1Name.OnChange -= OnSlotChanged;
+            _slot2Name.OnChange -= OnSlotChanged;
+            _slot3Name.OnChange -= OnSlotChanged;
+            _slot4Name.OnChange -= OnSlotChanged;
+            _slot5Name.OnChange -= OnSlotChanged;
         }
 
         /// <summary>
@@ -187,6 +225,16 @@ namespace MMO.Gameplay
                 _stats = GetComponent<PlayerStats>();
 
             return _stats;
+        }
+
+        /// <summary>
+        /// One shared handler for all six slot-name SyncVars: any name landing on this side —
+        /// the server's own publish or a delta arriving at a client — raises
+        /// <see cref="SlotsChanged"/>, which is the only signal an action bar needs.
+        /// </summary>
+        private void OnSlotChanged(string previous, string current, bool asServer)
+        {
+            SlotsChanged?.Invoke();
         }
 
         /// <summary>Pushes the current bar into the replicated slot names, server-side only.</summary>
