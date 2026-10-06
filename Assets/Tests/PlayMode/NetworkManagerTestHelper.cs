@@ -85,10 +85,9 @@ namespace MMO.Tests
             if (manager == null || !manager.IsServerStarted)
                 return null;
 
-            foreach (NetworkObject nob in manager.ServerManager.Spawned.Values)
+            foreach (NetworkObject nob in manager.ServerManager.Objects.Spawned.Values)
             {
-                // The player is the only spawned object owned by a client; the target dummy is a
-                // server-spawned object with no owner and is filtered out by == null/IsOwner.
+                // The host owns exactly one spawned object: its own player.
                 if (nob != null && nob.IsSpawned && nob.IsOwner)
                     return nob;
             }
@@ -115,8 +114,10 @@ namespace MMO.Tests
             if (manager == null || !manager.IsServerStarted)
                 return dummies;
 
-            foreach (NetworkObject nob in manager.ServerManager.Spawned.Values)
+            foreach (NetworkObject nob in manager.ServerManager.Objects.Spawned.Values)
             {
+                // Only the red capsule the spawner builds carries NPCStats; other spawned
+                // behaviour, like a combat test's dummy, is filtered out by the GetComponent check.
                 if (nob != null && nob.IsSpawned && nob.GetComponent<NPCStats>() != null)
                     dummies.Add(nob);
             }

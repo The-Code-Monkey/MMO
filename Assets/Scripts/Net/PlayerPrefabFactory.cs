@@ -8,14 +8,14 @@ using MMO.Client;
 using MMO.Gameplay;
 using MMO.Inventory;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace MMO.Net
 {
     /// <summary>
-    /// Builds the network player object — a capsule carrying a FishNet
-    /// <see cref="NetworkObject"/> — and wires it into a <see cref="NetworkManager"/> so the
-    /// server spawns one for every client that connects.
+    /// Builds the network player object — a capsule carrying a FishNet <see cref="NetworkObject"/>
+    /// and the project's own <see cref="PlayerStats"/> and <see cref="PlayerCombat"/> — and wires
+    /// it into a <see cref="NetworkManager"/> so the server spawns one for every client that
+    /// connects.
     ///
     /// FishNet 4.x removed <c>NetworkManager.PlayerPrefab</c>; spawning on connect is the job of
     /// <see cref="PlayerSpawner"/>, which spawns when a client finishes loading its start scenes.
@@ -52,7 +52,7 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
-        /// the project's own networked <see cref="PlayerStats"/>, its
+        /// the project's own networked <see cref="PlayerStats"/>, <see cref="PlayerCombat"/>, its
         /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, its
         /// <see cref="PlayerAbilities"/> that carries this player's ability slots, and the
         /// <see cref="LocalPlayerCamera"/> that gives the owning client something to look through.
@@ -74,14 +74,15 @@ namespace MMO.Net
 
             // NetworkObject before any NetworkBehaviour: behaviours resolve their owning
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
-            // PlayerInventory follows PlayerStats because it pushes recalculated equipment
-            // bonuses into PlayerStats whenever either container changes.
+            // PlayerCombat spends the vitals it sits next to. PlayerInventory follows PlayerStats
+            // because it pushes recalculated equipment bonuses into PlayerStats whenever either
+            // container changes, and PlayerAbilities comes after the inventory its slots are
+            // filled from: equipment-injected abilities ride along with the vitals they spend, so
+            // the server fills these slots from gear before it validates any cast through them.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
+            go.AddComponent<PlayerCombat>();
             go.AddComponent<PlayerInventory>();
-
-            // Equipment-injected abilities ride along with the vitals they spend: the server
-            // fills these slots from gear and validates every cast through them.
             go.AddComponent<PlayerAbilities>();
 
             // Travels with the prefab so a client that receives its player object has something to
@@ -89,7 +90,9 @@ namespace MMO.Net
             // why it is safe for every client's copy of this prefab to carry it.
             go.AddComponent<LocalPlayerCamera>();
 
-            ApplyRenderPipelineMaterial(go);
+            // The material swap is shared with the other primitive factories, so a player and a
+            // dummy never end up with different pipeline handling.
+            PrimitiveAppearance.ApplyRenderPipelineMaterial(go);
             return networkObject;
         }
 
@@ -153,23 +156,6 @@ namespace MMO.Net
                 spawner.SetPlayerPrefab(playerPrefab);
 
             return spawner;
-        }
-
-        /// <summary>
-        /// Swaps the primitive's built-in material for the active render pipeline's default.
-        /// Without this a capsule in a URP project renders magenta.
-        /// </summary>
-        private static void ApplyRenderPipelineMaterial(GameObject go)
-        {
-            RenderPipelineAsset pipeline = GraphicsSettings.currentRenderPipeline;
-            Material pipelineDefault = pipeline != null ? pipeline.defaultMaterial : null;
-            if (pipelineDefault == null)
-                return;
-
-            // sharedMaterial, not material: no per-renderer material instance to leak.
-            var renderer = go.GetComponent<MeshRenderer>();
-            if (renderer != null)
-                renderer.sharedMaterial = pipelineDefault;
         }
     }
 }
