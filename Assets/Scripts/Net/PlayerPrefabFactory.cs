@@ -50,7 +50,8 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>
-        /// and the project's own networked <see cref="PlayerStats"/>.
+        /// and the project's own networked <see cref="PlayerStats"/> and
+        /// <see cref="PlayerAbilities"/>.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -71,6 +72,10 @@ namespace MMO.Net
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
+
+            // Equipment-injected abilities ride along with the vitals they spend: the server
+            // fills these slots from gear and validates every cast through them.
+            go.AddComponent<PlayerAbilities>();
 
             ApplyRenderPipelineMaterial(go);
             return networkObject;

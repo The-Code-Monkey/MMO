@@ -15,3 +15,5 @@ MonoBehaviour:
   _weaponName: Fire Staff
   _autoAttackDamage: 8
   _attackRange: 18
+  _abilities:
+  - {fileID: 11400000, guid: 4654122b303346d795328c8dfed12f57, type: 2}

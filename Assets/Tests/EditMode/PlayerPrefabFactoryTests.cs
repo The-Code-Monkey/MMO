@@ -193,7 +193,7 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Create_PutsTheStatsNextToTheNetworkObject()
+        public void Create_PutsTheNetworkedBehavioursNextToTheNetworkObject()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
@@ -201,10 +201,14 @@ namespace MMO.Tests
             // A NetworkBehaviour resolves its NetworkObject through its own GameObject; a mismatch
             // is the classic "stats never replicate" bug.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(1, behaviours.Length, "Only the project's own behaviour belongs here.");
+            Assert.AreEqual(2, behaviours.Length,
+                "The project's own behaviours — vitals and ability slots — belong here, and nothing else.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
+            Assert.IsInstanceOf<PlayerAbilities>(behaviours[1]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
+            Assert.AreSame(nob.gameObject, behaviours[1].gameObject,
+                "The ability slots and the NetworkObject must be on the same object.");
         }
 
         [Test]
