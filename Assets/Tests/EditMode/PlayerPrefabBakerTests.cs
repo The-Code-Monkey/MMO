@@ -8,6 +8,7 @@ using FishNet.Object;
 using MMO.Client;
 using MMO.Editor;
 using MMO.Gameplay;
+using MMO.Inventory;
 using MMO.Net;
 using NUnit.Framework;
 using UnityEditor;
@@ -185,6 +186,8 @@ namespace MMO.Tests
             NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
 
             Assert.IsNotNull(prefab.GetComponent<PlayerStats>());
+            Assert.IsNotNull(prefab.GetComponent<PlayerInventory>(),
+                "The baked prefab must carry the inventory container too, not just the stats.");
         }
 
         [Test]

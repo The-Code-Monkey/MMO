@@ -1,0 +1,68 @@
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+namespace MMO.Inventory
+{
+    /// <summary>
+    /// One cell of a bag view. Wires the cell's coordinates to a <see cref="PlayerInventory"/>
+    /// and turns a right-click into the owner-side equip request — the issue's
+    /// "right-click to equip" path.
+    ///
+    /// The component owns no rules: it does not check whether the cell is occupied, whether the
+    /// wearer is high enough level, or whether the slot is free, because the server answers all
+    /// of those questions itself and its answer replicates back through the SyncList. A right
+    /// -click on an empty cell is simply a request the server declines.
+    ///
+    /// Coordinates are stored rather than an item reference: by the time the server reads them
+    /// the bag may have shifted, and <c>PlayerInventory.TryEquip</c> re-resolves the cell against
+    /// its own authoritative list, so a stale click can never move the wrong item.
+    /// </summary>
+    [DisallowMultipleComponent]
+    [AddComponentMenu("MMO/Inventory/Inventory Slot View")]
+    public class InventorySlotView : MonoBehaviour, IPointerClickHandler
+    {
+        [SerializeField] private PlayerInventory _inventory;
+        [SerializeField] private int _gridX;
+        [SerializeField] private int _gridY;
+
+        public PlayerInventory Inventory => _inventory;
+        public int GridX => _gridX;
+        public int GridY => _gridY;
+
+        /// <summary>
+        /// Points this view at a specific inventory; public so a bag screen can populate cells
+        /// at runtime and so tests can wire a fixture without going through the Inspector.
+        /// </summary>
+        public void SetInventory(PlayerInventory inventory) => _inventory = inventory;
+
+        /// <summary>Declares which bag cell this view represents.</summary>
+        public void SetCell(int gridX, int gridY)
+        {
+            _gridX = gridX;
+            _gridY = gridY;
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            // Only right-click equips; a left-click is left free for selection/drag later, and a
+            // null event (possible from synthetic calls) must not throw inside uGUI's dispatch.
+            if (eventData == null || eventData.button != PointerEventData.InputButton.Right)
+                return;
+
+            HandleRightClick();
+        }
+
+        /// <summary>
+        /// The equip request this view exists to make — virtual so a test can observe that a
+        /// right-click reached it without synthesizing a full network round trip, and separately
+        /// callable so tests can drive it without a pointer event at all.
+        /// </summary>
+        public virtual void HandleRightClick()
+        {
+            if (_inventory == null)
+                return;
+
+            _inventory.RequestEquip(_gridX, _gridY);
+        }
+    }
+}

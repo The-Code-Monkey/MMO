@@ -3,6 +3,7 @@
     "rootNamespace": "MMO",
     "references": [
         "FishNet.Runtime",
+        "UnityEngine.UI",
         "Unity.Cinemachine"
     ],
     "includePlatforms": [],

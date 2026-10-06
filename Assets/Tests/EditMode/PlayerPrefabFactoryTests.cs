@@ -7,6 +7,7 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Client;
 using MMO.Gameplay;
+using MMO.Inventory;
 using MMO.Net;
 using NUnit.Framework;
 using UnityEngine;
@@ -194,6 +195,16 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Create_AddsTheProjectsInventoryContainer()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Assert.IsNotNull(nob.GetComponent<PlayerInventory>(),
+                "PlayerInventory owns the bag and equipment containers and belongs beside the stats.");
+        }
+
+        [Test]
         public void Create_AddsTheLocalPlayerCameraScript()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
@@ -210,18 +221,23 @@ namespace MMO.Tests
             Track(nob.gameObject);
 
             // A NetworkBehaviour resolves its NetworkObject through its own GameObject; a mismatch
-            // is the classic "stats never replicate" bug.
+            // is the classic "stats never replicate" bug. FishNet also wires SyncTypes in
+            // NetworkBehaviour-index order, so all four of the project's behaviours belong here —
+            // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(3, behaviours.Length,
-                "The player carries its networked vitals, its ability slots and its camera script, nothing else.");
+            Assert.AreEqual(4, behaviours.Length,
+                "The player carries its networked stats, inventory, ability slots and camera script, nothing else.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
-            Assert.IsInstanceOf<PlayerAbilities>(behaviours[1]);
-            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[2]);
+            Assert.IsInstanceOf<PlayerInventory>(behaviours[1]);
+            Assert.IsInstanceOf<PlayerAbilities>(behaviours[2]);
+            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[3]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
             Assert.AreSame(nob.gameObject, behaviours[1].gameObject,
-                "The ability slots and the NetworkObject must be on the same object.");
+                "The inventory and the NetworkObject must be on the same object.");
             Assert.AreSame(nob.gameObject, behaviours[2].gameObject,
+                "The ability slots and the NetworkObject must be on the same object.");
+            Assert.AreSame(nob.gameObject, behaviours[3].gameObject,
                 "The camera script and the NetworkObject must be on the same object.");
         }
 
