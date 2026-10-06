@@ -1,4 +1,5 @@
 using FishNet.Managing;
+using FishNet.Object;
 using MMO.Net;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -9,7 +10,8 @@ namespace MMO.Editor
 {
     /// <summary>
     /// Materialises the object <see cref="NetworkManagerFactory"/> builds into the active
-    /// scene, so the scene is saved with a NetworkManager already in it.
+    /// scene, so the scene is saved with a NetworkManager already in it — including the player
+    /// prefab registration and PlayerSpawner that make a connecting client receive a player object.
     /// </summary>
     public static class NetworkManagerSceneBaker
     {
@@ -18,17 +20,26 @@ namespace MMO.Editor
         [MenuItem(MenuPath)]
         public static void CreateNetworkManagerInScene()
         {
+            Scene scene = SceneManager.GetActiveScene();
+            bool alreadyExisted = TryFind(scene, out _);
+
             NetworkManager manager = CreateInActiveScene(new MMOConnectionSettings());
-            Undo.RegisterCreatedObjectUndo(manager.gameObject, "Create NetworkManager");
-            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+
+            // Registering undo against an object that was already there would destroy something
+            // the user owns the moment they hit undo.
+            if (!alreadyExisted)
+                Undo.RegisterCreatedObjectUndo(manager.gameObject, "Create NetworkManager");
+
+            EditorSceneManager.MarkSceneDirty(scene);
 
             Selection.activeGameObject = manager.gameObject;
             EditorGUIUtility.PingObject(manager.gameObject);
         }
 
         /// <summary>
-        /// Returns the scene's NetworkManager, creating one if the scene has none.
-        /// Idempotent: a second call reuses the existing object.
+        /// Returns the scene's NetworkManager, creating one if the scene has none, and wires the
+        /// player object into it so every admitted client is spawned one.
+        /// Idempotent: a second call reuses the existing object and does not duplicate the wiring.
         /// </summary>
         public static NetworkManager CreateInActiveScene(MMOConnectionSettings settings)
         {
@@ -38,17 +49,24 @@ namespace MMO.Editor
             {
                 Selection.activeGameObject = existing.gameObject;
                 EditorGUIUtility.PingObject(existing.gameObject);
+
+                // Already in the scene, so it has no prefab wiring of ours to inherit; give it one.
+                PlayerPrefabBaker.WirePlayerPrefab(existing);
                 return existing;
             }
 
-            NetworkManager created = NetworkManagerFactory.Create(settings, out _);
+            // Bake first so the factory registers the saved asset rather than building a second,
+            // scene-local player object that would then be serialized into the scene.
+            NetworkObject playerPrefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            NetworkManager manager = NetworkManagerFactory.Create(settings, out _, playerPrefab);
 
             // A freshly constructed GameObject already lands in the active scene, so only
             // move it when it genuinely ended up somewhere else.
-            if (created.gameObject.scene != scene)
-                SceneManager.MoveGameObjectToScene(created.gameObject, scene);
+            if (manager.gameObject.scene != scene)
+                SceneManager.MoveGameObjectToScene(manager.gameObject, scene);
 
-            return created;
+            return manager;
         }
 
         /// <summary>

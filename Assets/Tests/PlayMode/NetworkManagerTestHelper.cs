@@ -1,5 +1,6 @@
 using System.Collections;
 using FishNet.Managing;
+using FishNet.Object;
 using FishNet.Transporting.Tugboat;
 using MMO.Net;
 
@@ -67,6 +68,37 @@ namespace MMO.Tests
         public static IEnumerator WaitForHostAuthenticated(NetworkManager manager, int maxFrames = 300)
         {
             for (int i = 0; i < maxFrames && !manager.IsClientStarted; i++)
+                yield return null;
+        }
+
+        /// <summary>
+        /// The player object the server spawned for the local client, or null when there is none.
+        ///
+        /// Player spawning trails authentication — FishNet raises it from the scene-loaded
+        /// callback, which the join gate only lets happen for a client it has admitted — so a
+        /// connected client can still be waiting for its player object.
+        /// </summary>
+        public static NetworkObject FindPlayerObject(NetworkManager manager)
+        {
+            if (manager == null || !manager.IsServerStarted)
+                return null;
+
+            foreach (NetworkObject nob in manager.ServerManager.Spawned.Values)
+            {
+                // The host owns exactly one spawned object: its own player.
+                if (nob != null && nob.IsSpawned && nob.IsOwner)
+                    return nob;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Waits for the server to spawn the local client's player object.
+        /// </summary>
+        public static IEnumerator WaitForPlayerObject(NetworkManager manager, int maxFrames = 600)
+        {
+            for (int i = 0; i < maxFrames && FindPlayerObject(manager) == null; i++)
                 yield return null;
         }
     }

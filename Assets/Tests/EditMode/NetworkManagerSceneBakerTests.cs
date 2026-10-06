@@ -1,5 +1,7 @@
+using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
+using FishNet.Object;
 using FishNet.Transporting.Tugboat;
 using MMO.Editor;
 using MMO.Net;
@@ -12,7 +14,8 @@ namespace MMO.Tests
 {
     /// <summary>
     /// Proves the issue's ask literally: a root GameObject named "NetworkManager" carrying
-    /// FishNet's NetworkManager, wired to a transport and the join gate.
+    /// FishNet's NetworkManager, wired to a transport, the join gate, and the player object that
+    /// every admitted client is handed.
     ///
     /// FishNet's runtime is not [ExecuteAlways], so NetworkManager.Awake does not run here.
     /// These tests therefore assert what is inspectable without Awake (the saved scene
@@ -21,11 +24,13 @@ namespace MMO.Tests
     public sealed class NetworkManagerSceneBakerTests
     {
         private Scene _scene;
+        private PlayerPrefabTestAsset _prefabAsset;
 
         [SetUp]
         public void SetUp()
         {
             _scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            _prefabAsset = new PlayerPrefabTestAsset();
         }
 
         [TearDown]
@@ -33,6 +38,8 @@ namespace MMO.Tests
         {
             foreach (GameObject root in _scene.GetRootGameObjects())
                 DestroyTree(root);
+
+            _prefabAsset?.Cleanup();
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         }
@@ -220,6 +227,113 @@ namespace MMO.Tests
 
             Assert.IsTrue(NetworkManagerSceneBaker.Validate(_scene, out string error), error);
             Assert.IsNull(error);
+        }
+
+        [Test]
+        public void CreateInActiveScene_BakesThePlayerPrefabIntoTheProject()
+        {
+            NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            // The scene must reference a reusable template, not carry a capsule of its own.
+            Assert.IsNotNull(PlayerPrefabBaker.LoadPlayerPrefab(),
+                "The player object has to exist as a prefab asset in the project.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_RegistersThePlayerPrefabAsASpawnable()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            Assert.IsTrue(PlayerPrefabFactory.Contains(manager.SpawnablePrefabs, PlayerPrefabBaker.LoadPlayerPrefab()),
+                "An unregistered prefab has no id, so no client could ever instantiate it.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_RegistersExactlyOnePlayerPrefab()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            var single = manager.SpawnablePrefabs as SinglePrefabObjects;
+            Assert.IsNotNull(single);
+            Assert.AreEqual(1, single.Prefabs.Count,
+                "FishNet derives prefab ids from list order, so duplicates shift ids on one end only.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_PointsTheSpawnableAtTheAssetNotASceneCopy()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            var single = (SinglePrefabObjects)manager.SpawnablePrefabs;
+            Assert.IsTrue(UnityEditor.EditorUtility.IsPersistent(single.Prefabs[0]),
+                "A scene copy would be serialized into the scene instead of referenced as a prefab.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_AddsAPlayerSpawnerForNewConnections()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            PlayerSpawner spawner = manager.gameObject.GetComponent<PlayerSpawner>();
+
+            // FishNet 4.x has no NetworkManager.PlayerPrefab; this component is what tells it to
+            // spawn a player object when a client connects.
+            Assert.IsNotNull(spawner);
+            Assert.AreSame(manager.gameObject, spawner.gameObject,
+                "PlayerSpawner looks for the NetworkManager with GetComponentInParent.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_PointsThePlayerSpawnerAtThePrefab()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            Assert.AreSame(PlayerPrefabBaker.LoadPlayerPrefab(), SpawnedPrefabOf(manager),
+                "This is the whole point of the wiring: FishNet has to know which prefab to spawn.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_DoesNotDuplicateThePlayerWiring()
+        {
+            NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            Assert.AreEqual(1, manager.gameObject.GetComponents<PlayerSpawner>().Length);
+            Assert.AreEqual(1, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
+        }
+
+        [Test]
+        public void CreateInActiveScene_LeavesNoPlayerCapsuleInTheScene()
+        {
+            NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            foreach (GameObject root in _scene.GetRootGameObjects())
+            {
+                Assert.AreNotEqual(PlayerPrefabFactory.PrefabName, root.name,
+                    "The scene keeps the prefab reference; the capsule itself belongs to the asset.");
+            }
+        }
+
+        [Test]
+        public void CreateInActiveScene_AddsExactlyOneRootObject()
+        {
+            NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            Assert.AreEqual(1, _scene.GetRootGameObjects().Length);
+        }
+
+        /// <summary>FishNet exposes no getter for PlayerSpawner's prefab, so read the field.</summary>
+        private static NetworkObject SpawnedPrefabOf(NetworkManager manager)
+        {
+            var spawner = manager.gameObject.GetComponent<PlayerSpawner>();
+            Assert.IsNotNull(spawner, "Expected a PlayerSpawner on the NetworkManager object.");
+
+            var field = typeof(PlayerSpawner).GetField(
+                "_playerPrefab",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+            Assert.IsNotNull(field, "FishNet renamed PlayerSpawner's prefab field.");
+            return (NetworkObject)field.GetValue(spawner);
         }
     }
 }

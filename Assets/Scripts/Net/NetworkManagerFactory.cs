@@ -1,5 +1,6 @@
 using FishNet.Managing;
 using FishNet.Managing.Object;
+using FishNet.Object;
 using FishNet.Transporting.Tugboat;
 using UnityEngine;
 
@@ -15,7 +16,22 @@ namespace MMO.Net
         public const string GameObjectName = "NetworkManager";
         public const string SpawnablePrefabsName = "MMOSpawnablePrefabs";
 
-        public static NetworkManager Create(MMOConnectionSettings settings, out MMOConnectionGate gate)
+        /// <summary>
+        /// Builds the "NetworkManager" GameObject: transport, spawnables, join gate, the client
+        /// half of the handshake, and the player spawner that hands every admitted client a
+        /// player object.
+        /// </summary>
+        /// <param name="settings">Gate rules; null falls back to the defaults.</param>
+        /// <param name="gate">The join gate added to the object.</param>
+        /// <param name="playerPrefab">
+        /// The prefab to spawn for each connecting client. Pass null and one is built in memory,
+        /// which is what a fresh process does. The editor baker passes the saved prefab asset so a
+        /// scene references an asset instead of carrying a scene copy.
+        /// </param>
+        public static NetworkManager Create(
+            MMOConnectionSettings settings,
+            out MMOConnectionGate gate,
+            NetworkObject playerPrefab = null)
         {
             settings ??= new MMOConnectionSettings();
 
@@ -25,6 +41,8 @@ namespace MMO.Net
             // NetworkManager.Awake() dereferences SpawnablePrefabs and looks up the
             // Authenticator. Build inactive, wire everything, then activate last.
             go.SetActive(false);
+
+            NetworkObject builtPlayerPrefab = null;
 
             try
             {
@@ -38,6 +56,21 @@ namespace MMO.Net
                 NetworkManager manager = go.AddComponent<NetworkManager>();
                 manager.SpawnablePrefabs = prefabs;
 
+                if (playerPrefab == null)
+                {
+                    builtPlayerPrefab = PlayerPrefabFactory.Create();
+                    playerPrefab = builtPlayerPrefab;
+
+                    // A prefab built at runtime is a real scene object. Keep it out of sight:
+                    // FishNet's pool activates the clone it spawns, so an inactive source is
+                    // still perfectly spawnable.
+                    playerPrefab.gameObject.SetActive(false);
+                }
+
+                // Before activation, so the prefab is in the collection when Awake hands out
+                // prefab ids from the list order.
+                PlayerPrefabFactory.Register(prefabs, playerPrefab);
+
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
 
@@ -46,10 +79,20 @@ namespace MMO.Net
                 go.AddComponent<JoinRequestClient>();
 
                 go.SetActive(true);
+
+                // Deliberately after activation. PlayerSpawner subscribes to
+                // SceneManager.OnClientLoadedStartScenes from its own Awake, and SceneManager is
+                // only created by NetworkManager.Awake — so this must not race component Awake
+                // order on the same object.
+                PlayerPrefabFactory.Attach(manager, playerPrefab);
+
                 return manager;
             }
             catch
             {
+                if (builtPlayerPrefab != null)
+                    Object.DestroyImmediate(builtPlayerPrefab.gameObject);
+
                 Object.DestroyImmediate(go);
                 throw;
             }
