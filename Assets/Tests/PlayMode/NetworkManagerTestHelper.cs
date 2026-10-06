@@ -1,7 +1,9 @@
 using System.Collections;
+using System.Collections.Generic;
 using FishNet.Managing;
 using FishNet.Object;
 using FishNet.Transporting.Tugboat;
+using MMO.Gameplay;
 using MMO.Net;
 
 namespace MMO.Tests
@@ -85,7 +87,8 @@ namespace MMO.Tests
 
             foreach (NetworkObject nob in manager.ServerManager.Spawned.Values)
             {
-                // The host owns exactly one spawned object: its own player.
+                // The player is the only spawned object owned by a client; the target dummy is a
+                // server-spawned object with no owner and is filtered out by == null/IsOwner.
                 if (nob != null && nob.IsSpawned && nob.IsOwner)
                     return nob;
             }
@@ -99,6 +102,34 @@ namespace MMO.Tests
         public static IEnumerator WaitForPlayerObject(NetworkManager manager, int maxFrames = 600)
         {
             for (int i = 0; i < maxFrames && FindPlayerObject(manager) == null; i++)
+                yield return null;
+        }
+
+        /// <summary>
+        /// Every target dummy the server has spawned. Present only while the server listens: the
+        /// dummy is a server-spawned entity, so it exists solely through ServerManager.Spawn.
+        /// </summary>
+        public static List<NetworkObject> FindTargetDummies(NetworkManager manager)
+        {
+            var dummies = new List<NetworkObject>();
+            if (manager == null || !manager.IsServerStarted)
+                return dummies;
+
+            foreach (NetworkObject nob in manager.ServerManager.Spawned.Values)
+            {
+                if (nob != null && nob.IsSpawned && nob.GetComponent<NPCStats>() != null)
+                    dummies.Add(nob);
+            }
+
+            return dummies;
+        }
+
+        /// <summary>
+        /// Waits for the server to spawn its target dummy.
+        /// </summary>
+        public static IEnumerator WaitForTargetDummy(NetworkManager manager, int maxFrames = 600)
+        {
+            for (int i = 0; i < maxFrames && FindTargetDummies(manager).Count == 0; i++)
                 yield return null;
         }
     }
