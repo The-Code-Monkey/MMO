@@ -144,13 +144,17 @@ namespace MMO.Tests
             // place, so the offset takes a moment to arrive.
             Vector3 expected = player.transform.position + LocalCameraRigFactory.DefaultFollowOffset;
             yield return WaitUntil(() =>
-                Vector3.Distance(rig.OutputCamera.transform.position, expected) < 1f);
+                Vector3.Distance(rig.OutputCamera.transform.position, expected) < 0.5f);
 
             Vector3 where = rig.OutputCamera.transform.position;
-            Assert.Less(where.z, player.transform.position.z - 2f,
+            Vector3 settled = where - player.transform.position;
+
+            // At the issue's 70° the camera sits about 2m behind and 5.6m above the origin —
+            // mostly overhead, but with enough "behind" left to read as a third-person view.
+            Assert.Less(settled.z, -1f,
                 $"Expected the camera behind the player, but it ended up at {where}.");
-            Assert.Greater(where.y, player.transform.position.y,
-                $"Expected the camera above the player's origin, but it ended up at {where}.");
+            Assert.Greater(settled.y, 4f,
+                $"Expected the camera well above the player's origin, but it ended up at {where}.");
             Assert.IsTrue(rig.OutputCamera.enabled);
         }
 

@@ -19,13 +19,33 @@ namespace MMO.Client
         public const string GameObjectName = "LocalCameraRig";
 
         /// <summary>
-        /// How far above the player's origin the camera sits. The player object is a two metre
-        /// capsule, so this is roughly shoulder height rather than floor level.
+        /// How high above the horizon the camera sits, measured from directly behind the player
+        /// (0° — a chase camera) to directly over their head (90° — straight down). 70° is a
+        /// mainly top-down view that still shows the ground ahead of the player, and it is a
+        /// constant: the angle is baked into a fixed world-space offset rather than tracked
+        /// from anything the player does.
         /// </summary>
-        public const float DefaultFollowHeight = 1.5f;
+        public const float DefaultFollowPitchDegrees = 70f;
 
-        /// <summary>How far behind the player the camera trails.</summary>
-        public const float DefaultFollowDistance = 5f;
+        /// <summary>
+        /// Straight-line distance from the player to the camera. At 70° this lands the camera
+        /// about 5.6 metres above and 2 metres behind the player's origin — far enough back
+        /// that the "behind" half of the angle is meaningful rather than a camera hovering
+        /// almost on top of the capsule.
+        /// </summary>
+        public const float DefaultFollowDistance = 6f;
+
+        /// <summary>
+        /// How far above the player's origin the camera sits: the pitch turned into a height.
+        /// </summary>
+        public static float DefaultFollowHeight =>
+            DefaultFollowDistance * Mathf.Sin(DefaultFollowPitchDegrees * Mathf.Deg2Rad);
+
+        /// <summary>
+        /// How far behind the player the camera trails, measured along the ground plane.
+        /// </summary>
+        public static float DefaultFollowBackDistance =>
+            DefaultFollowDistance * Mathf.Cos(DefaultFollowPitchDegrees * Mathf.Deg2Rad);
 
         /// <summary>Where the camera aims, in the player's local space — the capsule's middle.</summary>
         public const float DefaultAimHeight = 1f;
@@ -45,14 +65,16 @@ namespace MMO.Client
         public const float BlendSeconds = 0.25f;
 
         /// <summary>
-        /// Where the camera sits relative to its target. World space, not target space: a player
-        /// that turns in place should not whip the camera round with it until the game gives the
-        /// camera something to orbit.
+        /// Where the camera sits relative to its target: the pitch and distance above, as a
+        /// single fixed vector. World space, not target space — a player that turns in place,
+        /// runs at the camera or runs away from it never changes this vector, so the camera's
+        /// rotation never whips around. The follow stage is explicitly bound to
+        /// <see cref="BindingMode.WorldSpace"/> to keep it that way.
         /// </summary>
         public static Vector3 DefaultFollowOffset => new Vector3(
             0f,
             DefaultFollowHeight,
-            -DefaultFollowDistance);
+            -DefaultFollowBackDistance);
 
         /// <summary>
         /// Builds the rig GameObject and returns its <see cref="LocalCameraRig"/>, switched off and
@@ -129,13 +151,21 @@ namespace MMO.Client
         public static LocalCameraRig Ensure() => Find() ?? Create();
 
         /// <summary>
-        /// Cinemachine's defaults, with the damping this project wants. Starting from
+        /// Cinemachine's defaults, with the settings this project wants. Starting from
         /// <see cref="TrackerSettings.Default"/> rather than a fresh struct so a Cinemachine
         /// upgrade that adds fields to the struct keeps its own values.
         /// </summary>
         private static TrackerSettings FollowTrackingSettings()
         {
             TrackerSettings tracking = TrackerSettings.Default;
+
+            // Stated rather than inherited: WorldSpace is what makes the rotation fixed. Any
+            // LockToTarget* mode would rotate the offset with the player, so running towards or
+            // away from the camera would swing it round — the quick camera movement this rig
+            // exists to avoid. (WorldSpace is also Cinemachine's own default today; pinning it
+            // means a package upgrade cannot silently change the camera's behaviour.)
+            tracking.BindingMode = BindingMode.WorldSpace;
+
             tracking.PositionDamping = Vector3.one * FollowDampingSeconds;
             return tracking;
         }

@@ -1,6 +1,7 @@
 using MMO.Client;
 using NUnit.Framework;
 using Unity.Cinemachine;
+using Unity.Cinemachine.TargetTracking;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
@@ -128,10 +129,46 @@ namespace MMO.Tests
             LocalCameraRig rig = Create();
 
             var follow = rig.gameObject.GetComponent<CinemachineFollow>();
-            Assert.AreEqual(
-                new Vector3(0f, LocalCameraRigFactory.DefaultFollowHeight,
-                    -LocalCameraRigFactory.DefaultFollowDistance),
-                follow.FollowOffset);
+            Assert.AreEqual(LocalCameraRigFactory.DefaultFollowOffset, follow.FollowOffset);
+            Assert.Less(follow.FollowOffset.z, 0f, "A positive z would put the camera in front.");
+            Assert.Greater(follow.FollowOffset.y, 0f, "A non-positive y would put it at the player's feet.");
+        }
+
+        [Test]
+        public void Create_PutsTheCameraSeventyDegreesUpFromBehindTheTarget()
+        {
+            LocalCameraRig rig = Create();
+
+            var follow = rig.gameObject.GetComponent<CinemachineFollow>();
+            Vector3 offset = follow.FollowOffset;
+
+            // The issue's own scale: 0° directly behind the player, 90° directly overhead.
+            float degrees = Mathf.Atan2(offset.y, -offset.z) * Mathf.Rad2Deg;
+            Assert.AreEqual(70f, LocalCameraRigFactory.DefaultFollowPitchDegrees, 0.001f);
+            Assert.AreEqual(LocalCameraRigFactory.DefaultFollowPitchDegrees, degrees, 0.01f,
+                "The view should be mainly top-down, not a shoulder-height chase camera.");
+        }
+
+        [Test]
+        public void Create_HoldsTheCameraAtAKnownDistanceFromTheTarget()
+        {
+            LocalCameraRig rig = Create();
+
+            var follow = rig.gameObject.GetComponent<CinemachineFollow>();
+            Assert.AreEqual(LocalCameraRigFactory.DefaultFollowDistance,
+                follow.FollowOffset.magnitude, 0.01f,
+                "The pitch and the distance are separate dials; changing one must not move the other.");
+        }
+
+        [Test]
+        public void Create_BindsTheOffsetToWorldSpaceSoTurningDoesNotSwingTheCamera()
+        {
+            LocalCameraRig rig = Create();
+
+            var follow = rig.gameObject.GetComponent<CinemachineFollow>();
+            Assert.AreEqual(BindingMode.WorldSpace, follow.TrackerSettings.BindingMode,
+                "A LockToTarget* binding would rotate the offset with the player, so running " +
+                "towards or away from the camera would whip it around.");
         }
 
         [Test]
