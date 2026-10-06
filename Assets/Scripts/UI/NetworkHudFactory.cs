@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 using UnityEngine;
