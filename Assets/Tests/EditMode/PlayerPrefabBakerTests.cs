@@ -1,0 +1,343 @@
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using FishNet.Component.Spawning;
+using FishNet.Managing;
+using FishNet.Managing.Object;
+using FishNet.Object;
+using MMO.Editor;
+using MMO.Gameplay;
+using MMO.Net;
+using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using Object = UnityEngine.Object;
+
+namespace MMO.Tests
+{
+    /// <summary>
+    /// The issue's file-level requirements: the capsule is saved as a reusable prefab in the
+    /// project, the copy that was built in the scene is gone, and the NetworkManager is told to
+    /// spawn that prefab for every player that connects.
+    /// </summary>
+    public sealed class PlayerPrefabBakerTests
+    {
+        private Scene _scene;
+        private PlayerPrefabTestAsset _prefabAsset;
+
+        private readonly List<GameObject> _sceneObjects = new();
+        private readonly List<Object> _scratch = new();
+
+        [SetUp]
+        public void SetUp()
+        {
+            _scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            _prefabAsset = new PlayerPrefabTestAsset();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            DestroySceneObjects();
+            _prefabAsset?.Cleanup();
+
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        }
+
+        /// <summary>
+        /// The scene baker creates a NetworkManager whose SpawnablePrefabs collection is a bare
+        /// ScriptableObject; leaving those behind would leak across tests.
+        /// </summary>
+        private void DestroySceneObjects()
+        {
+            foreach (GameObject root in _scene.GetRootGameObjects())
+            {
+                foreach (NetworkManager manager in root.GetComponentsInChildren<NetworkManager>(true))
+                {
+                    if (manager.SpawnablePrefabs != null)
+                        Object.DestroyImmediate(manager.SpawnablePrefabs);
+                }
+
+                Object.DestroyImmediate(root);
+            }
+
+            foreach (GameObject go in _sceneObjects)
+            {
+                if (go != null)
+                    Object.DestroyImmediate(go);
+            }
+
+            foreach (Object owned in _scratch)
+            {
+                if (owned != null)
+                    Object.DestroyImmediate(owned);
+            }
+
+            _sceneObjects.Clear();
+            _scratch.Clear();
+        }
+
+        private NetworkManager NewNetworkManager(string name = "WireTestManager")
+        {
+            var go = new GameObject(name);
+            _sceneObjects.Add(go);
+            return go.AddComponent<NetworkManager>();
+        }
+
+        private static NetworkObject PrefabOf(PlayerSpawner spawner)
+        {
+            FieldInfo field = typeof(PlayerSpawner).GetField(
+                "_playerPrefab", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.IsNotNull(field, "FishNet renamed PlayerSpawner's prefab field.");
+            return (NetworkObject)field.GetValue(spawner);
+        }
+
+        /// <summary>Every root object in the scene carrying this name.</summary>
+        private int CountSceneObjectsNamed(string name)
+        {
+            int count = 0;
+            foreach (GameObject root in _scene.GetRootGameObjects())
+            {
+                if (root.name == name)
+                    count++;
+            }
+
+            return count;
+        }
+
+        #region Saving the prefab.
+        [Test]
+        public void EnsurePlayerPrefab_WritesTheAssetToDisk()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.IsNotNull(prefab, "Baking has to produce something for the NetworkManager to spawn.");
+            Assert.IsTrue(File.Exists(PlayerPrefabBaker.AbsolutePrefabPath),
+                $"Expected a prefab asset at '{PlayerPrefabBaker.PrefabAssetPath}'.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_KeepsThePrefabUnderAssetsPrefabs()
+        {
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            // The path is a constant so the menu item, the scene baker and the tests can never
+            // disagree about where the asset lives.
+            Assert.AreEqual("Assets/Prefabs/Player.prefab", PlayerPrefabBaker.PrefabAssetPath);
+            Assert.IsTrue(PlayerPrefabBaker.PrefabAssetPath.StartsWith("Assets/"),
+                "Assets outside the project would not ship.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_ProducesAnAssetRatherThanASceneObject()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.IsTrue(EditorUtility.IsPersistent(prefab),
+                "A prefab template has to be an asset; a scene copy cannot be reused.");
+            Assert.IsTrue(AssetDatabase.Contains(prefab.gameObject),
+                "The prefab must be owned by the AssetDatabase.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_DeletesTheCopyItBuiltInTheScene()
+        {
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            // "Save this capsule as a Prefab, and delete the original from the scene."
+            Assert.AreEqual(0, CountSceneObjectsNamed(PlayerPrefabFactory.PrefabName),
+                "The scene must not keep the capsule the prefab was baked from.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_LeavesNothingElseBehindInTheScene()
+        {
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.AreEqual(0, _scene.GetRootGameObjects().Length,
+                "Baking the prefab must not litter the scene with capsule children.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_ProducesACapsule()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.IsNotNull(prefab.GetComponent<CapsuleCollider>());
+            Assert.IsNotNull(prefab.GetComponent<MeshFilter>());
+            Assert.AreEqual(PlayerPrefabFactory.PrefabName, prefab.name);
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_ProducesANetworkObject()
+        {
+            Assert.IsNotNull(PlayerPrefabBaker.EnsurePlayerPrefab(),
+                "The prefab has to carry a NetworkObject or FishNet cannot track it.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_ProducesTheProjectPlayerObject()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.IsNotNull(prefab.GetComponent<PlayerStats>());
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_ReusesTheAssetOnLaterCalls()
+        {
+            NetworkObject first = PlayerPrefabBaker.EnsurePlayerPrefab();
+            NetworkObject second = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.AreSame(first, second);
+            Assert.AreEqual(1, CountSceneObjectsNamed(PlayerPrefabFactory.PrefabName));
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_KeepsTheAssetOnDiskAcrossCalls()
+        {
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+            string firstGuid = AssetDatabase.AssetPathToGUID(PlayerPrefabBaker.PrefabAssetPath);
+
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.AreEqual(firstGuid, AssetDatabase.AssetPathToGUID(PlayerPrefabBaker.PrefabAssetPath),
+                "Re-baking must not fork the asset into a second file.");
+        }
+        #endregion
+
+        #region Loading and deleting.
+        [Test]
+        public void LoadPlayerPrefab_ReturnsNullBeforeAnythingIsBaked()
+        {
+            Assert.IsNull(PlayerPrefabBaker.LoadPlayerPrefab());
+        }
+
+        [Test]
+        public void LoadPlayerPrefab_ReturnsTheBakedAsset()
+        {
+            NetworkObject baked = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.AreSame(baked, PlayerPrefabBaker.LoadPlayerPrefab());
+        }
+
+        [Test]
+        public void DeletePlayerPrefab_RemovesTheAsset()
+        {
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.IsTrue(PlayerPrefabBaker.DeletePlayerPrefab());
+
+            Assert.IsFalse(File.Exists(PlayerPrefabBaker.AbsolutePrefabPath));
+            Assert.IsNull(PlayerPrefabBaker.LoadPlayerPrefab());
+        }
+
+        [Test]
+        public void DeletePlayerPrefab_ReportsNothingToDoWhenThereIsNoAsset()
+        {
+            Assert.IsFalse(PlayerPrefabBaker.DeletePlayerPrefab(),
+                "Deleting a prefab that was never baked is not a failure.");
+        }
+        #endregion
+
+        #region Telling the NetworkManager to spawn it.
+        [Test]
+        public void WirePlayerPrefab_RegistersThePrefabAsASpawnable()
+        {
+            NetworkManager manager = NewNetworkManager();
+            var prefabs = ScriptableObject.CreateInstance<SinglePrefabObjects>();
+            prefabs.name = NetworkManagerFactory.SpawnablePrefabsName;
+            manager.SpawnablePrefabs = prefabs;
+
+            NetworkObject playerPrefab = PlayerPrefabBaker.WirePlayerPrefab(manager);
+
+            Assert.IsNotNull(playerPrefab);
+            Assert.IsTrue(PlayerPrefabFactory.Contains(manager.SpawnablePrefabs, playerPrefab),
+                "An unregistered prefab has no id, so the client could never instantiate it.");
+        }
+
+        [Test]
+        public void WirePlayerPrefab_AddsAPlayerSpawner()
+        {
+            NetworkManager manager = NewNetworkManager();
+            GiveSpawnableCollection(manager);
+
+            PlayerPrefabBaker.WirePlayerPrefab(manager);
+
+            PlayerSpawner spawner = manager.gameObject.GetComponent<PlayerSpawner>();
+            Assert.IsNotNull(spawner, "FishNet 4.x spawns players through a PlayerSpawner component.");
+            Assert.AreSame(manager.gameObject, spawner.gameObject,
+                "PlayerSpawner looks for the NetworkManager with GetComponentInParent.");
+        }
+
+        [Test]
+        public void WirePlayerPrefab_PointsTheSpawnerAtThePrefab()
+        {
+            NetworkManager manager = NewNetworkManager();
+            GiveSpawnableCollection(manager);
+
+            NetworkObject playerPrefab = PlayerPrefabBaker.WirePlayerPrefab(manager);
+
+            Assert.AreSame(playerPrefab,
+                PrefabOf(manager.gameObject.GetComponent<PlayerSpawner>()));
+        }
+
+        [Test]
+        public void WirePlayerPrefab_WiresTheAssetRatherThanASceneCopy()
+        {
+            NetworkManager manager = NewNetworkManager();
+            GiveSpawnableCollection(manager);
+
+            NetworkObject playerPrefab = PlayerPrefabBaker.WirePlayerPrefab(manager);
+
+            Assert.IsTrue(EditorUtility.IsPersistent(playerPrefab),
+                "A scene copy would be serialized into the scene instead of referenced as a prefab.");
+        }
+
+        [Test]
+        public void WirePlayerPrefab_GivesAConnectionlessManagerACollection()
+        {
+            // A NetworkManager that was never handed a collection cannot spawn anything.
+            NetworkManager manager = NewNetworkManager();
+
+            PlayerPrefabBaker.WirePlayerPrefab(manager);
+
+            Assert.IsNotNull(manager.SpawnablePrefabs,
+                "NetworkManager.Awake refuses a null SpawnablePrefabs, so wire one up.");
+            Assert.AreEqual(NetworkManagerFactory.SpawnablePrefabsName, manager.SpawnablePrefabs.name);
+        }
+
+        [Test]
+        public void WirePlayerPrefab_IsIdempotent()
+        {
+            NetworkManager manager = NewNetworkManager();
+            GiveSpawnableCollection(manager);
+
+            PlayerPrefabBaker.WirePlayerPrefab(manager);
+            PlayerPrefabBaker.WirePlayerPrefab(manager);
+
+            Assert.AreEqual(1, manager.gameObject.GetComponents<PlayerSpawner>().Length);
+            Assert.AreEqual(1, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count,
+                "A duplicate entry would shift prefab ids and desync the two ends.");
+        }
+
+        [Test]
+        public void WirePlayerPrefab_IgnoresANullManager()
+        {
+            Assert.IsNull(PlayerPrefabBaker.WirePlayerPrefab(null));
+        }
+        #endregion
+
+        /// <summary>Gives the manager the same collection shape the factory builds.</summary>
+        private void GiveSpawnableCollection(NetworkManager manager)
+        {
+            var prefabs = ScriptableObject.CreateInstance<SinglePrefabObjects>();
+            prefabs.name = NetworkManagerFactory.SpawnablePrefabsName;
+            manager.SpawnablePrefabs = prefabs;
+            _scratch.Add(prefabs);
+        }
+    }
+}
