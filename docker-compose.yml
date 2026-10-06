@@ -3,7 +3,7 @@
 # 127.0.0.1:7350 with the default key ("defaultkey") from BackendSettings.
 services:
   nakama:
-    image: heroiclabs/nakama:3.23.0
+    image: heroiclabs/nakama:3.41.0
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
