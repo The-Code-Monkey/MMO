@@ -52,9 +52,10 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
-        /// the project's own networked <see cref="PlayerStats"/>, the
-        /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, and
-        /// the <see cref="LocalPlayerCamera"/> that gives the owning client something to look through.
+        /// the project's own networked <see cref="PlayerStats"/>, its
+        /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, its
+        /// <see cref="PlayerAbilities"/> that carries this player's ability slots, and the
+        /// <see cref="LocalPlayerCamera"/> that gives the owning client something to look through.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -78,6 +79,10 @@ namespace MMO.Net
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
             go.AddComponent<PlayerInventory>();
+
+            // Equipment-injected abilities ride along with the vitals they spend: the server
+            // fills these slots from gear and validates every cast through them.
+            go.AddComponent<PlayerAbilities>();
 
             // Travels with the prefab so a client that receives its player object has something to
             // look through. It decides whether it may drive the camera by asking IsOwner, which is

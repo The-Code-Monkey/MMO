@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using MMO.Gameplay;
 using NUnit.Framework;
@@ -25,10 +26,19 @@ namespace MMO.Tests
         private const string FireStaffPath = "Assets/Data/Weapons/Fire Staff.asset";
 
         private WeaponData _created;
+        private readonly List<Object> _scratch = new();
 
         [TearDown]
         public void TearDown()
         {
+            foreach (Object owned in _scratch)
+            {
+                if (owned != null)
+                    Object.DestroyImmediate(owned);
+            }
+
+            _scratch.Clear();
+
             if (_created != null)
                 Object.DestroyImmediate(_created);
         }
@@ -149,6 +159,87 @@ namespace MMO.Tests
             Assert.Greater(fireStaff.AutoAttackDamage, 0,
                 "A Fire Staff that hits for zero cannot fight at all; it is simply low damage.");
             Assert.Greater(fireStaff.AttackRange, 0f, "A Fire Staff is the long-range option.");
+        }
+
+        [Test]
+        public void Abilities_AreASerializedField()
+        {
+            // The injection point the issue asks for: an array of AbilityData on the weapon.
+            FieldInfo field = GetStatField("_abilities");
+
+            Assert.IsNotNull(field, "Expected a private _abilities field.");
+            Assert.IsNotNull(field.GetCustomAttribute<SerializeField>(),
+                "_abilities must carry [SerializeField] or the drag-and-drop in the Inspector will not persist.");
+            Assert.AreEqual(typeof(AbilityData[]), field.FieldType,
+                "Gear references AbilityData assets, not runtime components.");
+        }
+
+        [Test]
+        public void Abilities_IsExposedThroughAReadOnlyProperty()
+        {
+            PropertyInfo property = typeof(WeaponData).GetProperty(
+                "Abilities", BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(property, "The equipment system needs to read what a weapon grants.");
+            Assert.IsNull(property.SetMethod,
+                "The asset grants abilities; nothing rewrites the grant at runtime.");
+        }
+
+        [Test]
+        public void InspectorDefaults_GrantNoAbilities()
+        {
+            _created = ScriptableObject.CreateInstance<WeaponData>();
+
+            Assert.IsEmpty(_created.Abilities,
+                "A freshly created weapon grants nothing until someone drags skills in.");
+        }
+
+        [Test]
+        public void Abilities_CanBeDraggedInThroughTheInspector()
+        {
+            // The injection mechanism itself, exercised through Unity's own serialization path.
+            WeaponData weapon = CreateWeapon("Test Blade", 10, 2f);
+            AbilityData granted = ScriptableObject.CreateInstance<AbilityData>();
+            granted.name = "Test Granted Ability";
+            _scratch.Add(granted);
+
+            var inspector = new SerializedObject(weapon);
+            SerializedProperty abilities = inspector.FindProperty("_abilities");
+            abilities.arraySize = 1;
+            abilities.GetArrayElementAtIndex(0).objectReferenceValue = granted;
+            inspector.ApplyModifiedPropertiesWithoutUndo();
+
+            Assert.AreEqual(1, weapon.Abilities.Count);
+            Assert.AreSame(granted, weapon.Abilities[0]);
+        }
+
+        [Test]
+        public void BroadswordAsset_GrantsCleave()
+        {
+            // Gear referencing AbilityData assets, end to end through the shipped .asset files.
+            WeaponData broadsword = Load(BroadswordPath);
+
+            Assert.AreEqual(1, broadsword.Abilities.Count,
+                "The Broadsword is authored as granting exactly one skill.");
+            Assert.IsNotNull(broadsword.Abilities[0],
+                "A null entry means the reference in the .asset does not resolve.");
+            Assert.AreEqual("Cleave", broadsword.Abilities[0].AbilityName);
+            Assert.AreEqual(AbilityLogic.AreaDamage, broadsword.Abilities[0].Logic,
+                "A Broadsword swings at everything around it.");
+        }
+
+        [Test]
+        public void FireStaffAsset_GrantsFireball()
+        {
+            WeaponData fireStaff = Load(FireStaffPath);
+
+            Assert.AreEqual(1, fireStaff.Abilities.Count,
+                "The Fire Staff is authored as granting exactly one skill.");
+            Assert.IsNotNull(fireStaff.Abilities[0],
+                "A null entry means the reference in the .asset does not resolve.");
+            Assert.AreEqual("Fireball", fireStaff.Abilities[0].AbilityName);
+            Assert.AreEqual(AbilityLogic.TargetedDamage, fireStaff.Abilities[0].Logic,
+                "A Fire Staff throws its skill at whatever it is pointed at.");
         }
 
         [Test]
