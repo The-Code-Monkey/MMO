@@ -65,18 +65,11 @@ namespace MMO.Tests
 
             var prefabs = _manager.SpawnablePrefabs as SinglePrefabObjects;
             Assert.IsNotNull(prefabs);
-
-            // The count is deliberately not pinned: the combat tests register a target dummy next
-            // to the player object at runtime on this same manager. What must hold is that the
-            // player is registered exactly once — a duplicate would shift every prefab id.
-            int playerPrefabs = 0;
-            foreach (NetworkObject prefab in prefabs.Prefabs)
-            {
-                if (prefab != null && prefab.name == PlayerPrefabFactory.PrefabName)
-                    playerPrefabs++;
-            }
-
-            Assert.AreEqual(1, playerPrefabs, "The player object must be registered exactly once.");
+            Assert.AreEqual(2, prefabs.Prefabs.Count,
+                "Exactly two spawnables: the player object and the server-spawned target dummy.");
+            Assert.IsNotNull(_manager.GetComponent<TargetDummySpawner>(),
+                "The server needs a spawner to instantiate the target dummy when it starts.");
+>>>>>>> origin/main
         }
 
         [Test]
@@ -96,8 +89,7 @@ namespace MMO.Tests
             // NetworkManager.Awake assigns ids from the list order. Without one the pool cannot
             // resolve the prefab and every spawn returns null.
             Assert.AreNotEqual(NetworkObject.UNSET_PREFABID_VALUE, prefab.PrefabId);
-            Assert.AreEqual(0, prefab.PrefabId,
-                "It is registered first, so it is id 0.");
+            Assert.AreEqual(0, prefab.PrefabId, "It is registered first, so it is id 0.");
         }
 
         [UnityTest]
