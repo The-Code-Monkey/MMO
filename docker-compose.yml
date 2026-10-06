@@ -1,0 +1,38 @@
+# Local backend for the MMO: Nakama (the game server / source of truth) backed by
+# PostgreSQL. Run `docker compose up -d` and start a game server; it connects on
+# 127.0.0.1:7350 with the default key ("defaultkey") from BackendSettings.
+services:
+  nakama:
+    image: heroiclabs/nakama:3.23.0
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /nakama/nakama migrate up --config /nakama/data/nakama.yml &&
+        /nakama/nakama --config /nakama/data/nakama.yml
+        --database.address postgres@db:5432/nakama
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "7349:7349"   # gRPC
+      - "7350:7350"   # HTTP API (what NakamaPlayerRepository talks to)
+      - "7351:7351"   # developer console
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nakama
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - nakama-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  nakama-pgdata:

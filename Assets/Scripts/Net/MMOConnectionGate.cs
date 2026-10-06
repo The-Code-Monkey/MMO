@@ -2,8 +2,11 @@ using FishNet.Authenticating;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Transporting;
+using MMO.Persistence;
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace MMO.Net
@@ -20,6 +23,12 @@ namespace MMO.Net
     /// <see cref="JoinHandshakeTracker"/> until the client announces itself over an
     /// *unauthenticated* broadcast, or until the configured handshake timeout runs out.
     /// That is the same shape as FishNet's own password authenticator.
+    ///
+    /// When a <see cref="PlayerLoader"/> is configured, the verdict is deferred one step further:
+    /// the player's save record is fetched from the backend before the client is admitted, so no
+    /// player ever spawns with default stats. The load runs inside the existing handshake window,
+    /// racing the timeout reaper; the continuation re-checks that the handshake is still live
+    /// before committing, so a reaped client is never accidentally admitted.
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("MMO/Net/Connection Gate")]
@@ -30,6 +39,9 @@ namespace MMO.Net
         /// </summary>
         public const string ReasonAlreadyJoined = "A join request was already accepted.";
 
+        /// <summary>Reported when a client connects without the account id the backend keys on.</summary>
+        public const string ReasonMissingAccountId = "A valid account id is required.";
+
         [SerializeField] private MMOConnectionSettings _settings = new();
 
         private readonly JoinHandshakeTracker _tracker = new();
@@ -39,6 +51,18 @@ namespace MMO.Net
         /// rejecting disconnects it.
         /// </summary>
         public override event Action<NetworkConnection, bool> OnAuthenticationResult;
+
+        /// <summary>
+        /// Optional persistence seam. When null the gate decides joins synchronously (backwards
+        /// compatible with the pre-database gate); when set, the verdict waits for the loaded save.
+        /// </summary>
+        public IPlayerLoader PlayerLoader { get; set; }
+
+        /// <summary>
+        /// Raised once an accepted join's save record is loaded (or determined to be fresh), so the
+        /// persistence service can cache it for the player object that spawns next.
+        /// </summary>
+        public event Action<int, string, PlayerSaveRecord> PlayerJoinLoaded;
 
         public MMOConnectionSettings Settings => _settings;
 
@@ -81,13 +105,14 @@ namespace MMO.Net
         }
 
         private void OnJoinRequestBroadcast(NetworkConnection connection, JoinRequestBroadcast msg, Channel channel)
-            => HandleJoinRequest(connection, msg.PlayerName);
+            => HandleJoinRequest(connection, msg.PlayerName, msg.AccountId);
 
         /// <summary>
         /// Server side entry point for a client's "this is who I am" message.
         /// Public so tests can drive it without a socket.
         /// </summary>
-        public void HandleJoinRequest(NetworkConnection connection, string playerName)
+        /// <param name="accountId">Stable account key; required once a <see cref="PlayerLoader"/> is wired.</param>
+        public void HandleJoinRequest(NetworkConnection connection, string playerName, string accountId = null)
         {
             // A join request from an already authenticated client is a replay; a legitimate
             // client only ever announces itself once, before it is admitted.
@@ -97,7 +122,56 @@ namespace MMO.Net
                 return;
             }
 
-            EvaluateJoin(connection, playerName);
+            // No backend wired: behave like the pre-database gate and decide immediately.
+            if (PlayerLoader == null)
+            {
+                EvaluateJoin(connection, playerName);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(accountId))
+            {
+                Apply(connection, JoinDecision.Reject(ReasonMissingAccountId));
+                return;
+            }
+
+            int clientId = connection != null ? connection.ClientId : -1;
+            _ = LoadAndDecideAsync(connection, clientId, playerName, accountId);
+        }
+
+        /// <summary>
+        /// Fetches the player's save record, then commits the verdict using the cached policy. Runs
+        /// to completion on the Unity main thread (repo awaits on the captured SynchronizationContext)
+        /// and abandons quietly if the handshake was reaped or disconnected while the read was in
+        /// flight — <c>Apply</c> on a dead handshake would bless a player the reaper already turned
+        /// away.
+        /// </summary>
+        private async Task LoadAndDecideAsync(
+            NetworkConnection connection, int clientId, string playerName, string accountId)
+        {
+            PlayerSaveRecord record = null;
+            try
+            {
+                record = await PlayerLoader.LoadAsync(accountId, _tracker.TokenFor(clientId));
+            }
+            catch (OperationCanceledException)
+            {
+                return; // handshake ended while loading; nothing to decide.
+            }
+            catch (Exception e)
+            {
+                // The loader owns fail-open semantics; this is a safety net for a throwing stub.
+                Debug.LogError($"Save load failed for '{accountId}': {e.Message}");
+            }
+
+            // Timed out or disconnected while reading — applying now would admit a ghost.
+            if (!_tracker.IsPending(clientId))
+                return;
+
+            PlayerJoinLoaded?.Invoke(clientId, accountId, record);
+
+            Apply(connection,
+                Decide(playerName, CountAuthenticatedClients(), _tracker.Elapsed(clientId, Time.unscaledTimeAsDouble)));
         }
 
         /// <summary>

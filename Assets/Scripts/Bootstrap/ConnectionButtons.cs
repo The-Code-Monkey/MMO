@@ -1,4 +1,6 @@
+using System.Threading.Tasks;
 using FishNet.Managing;
+using MMO.Persistence;
 using UnityEngine;
 
 namespace MMO.Bootstrap
@@ -34,6 +36,18 @@ namespace MMO.Bootstrap
 
         public void OnStopClicked()
         {
+            _ = StopAsync();
+        }
+
+        /// <summary>
+        /// Flushes every dirty player to the backend <em>before</em> the transport stops: once the
+        /// server session is gone the writes have no path out, so OnApplicationQuit is too late.
+        /// </summary>
+        private async Task StopAsync()
+        {
+            if (PlayerPersistenceService.Instance != null)
+                await PlayerPersistenceService.Instance.FlushAsync();
+
             _networkManager.ServerManager.StopConnection(true);
             _networkManager.ClientManager.StopConnection();
         }

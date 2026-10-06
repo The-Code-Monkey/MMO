@@ -1,3 +1,4 @@
+using System;
 using FishNet.Managing;
 using FishNet.Transporting;
 using UnityEngine;
@@ -13,10 +14,22 @@ namespace MMO.Net
     [AddComponentMenu("MMO/Net/Join Request Client")]
     public sealed class JoinRequestClient : MonoBehaviour
     {
+        /// <summary>PlayerPrefs key the stable account id is persisted under.</summary>
+        public const string AccountIdPrefsKey = "MMO.AccountId";
+
         [SerializeField] private NetworkManager _networkManager;
         [SerializeField] private string _playerName = "Player";
 
+        private string _accountId;
+
         public string PlayerName => _playerName;
+
+        /// <summary>
+        /// Stable account key announced to the server. Generated once as a device GUID and persisted
+        /// in PlayerPrefs so the same reeled-in player keeps the same database record across
+        /// sessions.
+        /// </summary>
+        public string AccountId => _accountId;
 
         public void SetPlayerName(string playerName) => _playerName = playerName ?? string.Empty;
 
@@ -24,6 +37,8 @@ namespace MMO.Net
         {
             if (_networkManager == null)
                 _networkManager = GetComponent<NetworkManager>();
+
+            _accountId = EnsureAccountId();
         }
 
         // Start, not Awake: NetworkManager.Awake creates ClientManager, and component
@@ -61,8 +76,25 @@ namespace MMO.Net
             if (_networkManager == null || !_networkManager.ClientManager.Started)
                 return false;
 
-            _networkManager.ClientManager.Broadcast(new JoinRequestBroadcast { PlayerName = _playerName });
+            _networkManager.ClientManager.Broadcast(new JoinRequestBroadcast
+            {
+                PlayerName = _playerName,
+                AccountId = _accountId,
+            });
             return true;
+        }
+
+        private static string EnsureAccountId()
+        {
+            string accountId = PlayerPrefs.GetString(AccountIdPrefsKey, string.Empty);
+            if (string.IsNullOrEmpty(accountId))
+            {
+                accountId = Guid.NewGuid().ToString("N");
+                PlayerPrefs.SetString(AccountIdPrefsKey, accountId);
+                PlayerPrefs.Save();
+            }
+
+            return accountId;
         }
     }
 }

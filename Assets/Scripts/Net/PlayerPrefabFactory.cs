@@ -7,6 +7,7 @@ using FishNet.Object;
 using MMO.Client;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Persistence;
 using UnityEngine;
 
 namespace MMO.Net
@@ -84,6 +85,11 @@ namespace MMO.Net
             go.AddComponent<PlayerCombat>();
             go.AddComponent<PlayerInventory>();
             go.AddComponent<PlayerAbilities>();
+
+            // Added last so its OnStartNetwork runs after the stats/inventory it applies a loaded
+            // save through: it consumes the record the join gate fetched and subscribes the save
+            // events only once that apply has settled.
+            go.AddComponent<PlayerSaveTrigger>();
 
             // Travels with the prefab so a client that receives its player object has something to
             // look through. It decides whether it may drive the camera by asking IsOwner, which is

@@ -2,6 +2,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using FishNet.Transporting.Tugboat;
+using MMO.Persistence;
 using UnityEngine;
 
 namespace MMO.Net
@@ -96,6 +97,10 @@ namespace MMO.Net
                 // lets the gate let us in.
                 go.AddComponent<JoinRequestClient>();
 
+                // Server-side owner of the database connection and the save loop. Its Awake falls
+                // back to the Nakama repository; Configure() is only for tests.
+                go.AddComponent<PlayerPersistenceService>();
+
                 go.SetActive(true);
 
                 // Deliberately after activation. PlayerSpawner subscribes to
@@ -105,6 +110,12 @@ namespace MMO.Net
                 // for the same reason.
                 PlayerPrefabFactory.Attach(manager, playerPrefab);
                 TargetDummyPrefabFactory.Attach(manager, targetDummyPrefab);
+
+                // Give the gate its async loader and let the service claim each loaded record. The
+                // gate's unauthenticated broadcast path is open from the moment the server starts,
+                // so this must happen before any connection can be admitted — it is.
+                var persistence = go.GetComponent<PlayerPersistenceService>();
+                persistence.AttachTo(gate);
 
                 return manager;
             }
