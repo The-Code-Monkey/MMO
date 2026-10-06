@@ -357,6 +357,39 @@ namespace MMO.Inventory
             return total;
         }
 
+        /// <summary>
+        /// Server: rebuild both containers from a loaded save in one shot, then re-derive the
+        /// equipment stat caps. Empty bag slots are not stored, so the bag is rebuilt as a dense
+        /// list of the saved items; equipment entries are padded to the slot count, and anything
+        /// past it is ignored rather than grown into the container.
+        /// </summary>
+        [Server]
+        public void Restore(IReadOnlyList<ItemInstance> bag, IReadOnlyList<ItemInstance> equipment)
+        {
+            EnsureEquipmentSlots();
+
+            _items.Clear();
+            if (bag != null)
+            {
+                for (int i = 0; i < bag.Count; i++)
+                {
+                    if (!bag[i].IsEmpty)
+                        _items.Add(bag[i]);
+                }
+            }
+
+            for (int i = 0; i < _equipment.Count; i++)
+            {
+                ItemInstance restored = equipment != null && i < equipment.Count
+                    ? equipment[i]
+                    : ItemInstance.Empty;
+
+                _equipment.Set(i, restored);
+            }
+
+            RecalculateEquipmentStats();
+        }
+
         // Idempotent, and tolerant of running before or after the list first syncs: an equipment
         // list shorter than the slot count would index past its end, and a host runs OnStartNetwork
         // once while a pure client receives its five seeded entries in the spawn payload.

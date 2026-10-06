@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using MMO.Net;
 using NUnit.Framework;
 
@@ -142,6 +143,53 @@ namespace MMO.Tests
             tracker.Expired(100d, 5d);
 
             Assert.AreEqual(1, tracker.Count, "Expiry is a query; the gate decides when to drop.");
+        }
+
+        [Test]
+        public void TokenFor_UnknownId_IsUncancelable()
+        {
+            Assert.IsFalse(new JoinHandshakeTracker().TokenFor(42).CanBeCanceled);
+        }
+
+        [Test]
+        public void End_CancelsThePendingToken()
+        {
+            var tracker = new JoinHandshakeTracker();
+            tracker.Begin(1, 0d);
+            CancellationToken token = tracker.TokenFor(1);
+
+            tracker.End(1);
+
+            Assert.IsTrue(token.IsCancellationRequested,
+                "An in-flight load must be told its handshake ended so it stops chasing the client.");
+        }
+
+        [Test]
+        public void Begin_KeepsTheSameTokenAcrossRepeats()
+        {
+            var tracker = new JoinHandshakeTracker();
+            tracker.Begin(1, 0d);
+            CancellationToken token = tracker.TokenFor(1);
+
+            tracker.Begin(1, 5d);
+
+            Assert.AreEqual(token, tracker.TokenFor(1), "A repeated Begin while the handshake is live must not orphan the token.");
+        }
+
+        [Test]
+        public void Begin_AfterEnd_StartsAFreshToken()
+        {
+            var tracker = new JoinHandshakeTracker();
+            tracker.Begin(1, 0d);
+            CancellationToken old = tracker.TokenFor(1);
+
+            tracker.End(1);
+            Assert.IsTrue(old.IsCancellationRequested);
+
+            tracker.Begin(1, 0d);
+            CancellationToken fresh = tracker.TokenFor(1);
+
+            Assert.IsFalse(fresh.IsCancellationRequested, "A new handshake for the same client needs a live token.");
         }
     }
 }

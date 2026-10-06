@@ -71,6 +71,12 @@ namespace MMO.Gameplay
         /// </summary>
         public event Action VitalsChanged;
 
+        /// <summary>
+        /// Raised on the server when the level actually changes (a delta, not a repeat), the hook
+        /// the persistence layer binds to: "levelled up → push the new state to the backend."
+        /// </summary>
+        public event Action LevelChanged;
+
         public override void OnStartNetwork()
         {
             if (IsServer)
@@ -85,6 +91,7 @@ namespace MMO.Gameplay
             // server needs it to broadcast death and regeneration events.
             _health.OnChange += OnHealthChanged;
             _mana.OnChange += OnManaChanged;
+            _level.OnChange += OnLevelChanged;
 
             // The caps are HUD state too: equipment raising or lowering a maximum has to repaint
             // the bar's fill even when the current value itself did not move.
@@ -96,6 +103,7 @@ namespace MMO.Gameplay
         {
             _health.OnChange -= OnHealthChanged;
             _mana.OnChange -= OnManaChanged;
+            _level.OnChange -= OnLevelChanged;
             _maxHealthBonus.OnChange -= OnMaxChanged;
             _maxManaBonus.OnChange -= OnMaxChanged;
         }
@@ -138,6 +146,19 @@ namespace MMO.Gameplay
         public void SetLevel(int level)
         {
             _level.Value = Mathf.Max(0, level);
+        }
+
+        /// <summary>
+        /// Server: overwrite vitals and level from a loaded save record, clamped to the caps in
+        /// force. Equipment bonuses are applied afterwards by <c>PlayerInventory.Restore</c>, so a
+        /// later recalculation may tighten these again — never loosen them.
+        /// </summary>
+        [Server]
+        public void ApplySave(int health, int mana, int level)
+        {
+            _level.Value = Mathf.Max(0, level);
+            _health.Value = Mathf.Clamp(health, 0, EffectiveMaxHealth);
+            _mana.Value = Mathf.Clamp(mana, 0, EffectiveMaxMana);
         }
 
         /// <summary>
@@ -216,6 +237,14 @@ namespace MMO.Gameplay
         {
             Debug.Log($"[ClientId {OwnerId}] mana {previous} -> {current}");
             VitalsChanged?.Invoke();
+        }
+
+        private void OnLevelChanged(int previous, int current, bool asServer)
+        {
+            if (!asServer || previous == current)
+                return;
+
+            LevelChanged?.Invoke();
         }
 
         private void OnMaxChanged(int previous, int current, bool asServer)
