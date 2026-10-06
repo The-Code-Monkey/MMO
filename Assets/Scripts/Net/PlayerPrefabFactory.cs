@@ -5,6 +5,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Client;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Persistence;
@@ -90,6 +91,7 @@ namespace MMO.Net
             go.AddComponent<PlayerInventory>();
             go.AddComponent<PlayerAbilities>();
             go.AddComponent<PlayerGathering>();
+            go.AddComponent<MMO.Crafting.PlayerCrafting>();
 
             // Added last so its OnStartNetwork runs after the stats/inventory it applies a loaded
             // save through: it consumes the record the join gate fetched and subscribes the save

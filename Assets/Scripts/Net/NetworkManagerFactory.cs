@@ -2,6 +2,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using FishNet.Transporting.Tugboat;
+using MMO.Crafting;
 using MMO.Persistence;
 using UnityEngine;
 
@@ -40,7 +41,8 @@ namespace MMO.Net
             MMOConnectionSettings settings,
             out MMOConnectionGate gate,
             NetworkObject playerPrefab = null,
-            NetworkObject targetDummyPrefab = null)
+            NetworkObject targetDummyPrefab = null,
+            NetworkObject craftingStationPrefab = null)
         {
             settings ??= new MMOConnectionSettings();
 
@@ -53,6 +55,7 @@ namespace MMO.Net
 
             NetworkObject builtPlayerPrefab = null;
             NetworkObject builtTargetDummyPrefab = null;
+            NetworkObject builtCraftingStationPrefab = null;
 
             try
             {
@@ -84,11 +87,19 @@ namespace MMO.Net
                     targetDummyPrefab.gameObject.SetActive(false);
                 }
 
+                if (craftingStationPrefab == null)
+                {
+                    builtCraftingStationPrefab = CraftingStationPrefabFactory.Create();
+                    craftingStationPrefab = builtCraftingStationPrefab;
+                    craftingStationPrefab.gameObject.SetActive(false);
+                }
+
                 // Before activation, so the prefabs are in the collection when Awake hands out
                 // prefab ids from the list order. Both ends build through this same factory, so
-                // the player is always id 0 and the target dummy id 1.
+                // the player is always id 0 and the target dummy id 1 and crafting station id 2.
                 PlayerPrefabFactory.Register(prefabs, playerPrefab);
                 TargetDummyPrefabFactory.Register(prefabs, targetDummyPrefab);
+                CraftingStationPrefabFactory.Register(prefabs, craftingStationPrefab);
 
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
@@ -110,6 +121,7 @@ namespace MMO.Net
                 // for the same reason.
                 PlayerPrefabFactory.Attach(manager, playerPrefab);
                 TargetDummyPrefabFactory.Attach(manager, targetDummyPrefab);
+                CraftingStationPrefabFactory.Attach(manager, craftingStationPrefab);
 
                 // Give the gate its async loader and let the service claim each loaded record. The
                 // gate's unauthenticated broadcast path is open from the moment the server starts,
@@ -126,6 +138,9 @@ namespace MMO.Net
 
                 if (builtTargetDummyPrefab != null)
                     Object.DestroyImmediate(builtTargetDummyPrefab.gameObject);
+
+                if (builtCraftingStationPrefab != null)
+                    Object.DestroyImmediate(builtCraftingStationPrefab.gameObject);
 
                 Object.DestroyImmediate(go);
                 throw;

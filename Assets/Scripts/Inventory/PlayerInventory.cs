@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Crafting;
 using MMO.Gameplay;
 using UnityEngine;
 
@@ -389,6 +390,69 @@ namespace MMO.Inventory
 
             RecalculateEquipmentStats();
         }
+
+        [Server]
+        public bool TryCraft(MMO.Crafting.RecipeData recipe)
+        {
+            if (recipe == null || recipe.Output == null)
+                return false;
+
+            _scratch.Clear();
+            for (int i = 0; i < _items.Count; i++)
+                _scratch.Add(_items[i]);
+
+            var ingredients = recipe.Ingredients;
+            for (int i = 0; i < ingredients.Count; i++)
+            {
+                var ingredient = ingredients[i];
+                if (ingredient.Item == null)
+                    return false;
+
+                for (int n = 0; n < ingredient.Count; n++)
+                {
+                    int index = FindByName(_scratch, ingredient.Item.ItemName);
+                    if (index < 0)
+                        return false;
+                    _scratch.RemoveAt(index);
+                }
+            }
+
+            if (!_grid.TryFindFreeSpace(_scratch, recipe.Output.GridWidth, recipe.Output.GridHeight,
+                    out int x, out int y))
+                return false;
+
+            for (int i = 0; i < ingredients.Count; i++)
+            {
+                var ingredient = ingredients[i];
+                for (int n = 0; n < ingredient.Count; n++)
+                {
+                    int index = FindByName(_items, ingredient.Item.ItemName);
+                    if (index >= 0)
+                        _items.RemoveAt(index);
+                }
+            }
+
+            for (int outCount = 0; outCount < recipe.OutputCount; outCount++)
+            {
+                // If we need to place multiple outputs, we need to find space for each
+                // For now, just place in the same position or find space - but simple case
+                _items.Add(ItemInstance.Create(recipe.Output, x, y));
+            }
+            return true;
+        }
+
+        private static int FindByName(IList<ItemInstance> list, string itemName)
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (!list[i].IsEmpty && list[i].ItemName == itemName)
+                    return i;
+            }
+            return -1;
+        }
+
+        [Server]
+        public int CountItem(string itemName) => MMO.Crafting.CraftingValidator.Count(_items, itemName);
 
         // Idempotent, and tolerant of running before or after the list first syncs: an equipment
         // list shorter than the slot count would index past its end, and a host runs OnStartNetwork
