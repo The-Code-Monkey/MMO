@@ -4,6 +4,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Client;
 using MMO.Gameplay;
 using MMO.Inventory;
 using UnityEngine;
@@ -51,8 +52,9 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
-        /// the project's own networked <see cref="PlayerStats"/>, and the
-        /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers.
+        /// the project's own networked <see cref="PlayerStats"/>, the
+        /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, and
+        /// the <see cref="LocalPlayerCamera"/> that gives the owning client something to look through.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -76,6 +78,11 @@ namespace MMO.Net
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<PlayerStats>();
             go.AddComponent<PlayerInventory>();
+
+            // Travels with the prefab so a client that receives its player object has something to
+            // look through. It decides whether it may drive the camera by asking IsOwner, which is
+            // why it is safe for every client's copy of this prefab to carry it.
+            go.AddComponent<LocalPlayerCamera>();
 
             ApplyRenderPipelineMaterial(go);
             return networkObject;

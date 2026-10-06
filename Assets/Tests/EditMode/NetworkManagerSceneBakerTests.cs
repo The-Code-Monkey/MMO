@@ -24,13 +24,13 @@ namespace MMO.Tests
     public sealed class NetworkManagerSceneBakerTests
     {
         private Scene _scene;
-        private PlayerPrefabTestAsset _prefabAsset;
+        private SpawnablePrefabTestAsset _prefabAsset;
 
         [SetUp]
         public void SetUp()
         {
             _scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            _prefabAsset = new PlayerPrefabTestAsset();
+            _prefabAsset = new SpawnablePrefabTestAsset();
         }
 
         [TearDown]
@@ -249,14 +249,18 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void CreateInActiveScene_RegistersExactlyOnePlayerPrefab()
+        public void CreateInActiveScene_RegistersPlayerThenDummyInOrder()
         {
             NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
 
             var single = manager.SpawnablePrefabs as SinglePrefabObjects;
             Assert.IsNotNull(single);
-            Assert.AreEqual(1, single.Prefabs.Count,
+            Assert.AreEqual(2, single.Prefabs.Count,
                 "FishNet derives prefab ids from list order, so duplicates shift ids on one end only.");
+            Assert.AreSame(PlayerPrefabBaker.LoadPlayerPrefab(), single.Prefabs[0],
+                "The player must keep id 0 so connecting clients spawn the object they expect.");
+            Assert.AreSame(TargetDummyBaker.LoadTargetDummyPrefab(), single.Prefabs[1],
+                "The target dummy comes second: every end registers the player first, then the dummy.");
         }
 
         [Test]
@@ -293,13 +297,69 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void CreateInActiveScene_BakesTheTargetDummyPrefabIntoTheProject()
+        {
+            NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            // The dummy must be a reusable template, not a capsule carried by the scene.
+            Assert.IsNotNull(TargetDummyBaker.LoadTargetDummyPrefab(),
+                "The enemy object has to exist as a prefab asset in the project.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_RegistersTheTargetDummyAsASpawnable()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            Assert.IsTrue(
+                TargetDummyPrefabFactory.Contains(manager.SpawnablePrefabs,
+                    TargetDummyBaker.LoadTargetDummyPrefab()),
+                "An unregistered prefab has no id, so a client could never instantiate the enemy.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_AddsATargetDummySpawner()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            TargetDummySpawner spawner = manager.gameObject.GetComponent<TargetDummySpawner>();
+
+            Assert.IsNotNull(spawner, "The server needs a component to instantiate and spawn the dummy.");
+            Assert.AreSame(manager.gameObject, spawner.gameObject,
+                "The spawner resolves its ServerManager from the NetworkManager object it sits on.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_PointsTheTargetDummySpawnerAtThePrefab()
+        {
+            NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            Assert.AreSame(TargetDummyBaker.LoadTargetDummyPrefab(),
+                manager.gameObject.GetComponent<TargetDummySpawner>().Prefab,
+                "This is the whole point of the wiring: the server has to know which prefab to spawn.");
+        }
+
+        [Test]
+        public void CreateInActiveScene_LeavesNoTargetDummyCapsuleInTheScene()
+        {
+            NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
+
+            foreach (GameObject root in _scene.GetRootGameObjects())
+            {
+                Assert.AreNotEqual(TargetDummyPrefabFactory.PrefabName, root.name,
+                    "The scene keeps the prefab reference; the capsule itself belongs to the asset.");
+            }
+        }
+
+        [Test]
         public void CreateInActiveScene_DoesNotDuplicateThePlayerWiring()
         {
             NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
             NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(new MMOConnectionSettings());
 
             Assert.AreEqual(1, manager.gameObject.GetComponents<PlayerSpawner>().Length);
-            Assert.AreEqual(1, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
+            Assert.AreEqual(1, manager.gameObject.GetComponents<TargetDummySpawner>().Length);
+            Assert.AreEqual(2, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
         }
 
         [Test]

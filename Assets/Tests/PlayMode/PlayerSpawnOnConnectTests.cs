@@ -65,8 +65,10 @@ namespace MMO.Tests
 
             var prefabs = _manager.SpawnablePrefabs as SinglePrefabObjects;
             Assert.IsNotNull(prefabs);
-            Assert.AreEqual(1, prefabs.Prefabs.Count,
-                "Exactly one spawnable: the player object.");
+            Assert.AreEqual(2, prefabs.Prefabs.Count,
+                "Exactly two spawnables: the player object and the server-spawned target dummy.");
+            Assert.IsNotNull(_manager.GetComponent<TargetDummySpawner>(),
+                "The server needs a spawner to instantiate the target dummy when it starts.");
         }
 
         [Test]

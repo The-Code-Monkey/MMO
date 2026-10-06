@@ -7,7 +7,8 @@
         "MMO.Runtime",
         "MMO.Editor",
         "FishNet.Runtime",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [
         "Editor"
