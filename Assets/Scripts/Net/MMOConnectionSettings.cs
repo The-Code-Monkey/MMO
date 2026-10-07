@@ -20,6 +20,7 @@ namespace MMO.Net
         [SerializeField] private bool _maintenanceMode;
         [SerializeField] private string[] _allowedPlayers = Array.Empty<string>();
         [SerializeField] private string[] _blockedPlayers = Array.Empty<string>();
+        [SerializeField] private bool _useTokenAuth;
 
         public MMOConnectionSettings()
         {
@@ -31,7 +32,8 @@ namespace MMO.Net
             float handshakeTimeoutSeconds,
             bool maintenanceMode = false,
             string[] allowedPlayers = null,
-            string[] blockedPlayers = null)
+            string[] blockedPlayers = null,
+            bool useTokenAuth = false)
         {
             _port = port;
             _maxClients = maxClients;
@@ -39,6 +41,7 @@ namespace MMO.Net
             _maintenanceMode = maintenanceMode;
             _allowedPlayers = allowedPlayers ?? Array.Empty<string>();
             _blockedPlayers = blockedPlayers ?? Array.Empty<string>();
+            _useTokenAuth = useTokenAuth;
         }
 
         public ushort Port => _port;
@@ -47,5 +50,12 @@ namespace MMO.Net
         public bool MaintenanceMode => _maintenanceMode;
         public string[] AllowedPlayers => _allowedPlayers;
         public string[] BlockedPlayers => _blockedPlayers;
+
+        /// <summary>
+        /// Off by default so legacy open joins keep working unchanged. When true, the
+        /// <see cref="Net.NetworkManagerFactory"/> wires token authentication onto the join gate —
+        /// and the scene baker persists the flag so a baked scene re-wires itself at load.
+        /// </summary>
+        public bool UseTokenAuth => _useTokenAuth;
     }
 }

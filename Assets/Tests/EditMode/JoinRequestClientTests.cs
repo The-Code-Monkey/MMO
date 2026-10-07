@@ -13,6 +13,7 @@ namespace MMO.Tests
     public sealed class JoinRequestClientTests
     {
         private GameObject _go;
+        private JoinRequestClient _client;
 
         [TearDown]
         public void TearDown()
@@ -24,7 +25,8 @@ namespace MMO.Tests
         private JoinRequestClient NewClient()
         {
             _go = new GameObject("JoinClientUnderTest");
-            return _go.AddComponent<JoinRequestClient>();
+            _client = _go.AddComponent<JoinRequestClient>();
+            return _client;
         }
 
         [Test]
@@ -64,5 +66,57 @@ namespace MMO.Tests
         {
             Assert.IsFalse(string.IsNullOrWhiteSpace(NewClient().AccountId));
         }
+
+        #region AuthToken
+
+        [Test]
+        public void AuthToken_DefaultsToEmpty()
+        {
+            Assert.AreEqual(string.Empty, NewClient().AuthToken);
+        }
+
+        [Test]
+        public void SetAuthToken_AnnouncesTheProvidedToken()
+        {
+            const string Token = "session-token-abc";
+
+            NewClient().SetAuthToken(Token);
+
+            Assert.AreEqual(Token, Build().AuthToken);
+        }
+
+        [Test]
+        public void SetAuthToken_NullIsTreatedAsNoToken()
+        {
+            NewClient().SetAuthToken("token");
+            NewClient().SetAuthToken(null);
+
+            Assert.AreEqual(string.Empty, Build().AuthToken);
+        }
+
+        [Test]
+        public void BuildJoinRequest_CarriesNameAccountIdAndToken()
+        {
+            JoinRequestClient client = NewClient();
+            client.SetPlayerName("Bob");
+            client.SetAuthToken("token-91");
+
+            JoinRequestBroadcast request = client.BuildJoinRequest();
+
+            Assert.AreEqual("Bob", request.PlayerName);
+            Assert.AreNotEqual(string.Empty, request.AccountId);
+            Assert.AreEqual(client.AccountId, request.AccountId);
+            Assert.AreEqual("token-91", request.AuthToken);
+        }
+
+        [Test]
+        public void BuildJoinRequest_WithNoToken_SetsTheAuthTokenFieldToEmpty()
+        {
+            JoinRequestBroadcast request = NewClient().BuildJoinRequest();
+
+            Assert.AreEqual(string.Empty, request.AuthToken);
+        }
+
+        private JoinRequestBroadcast Build() => _client.BuildJoinRequest();
     }
 }
