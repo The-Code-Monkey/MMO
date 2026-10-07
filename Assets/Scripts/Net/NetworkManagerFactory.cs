@@ -108,6 +108,10 @@ namespace MMO.Net
                 // lets the gate let us in.
                 go.AddComponent<JoinRequestClient>();
 
+                // Re-wires the gate's token validator from the serialized UseTokenAuth flag at
+                // scene load — the validator itself is a runtime property Unity cannot serialize.
+                go.AddComponent<TokenAuthBootstrap>();
+
                 // Server-side owner of the database connection and the save loop. Its Awake falls
                 // back to the Nakama repository; Configure() is only for tests.
                 go.AddComponent<PlayerPersistenceService>();

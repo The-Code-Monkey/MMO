@@ -84,6 +84,16 @@ namespace MMO.Tests
         }
 
         [UnityTest]
+        public IEnumerator Create_AddsTheTokenAuthReWirer()
+        {
+            NetworkManager manager = NetworkManagerTestHelper.GetOrCreate();
+            yield return null;
+
+            Assert.IsNotNull(manager.gameObject.GetComponent<MMO.Persistence.TokenAuthBootstrap>(),
+                "The bootstrap that re-wires the gate's token seam must ride every factory-built manager.");
+        }
+
+        [UnityTest]
         public IEnumerator Create_HandsTheSettingsToTheGate()
         {
             NetworkManager manager = NetworkManagerTestHelper.GetOrCreate();

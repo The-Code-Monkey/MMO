@@ -42,6 +42,12 @@ namespace MMO.Net
         /// <summary>Reported when a client connects without the account id the backend keys on.</summary>
         public const string ReasonMissingAccountId = "A valid account id is required.";
 
+        /// <summary>Reported when token auth is wired and a client joins without a session token.</summary>
+        public const string ReasonMissingAuthToken = "A session token is required.";
+
+        /// <summary>Reported when the backend refused the session token a client joined with.</summary>
+        public const string ReasonInvalidAuthToken = "The session token was rejected by the backend.";
+
         [SerializeField] private MMOConnectionSettings _settings = new();
 
         private readonly JoinHandshakeTracker _tracker = new();
@@ -57,6 +63,15 @@ namespace MMO.Net
         /// compatible with the pre-database gate); when set, the verdict waits for the loaded save.
         /// </summary>
         public IPlayerLoader PlayerLoader { get; set; }
+
+        /// <summary>
+        /// Optional token authentication seam. When null joins are decided on the legacy account-id
+        /// path (open joins, local development). When set, a join is refused unless the client's
+        /// session token vacuously authenticates against the backend, and the account key the
+        /// loader stores under is the identity the backend returned — never the account id the
+        /// client claims on the wire.
+        /// </summary>
+        public ITokenValidator TokenValidator { get; set; }
 
         /// <summary>
         /// Raised once an accepted join's save record is loaded (or determined to be fresh), so the
@@ -105,20 +120,37 @@ namespace MMO.Net
         }
 
         private void OnJoinRequestBroadcast(NetworkConnection connection, JoinRequestBroadcast msg, Channel channel)
-            => HandleJoinRequest(connection, msg.PlayerName, msg.AccountId);
+            => HandleJoinRequest(connection, msg.PlayerName, msg.AccountId, msg.AuthToken);
 
         /// <summary>
         /// Server side entry point for a client's "this is who I am" message.
         /// Public so tests can drive it without a socket.
         /// </summary>
-        /// <param name="accountId">Stable account key; required once a <see cref="PlayerLoader"/> is wired.</param>
-        public void HandleJoinRequest(NetworkConnection connection, string playerName, string accountId = null)
+        /// <param name="accountId">Stable account key; required once a <see cref="PlayerLoader"/> is wired and
+        /// token auth is not.</param>
+        /// <param name="authToken">The session token from the sign-in, required once a
+        /// <see cref="TokenValidator"/> is wired. When token auth is on, <paramref name="accountId"/>
+        /// is ignored entirely — the key comes from the validated identity.</param>
+        public void HandleJoinRequest(NetworkConnection connection, string playerName, string accountId = null, string authToken = null)
         {
             // A join request from an already authenticated client is a replay; a legitimate
             // client only ever announces itself once, before it is admitted.
             if (connection != null && connection.IsAuthenticated)
             {
                 Apply(connection, JoinDecision.Reject(ReasonAlreadyJoined));
+                return;
+            }
+
+            if (TokenValidator != null)
+            {
+                if (string.IsNullOrWhiteSpace(authToken))
+                {
+                    Apply(connection, JoinDecision.Reject(ReasonMissingAuthToken));
+                    return;
+                }
+
+                int clientId = connection != null ? connection.ClientId : -1;
+                _ = ValidateAndDecideAsync(connection, clientId, playerName, authToken);
                 return;
             }
 
@@ -172,6 +204,62 @@ namespace MMO.Net
 
             Apply(connection,
                 Decide(playerName, CountAuthenticatedClients(), _tracker.Elapsed(clientId, Time.unscaledTimeAsDouble)));
+        }
+
+        /// <summary>
+        /// The token-authenticated cousin of <see cref="LoadAndDecideAsync"/>: asks the backend
+        /// whether the token is genuine, then defers to the record loader under the identity the
+        /// backend vouched for. Abandons quietly if the handshake was reaped or disconnected while
+        /// the validation was in flight — a refusal, too, is a verdict, and a dead handshake does
+        /// not get a second one.
+        /// </summary>
+        private async Task ValidateAndDecideAsync(
+            NetworkConnection connection, int clientId, string playerName, string authToken)
+        {
+            TokenIdentity identity;
+            try
+            {
+                identity = await TokenValidator.ValidateAsync(authToken, _tracker.TokenFor(clientId));
+            }
+            catch (OperationCanceledException)
+            {
+                return; // handshake ended while validating; nothing to decide.
+            }
+            catch (Exception e)
+            {
+                // Fails closed: an unreachable backend must not open the gate.
+                Debug.LogError($"Token validation failed: {e.Message}");
+                identity = default;
+            }
+
+            if (!identity.IsValid)
+            {
+                if (_tracker.IsPending(clientId))
+                    Apply(connection, JoinDecision.Reject(ReasonInvalidAuthToken));
+
+                return;
+            }
+
+            // Timed out or disconnected while validating — admitting (or rejecting) now would
+            // bless a handshake the reaper already turned away.
+            if (!_tracker.IsPending(clientId))
+                return;
+
+            // The name and the account key come from the token, both as the server sees them: a
+            // client cannot claim a friendlier display name, and its save is stored under the id
+            // only the backend can assign. The claimed name survives only when the token carries no
+            // name of its own.
+            if (!string.IsNullOrEmpty(identity.Username))
+                playerName = identity.Username;
+
+            if (PlayerLoader == null)
+            {
+                Apply(connection,
+                    Decide(playerName, CountAuthenticatedClients(), _tracker.Elapsed(clientId, Time.unscaledTimeAsDouble)));
+                return;
+            }
+
+            await LoadAndDecideAsync(connection, clientId, playerName, identity.UserId);
         }
 
         /// <summary>

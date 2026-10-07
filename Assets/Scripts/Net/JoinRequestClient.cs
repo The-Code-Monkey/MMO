@@ -21,8 +21,15 @@ namespace MMO.Net
         [SerializeField] private string _playerName = "Player";
 
         private string _accountId;
+        private string _authToken = string.Empty;
 
         public string PlayerName => _playerName;
+
+        /// <summary>
+        /// The session token received from the login screen, announced to the server so its gate
+        /// can authenticate the join. Empty when token authentication is not in use.
+        /// </summary>
+        public string AuthToken => _authToken;
 
         /// <summary>
         /// Stable account key announced to the server. Generated once as a device GUID and persisted
@@ -32,6 +39,9 @@ namespace MMO.Net
         public string AccountId => _accountId;
 
         public void SetPlayerName(string playerName) => _playerName = playerName ?? string.Empty;
+
+        /// <summary>Points the join announcement at the session token the login screen received.</summary>
+        public void SetAuthToken(string authToken) => _authToken = authToken ?? string.Empty;
 
         private void Awake()
         {
@@ -66,6 +76,18 @@ namespace MMO.Net
         }
 
         /// <summary>
+        /// The join announcement exactly as <see cref="SendJoinRequest"/> would send it. Public so
+        /// the wiring — name, account id, session token — is testable without a socket.
+        /// </summary>
+        public JoinRequestBroadcast BuildJoinRequest()
+            => new JoinRequestBroadcast
+            {
+                PlayerName = _playerName,
+                AccountId = _accountId,
+                AuthToken = _authToken,
+            };
+
+        /// <summary>
         /// Announces the local player to the server. Must happen before authentication,
         /// so the guard is <c>ClientManager.Started</c> (the socket is up) rather
         /// than <see cref="NetworkManager.IsClientStarted"/> (already admitted).
@@ -76,11 +98,7 @@ namespace MMO.Net
             if (_networkManager == null || !_networkManager.ClientManager.Started)
                 return false;
 
-            _networkManager.ClientManager.Broadcast(new JoinRequestBroadcast
-            {
-                PlayerName = _playerName,
-                AccountId = _accountId,
-            });
+            _networkManager.ClientManager.Broadcast(BuildJoinRequest());
             return true;
         }
 

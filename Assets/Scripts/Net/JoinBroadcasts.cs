@@ -8,9 +8,17 @@ namespace MMO.Net
 
         /// <summary>
         /// The stable account key (a device GUID the client generates once and persists). The
-        /// server loads and saves this player's record under it.
+        /// server loads and saves this player's record under it on the legacy open-join path.
+        /// Token authentication ignores it entirely — see <see cref="AuthToken"/>.
         /// </summary>
         public string AccountId;
+
+        /// <summary>
+        /// The session token the client's sign-in received from the backend. Present only when
+        /// token authentication is enabled; the server gate validates it and derives the player's
+        /// account key from the identity the backend vouches for, never from <see cref="AccountId"/>.
+        /// </summary>
+        public string AuthToken;
     }
 
     public struct JoinResultBroadcast : IBroadcast
