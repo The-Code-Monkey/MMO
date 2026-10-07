@@ -140,6 +140,68 @@ namespace MMO.Tests
             Assert.That(() => _service.RegisterLivePlayer("u-1", null), Throws.ArgumentNullException);
         }
 
+        [Test]
+        public async Task FlushAsync_ForOnePlayer_SavesItNow_IgnoringTheDebounceWindow()
+        {
+            _service.RegisterLivePlayer("u-1", Capture("u-1", 5));
+            _service.RegisterLivePlayer("u-2", Capture("u-2", 6));
+            _service.MarkDirty("u-1", immediate: false);
+
+            bool saved = await _service.FlushAsync("u-1");
+
+            Assert.IsTrue(saved);
+            Assert.AreEqual(5, _repo.Records["u-1"].Level, "The flush ignores the debounce window.");
+            Assert.IsFalse(_repo.Records.ContainsKey("u-2"), "Only the handed-off player is saved, not everyone.");
+        }
+
+        [Test]
+        public async Task FlushAsync_ForOnePlayer_UsesACapturedNowSnapshot()
+        {
+            int captures = 0;
+            _service.RegisterLivePlayer("u-1", () => { captures++; return new PlayerSaveRecord { UserId = "u-1", Level = 11 }; });
+
+            await _service.FlushAsync("u-1");
+
+            Assert.AreEqual(11, _repo.Records["u-1"].Level);
+            Assert.AreEqual(1, captures, "Exactly one snapshot for one forced save.");
+        }
+
+        [Test]
+        public async Task FlushAsync_ForOnePlayer_FailedWrite_ReturnsFalseAndStaysDirty()
+        {
+            _repo.ThrowOnSave = true;
+            _service.RegisterLivePlayer("u-1", Capture("u-1", 4));
+
+            bool saved = await _service.FlushAsync("u-1");
+
+            Assert.IsFalse(saved, "A handoff must know the save did not land.");
+            Assert.AreEqual(0, await _service.FlushAsync(), "Still dirty, still failing.");
+            Assert.IsFalse(_repo.Records.ContainsKey("u-1"));
+
+            _repo.ThrowOnSave = false;
+            Assert.AreEqual(1, await _service.FlushAsync());
+            Assert.AreEqual(4, _repo.Records["u-1"].Level);
+        }
+
+        [Test]
+        public async Task FlushAsync_UnknownOrBlankAccount_IsAnEmptySuccess()
+        {
+            Assert.IsTrue(await _service.FlushAsync("never-registered"));
+            Assert.IsTrue(await _service.FlushAsync(null));
+            Assert.IsTrue(await _service.FlushAsync(" "));
+        }
+
+        [Test]
+        public async Task FlushAsync_Unconnected_FailsOpenToDone()
+        {
+            var unconnected = new GameObject("UnconnectedService").AddComponent<PlayerPersistenceService>();
+
+            bool saved = await unconnected.FlushAsync("u-1");
+
+            Assert.IsTrue(saved, "A downed backend must read as done, matching the fresh-player load.");
+            Object.DestroyImmediate(unconnected.gameObject);
+        }
+
         private static Func<PlayerSaveRecord> Capture(string userId, int level)
             => () => new PlayerSaveRecord { UserId = userId, Level = level };
 

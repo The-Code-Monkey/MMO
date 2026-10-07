@@ -80,6 +80,33 @@ serialized flag (`TokenAuthBootstrap`), so the same baked scene works in any pro
 off, the join gate keeps the legacy open-join path used by tests and local demos, and the client
 never sends a token.
 
+## Multi-server zone transitions
+
+Each zone is its own server process sharing the Nakama backend. Moving a player between zones is a
+server-driven handoff, never a client choice:
+
+1. A `ZoneTransferTrigger` (`Assets/Scripts/Gameplay`) is a collider volume at the edge of a zone —
+   the road to the next town. The server watches it only (`IsServerStarted`); clients just render
+   the copied trigger.
+2. On entry, the server force-saves the player: `PlayerSaveTrigger.CaptureNow()` snapshots health,
+   mana, level and inventory while its SyncVars are still live, and
+   `PlayerPersistenceService.FlushAsync(accountId)` writes it immediately, ignoring the debounce
+   window. A save that cannot land aborts the handoff — the player stays put rather than arriving
+   at the next zone as a fresh character.
+3. The trigger mints a short-lived (30&nbsp;s), single-use transfer token bound to that account and
+   that destination (`ZoneTransferTokenStore`: `base64url(json).base64url(hmac)`, so any process
+   with the shared secret can verify it) and broadcasts `ZoneTransferBroadcast` to the player:
+   "disconnect and reconnect to this host:port with this token".
+4. The client's `ZoneTransferClient` shows the loading screen, stops the current connection, points
+   the transport at the target, and reconnects. `JoinRequestClient` announces the join the moment
+   the new socket is up, now carrying the transfer token.
+5. The destination's join gate consumes the token (`MMOConnectionGate.TransferTokenStore`): a
+   forged, expired or already-used token is refused, and a valid one admits the player under the
+   account the source saved — whose record the gate loads from the shared backend.
+
+All servers in a deployment must share the token signing secret (`ZoneTransferTokenService`
+`secretKey`), exactly as they share `BackendSettings.ServerDeviceId`.
+
 ## Testing
 
 - EditMode tests cover the pure mapping, DTO round-trip, the save queue/flush and the join gate's

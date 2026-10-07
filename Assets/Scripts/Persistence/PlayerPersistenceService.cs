@@ -361,6 +361,37 @@ namespace MMO.Persistence
             return flushed;
         }
 
+        /// <summary>
+        /// Force-saves one player right now, ignoring the debounce window and every other dirty
+        /// player — the zone-transfer handoff path, which must not hand a player to the next zone
+        /// before their state is durable. <see langword="false"/> means the write failed, and the
+        /// handoff is aborted rather than let the player arrive at the destination as a fresh
+        /// character. Matches <see cref="LoadAsync"/>'s fail-open shape: with a backend this queue
+        /// cannot reach, the save counts as done and the target loads the same fresh record.
+        /// </summary>
+        public async Task<bool> FlushAsync(string accountId)
+        {
+            if (string.IsNullOrEmpty(accountId))
+                return true;
+
+            if (!_connected)
+                return true;
+
+            MarkDirty(accountId, immediate: true);
+            bool saved = await SaveOneAsync(accountId);
+            if (saved)
+            {
+                _dirty.Remove(accountId);
+                _debounceUntil.Remove(accountId);
+            }
+            else
+            {
+                _dirty.Add(accountId);
+            }
+
+            return saved;
+        }
+
         private async Task<bool> SaveOneAsync(string accountId)
         {
             if (!_connected || string.IsNullOrEmpty(accountId))

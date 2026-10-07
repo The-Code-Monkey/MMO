@@ -118,5 +118,57 @@ namespace MMO.Tests
         }
 
         private JoinRequestBroadcast Build() => _client.BuildJoinRequest();
+
+        #region TransferToken
+
+        [Test]
+        public void TransferToken_DefaultsToEmpty()
+        {
+            Assert.AreEqual(string.Empty, NewClient().TransferToken);
+        }
+
+        [Test]
+        public void SetTransferToken_AnnouncesTheArmedToken()
+        {
+            const string Token = "zone-transfer-abc";
+
+            NewClient().SetTransferToken(Token);
+
+            Assert.AreEqual(Token, Build().TransferToken);
+        }
+
+        [Test]
+        public void SetTransferToken_NullIsTreatedAsNoToken()
+        {
+            JoinRequestClient client = NewClient();
+            client.SetTransferToken("token");
+            client.SetTransferToken(null);
+
+            Assert.AreEqual(string.Empty, client.BuildJoinRequest().TransferToken);
+        }
+
+        [Test]
+        public void BuildJoinRequest_CarriesNameAccountIdAuthTokenAndTransferToken()
+        {
+            JoinRequestClient client = NewClient();
+            client.SetPlayerName("Bob");
+            client.SetAuthToken("session-tok");
+            client.SetTransferToken("transfer-tok");
+
+            JoinRequestBroadcast request = client.BuildJoinRequest();
+
+            Assert.AreEqual("Bob", request.PlayerName);
+            Assert.AreEqual("session-tok", request.AuthToken);
+            Assert.AreEqual("transfer-tok", request.TransferToken);
+            Assert.IsFalse(string.IsNullOrEmpty(request.AccountId));
+        }
+
+        [Test]
+        public void BuildJoinRequest_WithNoTransferToken_SetsTheFieldToEmpty()
+        {
+            Assert.AreEqual(string.Empty, NewClient().BuildJoinRequest().TransferToken);
+        }
+
+        #endregion
     }
 }

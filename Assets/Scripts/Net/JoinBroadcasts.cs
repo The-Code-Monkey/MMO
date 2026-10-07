@@ -19,6 +19,13 @@ namespace MMO.Net
         /// account key from the identity the backend vouches for, never from <see cref="AccountId"/>.
         /// </summary>
         public string AuthToken;
+
+        /// <summary>
+        /// Short-lived, single-use zone-transfer token minted by the previous zone server. Present
+        /// only on a redirected join; the gate consumes it so the same account lands on the
+        /// destination with the save the source just flushed.
+        /// </summary>
+        public string TransferToken;
     }
 
     public struct JoinResultBroadcast : IBroadcast

@@ -31,6 +31,23 @@ namespace MMO.Persistence
         private string _accountId;
         private bool _subscribed;
 
+        /// <summary>The account this player's record lives under; empty until the join is applied.</summary>
+        public string AccountId => _accountId;
+
+        /// <summary>
+        /// Snapshots the player's live state right now — the handoff path a
+        /// <see cref="Gameplay.ZoneTransferTrigger"/> uses to make sure the destination server reads
+        /// this player's current health, mana, level and inventory, not a stale autosave. Server-only
+        /// like everything else here; clients can never ask for a snapshot.
+        /// </summary>
+        public PlayerSaveRecord CaptureNow()
+        {
+            if (!IsServer || !_subscribed || string.IsNullOrEmpty(_accountId) || _stats == null || _inventory == null)
+                return null;
+
+            return Capture();
+        }
+
         public override void OnStartNetwork()
         {
             if (!IsServer)
