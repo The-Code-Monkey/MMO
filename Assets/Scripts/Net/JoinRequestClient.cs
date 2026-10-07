@@ -22,6 +22,7 @@ namespace MMO.Net
 
         private string _accountId;
         private string _authToken = string.Empty;
+        private string _transferToken = string.Empty;
 
         public string PlayerName => _playerName;
 
@@ -38,10 +39,20 @@ namespace MMO.Net
         /// </summary>
         public string AccountId => _accountId;
 
+        /// <summary>
+        /// Single-shot zone-transfer authorization, armed by <see cref="ZoneTransferClient"/> just
+        /// before it reconnects to the destination zone and cleared the moment the join announcement
+        /// is sent, so a later reconnect never replays a consumed token.
+        /// </summary>
+        public string TransferToken => _transferToken;
+
         public void SetPlayerName(string playerName) => _playerName = playerName ?? string.Empty;
 
         /// <summary>Points the join announcement at the session token the login screen received.</summary>
         public void SetAuthToken(string authToken) => _authToken = authToken ?? string.Empty;
+
+        /// <summary>Arms the next join announcement with a zone-transfer token.</summary>
+        public void SetTransferToken(string transferToken) => _transferToken = transferToken ?? string.Empty;
 
         private void Awake()
         {
@@ -77,7 +88,8 @@ namespace MMO.Net
 
         /// <summary>
         /// The join announcement exactly as <see cref="SendJoinRequest"/> would send it. Public so
-        /// the wiring — name, account id, session token — is testable without a socket.
+        /// the wiring — name, account id, session token, transfer token — is testable without a
+        /// socket.
         /// </summary>
         public JoinRequestBroadcast BuildJoinRequest()
             => new JoinRequestBroadcast
@@ -85,6 +97,7 @@ namespace MMO.Net
                 PlayerName = _playerName,
                 AccountId = _accountId,
                 AuthToken = _authToken,
+                TransferToken = _transferToken,
             };
 
         /// <summary>
@@ -99,6 +112,7 @@ namespace MMO.Net
                 return false;
 
             _networkManager.ClientManager.Broadcast(BuildJoinRequest());
+            _transferToken = string.Empty;
             return true;
         }
 

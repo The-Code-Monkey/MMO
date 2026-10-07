@@ -116,6 +116,11 @@ namespace MMO.Net
                 // back to the Nakama repository; Configure() is only for tests.
                 go.AddComponent<PlayerPersistenceService>();
 
+                // Server-side issuer/validator of zone-transfer tokens (and, on the same object,
+                // the client that reconnects to the destination zone on a transfer).
+                ZoneTransferTokenService tokenService = go.AddComponent<ZoneTransferTokenService>();
+                go.AddComponent<ZoneTransferClient>();
+
                 go.SetActive(true);
 
                 // Deliberately after activation. PlayerSpawner subscribes to
@@ -132,6 +137,10 @@ namespace MMO.Net
                 // so this must happen before any connection can be admitted — it is.
                 var persistence = go.GetComponent<PlayerPersistenceService>();
                 persistence.AttachTo(gate);
+
+                // Hand the gate the zone-transfer store — its Awake runs during SetActive above —
+                // so a redirected join is consumed against the same tokens the triggers issue.
+                gate.TransferTokenStore = tokenService.Store;
 
                 return manager;
             }

@@ -48,6 +48,12 @@ namespace MMO.Net
         /// <summary>Reported when the backend refused the session token a client joined with.</summary>
         public const string ReasonInvalidAuthToken = "The session token was rejected by the backend.";
 
+        /// <summary>Reported when a zone-transfer join carries a token the destination server rejects.</summary>
+        public const string ReasonInvalidTransferToken = "The zone transfer token was rejected.";
+
+        /// <summary>Reported when a transfer token names a different account than the join claims.</summary>
+        public const string ReasonTransferAccountMismatch = "The zone transfer token does not match this account.";
+
         [SerializeField] private MMOConnectionSettings _settings = new();
 
         private readonly JoinHandshakeTracker _tracker = new();
@@ -72,6 +78,14 @@ namespace MMO.Net
         /// client claims on the wire.
         /// </summary>
         public ITokenValidator TokenValidator { get; set; }
+
+        /// <summary>
+        /// Optional zone-transfer seam. When set, a join that carries a transfer token is refused
+        /// unless the token consumes successfully (valid, unexpired, unused, bound to this account)
+        /// and lands under the account the source server saved. Joins without a transfer token are
+        /// decided exactly as before, so the gate works unchanged on a server with no trigger.
+        /// </summary>
+        public IZoneTransferTokenStore TransferTokenStore { get; set; }
 
         /// <summary>
         /// Raised once an accepted join's save record is loaded (or determined to be fresh), so the
@@ -120,7 +134,7 @@ namespace MMO.Net
         }
 
         private void OnJoinRequestBroadcast(NetworkConnection connection, JoinRequestBroadcast msg, Channel channel)
-            => HandleJoinRequest(connection, msg.PlayerName, msg.AccountId, msg.AuthToken);
+            => HandleJoinRequest(connection, msg.PlayerName, msg.AccountId, msg.AuthToken, msg.TransferToken);
 
         /// <summary>
         /// Server side entry point for a client's "this is who I am" message.
@@ -131,13 +145,24 @@ namespace MMO.Net
         /// <param name="authToken">The session token from the sign-in, required once a
         /// <see cref="TokenValidator"/> is wired. When token auth is on, <paramref name="accountId"/>
         /// is ignored entirely — the key comes from the validated identity.</param>
-        public void HandleJoinRequest(NetworkConnection connection, string playerName, string accountId = null, string authToken = null)
+        /// <param name="transferToken">Zone-transfer token from the previous zone, when this join is a handoff.</param>
+        public void HandleJoinRequest(NetworkConnection connection, string playerName, string accountId = null, string authToken = null, string transferToken = null)
         {
             // A join request from an already authenticated client is a replay; a legitimate
             // client only ever announces itself once, before it is admitted.
             if (connection != null && connection.IsAuthenticated)
             {
                 Apply(connection, JoinDecision.Reject(ReasonAlreadyJoined));
+                return;
+            }
+
+            // Zone handoff: the destination server consumes the token the source minted. The
+            // account the source saved — never the id the client claims — is the account this join
+            // must land under.
+            if (TransferTokenStore != null && !string.IsNullOrWhiteSpace(transferToken))
+            {
+                int transferClientId = connection != null ? connection.ClientId : -1;
+                _ = TransferAndDecideAsync(connection, transferClientId, playerName, accountId, authToken, transferToken);
                 return;
             }
 
@@ -214,7 +239,7 @@ namespace MMO.Net
         /// not get a second one.
         /// </summary>
         private async Task ValidateAndDecideAsync(
-            NetworkConnection connection, int clientId, string playerName, string authToken)
+            NetworkConnection connection, int clientId, string playerName, string authToken, string expectedAccountId = null)
         {
             TokenIdentity identity;
             try
@@ -245,6 +270,15 @@ namespace MMO.Net
             if (!_tracker.IsPending(clientId))
                 return;
 
+            // A zone-transfer vouch must name the account the source server saved; a mismatch is a
+            // token bound to someone else, not an admission for this player.
+            if (!string.IsNullOrEmpty(expectedAccountId) &&
+                !string.Equals(identity.UserId, expectedAccountId, StringComparison.Ordinal))
+            {
+                Apply(connection, JoinDecision.Reject(ReasonTransferAccountMismatch));
+                return;
+            }
+
             // The name and the account key come from the token, both as the server sees them: a
             // client cannot claim a friendlier display name, and its save is stored under the id
             // only the backend can assign. The claimed name survives only when the token carries no
@@ -260,6 +294,74 @@ namespace MMO.Net
             }
 
             await LoadAndDecideAsync(connection, clientId, playerName, identity.UserId);
+        }
+
+        /// <summary>
+        /// The zone-handoff verdict: consumes the transfer token the source server minted and, when
+        /// it is genuine, decides this join under the account the source saved. A refused or
+        /// unreadable token is a refused join — the destination gate must never admit a handoff it
+        /// cannot vouch for. Abandons quietly when the handshake was reaped or disconnected while
+        /// the consume was in flight, matching the other async verdicts.
+        /// </summary>
+        private async Task TransferAndDecideAsync(
+            NetworkConnection connection, int clientId, string playerName, string accountId, string authToken, string transferToken)
+        {
+            ZoneTransferToken token;
+            try
+            {
+                token = await TransferTokenStore.ConsumeAsync(transferToken, _tracker.TokenFor(clientId));
+            }
+            catch (OperationCanceledException)
+            {
+                return; // handshake ended while validating; nothing to decide.
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Zone transfer token validation failed: {e.Message}");
+                token = null;
+            }
+
+            // A dead handshake gets no verdict — an admission or a refusal would both be wrong.
+            if (!_tracker.IsPending(clientId))
+                return;
+
+            if (token == null)
+            {
+                Apply(connection, JoinDecision.Reject(ReasonInvalidTransferToken));
+                return;
+            }
+
+            if (TokenValidator != null)
+            {
+                if (string.IsNullOrWhiteSpace(authToken))
+                {
+                    Apply(connection, JoinDecision.Reject(ReasonMissingAuthToken));
+                    return;
+                }
+
+                // Token auth ignores the account key on the wire; <see cref="ValidateAndDecideAsync"/>
+                // checks the backend's vouch against the account the source saved.
+                await ValidateAndDecideAsync(connection, clientId, playerName, authToken, token.AccountId);
+                return;
+            }
+
+            // Legacy path: the client's claimed account key must be the token's, when it claims
+            // one at all — the source server saved under its own key, so a mismatched claim is a
+            // player arriving as someone else.
+            if (!string.IsNullOrWhiteSpace(accountId) && !token.MatchesAccount(accountId))
+            {
+                Apply(connection, JoinDecision.Reject(ReasonTransferAccountMismatch));
+                return;
+            }
+
+            if (PlayerLoader == null)
+            {
+                Apply(connection,
+                    Decide(playerName, CountAuthenticatedClients(), _tracker.Elapsed(clientId, Time.unscaledTimeAsDouble)));
+                return;
+            }
+
+            await LoadAndDecideAsync(connection, clientId, playerName, token.AccountId);
         }
 
         /// <summary>
