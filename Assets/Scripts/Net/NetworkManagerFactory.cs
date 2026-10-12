@@ -4,6 +4,7 @@ using FishNet.Object;
 using FishNet.Transporting.Tugboat;
 using MMO.Crafting;
 using MMO.Persistence;
+using MMO.Social;
 using UnityEngine;
 
 namespace MMO.Net
@@ -115,6 +116,10 @@ namespace MMO.Net
                 // Server-side owner of the database connection and the save loop. Its Awake falls
                 // back to the Nakama repository; Configure() is only for tests.
                 go.AddComponent<PlayerPersistenceService>();
+
+                // Server-side owner of global party/guild state. Routes cross-zone social mutations
+                // through Nakama; its Awake falls back to the Nakama-backed repository.
+                go.AddComponent<SocialHubService>();
 
                 // Server-side issuer/validator of zone-transfer tokens (and, on the same object,
                 // the client that reconnects to the destination zone on a transfer).
