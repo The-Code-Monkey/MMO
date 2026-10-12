@@ -24,6 +24,7 @@ namespace MMO.UI
         private TargetFrameView _targetFrame;
         private InventoryGridView _inventoryGrid;
         private ActionBarView _actionBar;
+        private ChatFeed _chatFeed;
 
         /// <summary>The health/mana pair, or null before views were assigned.</summary>
         public PlayerHudView PlayerHud => _playerHud;
@@ -37,17 +38,32 @@ namespace MMO.UI
         /// <summary>The action bar, or null before views were assigned.</summary>
         public ActionBarView ActionBar => _actionBar;
 
+        /// <summary>The chat box and friend list, or null when the factory was told to omit it.</summary>
+        public ChatFeed ChatFeed => _chatFeed;
+
         /// <summary>Hands the assembled screens to the HUD; called by the factory.</summary>
         public void SetViews(
             PlayerHudView playerHud,
             TargetFrameView targetFrame,
             InventoryGridView inventoryGrid,
-            ActionBarView actionBar)
+            ActionBarView actionBar,
+            ChatFeed chatFeed = null)
         {
             _playerHud = playerHud;
             _targetFrame = targetFrame;
             _inventoryGrid = inventoryGrid;
             _actionBar = actionBar;
+            _chatFeed = chatFeed;
+        }
+
+        /// <summary>
+        /// Connects the chat box to the local player's social components. Both may be null — the
+        /// panel simply stays quiet until a later call binds it.
+        /// </summary>
+        public void BindChat(Social.PlayerChat chat, Social.PlayerFriends friends)
+        {
+            if (_chatFeed != null)
+                _chatFeed.Bind(chat, friends);
         }
 
         /// <summary>

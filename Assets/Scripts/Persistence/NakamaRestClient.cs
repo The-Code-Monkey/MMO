@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MMO.Social;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -57,14 +58,22 @@ namespace MMO.Persistence
     /// by construction.
     /// </para>
     /// </summary>
-    public sealed class NakamaRestClient : INakamaConnected
+    public sealed class NakamaRestClient : INakamaConnected, INakamaSession
     {
         public const int RequestTimeoutSeconds = 10;
+
+        /// <summary>Refresh the session when fewer than this many seconds of life remain.</summary>
+        public const int RefreshMarginSeconds = 30;
+
+        /// <summary>How long a freshly issued/refreshed token is treated as valid for.</summary>
+        public const int AssumedTokenLifetimeSeconds = 45;
 
         private readonly BackendSettings _settings;
         private string _baseUrl;
         private string _sessionToken;
+        private string _refreshToken;
         private string _userId;
+        private DateTime _tokenValidUntil = DateTime.MinValue;
 
         public NakamaRestClient(BackendSettings settings = null)
             => _settings = settings ?? new BackendSettings();
@@ -76,6 +85,12 @@ namespace MMO.Persistence
 
         /// <summary>Scheme://host:port the REST calls are made against.</summary>
         public string BaseUrl => _baseUrl ??= $"{_settings.Scheme}://{_settings.Host}:{_settings.Port}";
+
+        /// <summary>
+        /// The socket handshake URL is derived from this, so it mirrors <see cref="BaseUrl"/>.
+        /// Part of <see cref="INakamaSession"/>.
+        /// </summary>
+        public string HttpBaseUrl => BaseUrl;
 
         public async Task ConnectAsync(CancellationToken ct)
         {
@@ -91,6 +106,8 @@ namespace MMO.Persistence
                 throw new InvalidOperationException("Nakama returned a session without a token.");
 
             _sessionToken = session.token;
+            _refreshToken = session.refresh_token;
+            _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
 
             AccountResponse account = await GetAsync<AccountResponse>("/v2/account", ct);
             if (account?.user == null || string.IsNullOrEmpty(account.user.id))
@@ -102,8 +119,57 @@ namespace MMO.Persistence
         public Task DisconnectAsync()
         {
             _sessionToken = null;
+            _refreshToken = null;
             _userId = null;
+            _tokenValidUntil = DateTime.MinValue;
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Returns a session token that is valid for at least another
+        /// <see cref="RefreshMarginSeconds"/> seconds. Nakama's default session expiry is 60 s, so a
+        /// long-running zone server outlives its first token by definition: the socket reconnect
+        /// path and every long-idle REST call refresh through here before they go stale.
+        /// </summary>
+        public async Task<string> GetFreshTokenAsync(CancellationToken ct)
+        {
+            RequireSession();
+
+            if (_tokenValidUntil > DateTime.UtcNow.AddSeconds(RefreshMarginSeconds) ||
+                string.IsNullOrEmpty(_refreshToken))
+                return _sessionToken;
+
+            RefreshResponse refreshed = await PostAsync<RefreshResponse>(
+                "/v2/account/session/refresh",
+                JsonUtility.ToJson(new RefreshRequest { token = _sessionToken, refresh_token = _refreshToken }),
+                useBasic: true,
+                ct);
+
+            if (refreshed != null && !string.IsNullOrEmpty(refreshed.token))
+            {
+                _sessionToken = refreshed.token;
+                if (!string.IsNullOrEmpty(refreshed.refresh_token))
+                    _refreshToken = refreshed.refresh_token;
+
+                _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
+            }
+
+            return _sessionToken;
+        }
+
+        /// <summary>
+        /// Calls a registered server-side Lua RPC (<c>POST /v2/rpc/{id}</c>). Nakama wraps the
+        /// module's return value as <c>{"payload":"&lt;json string&gt;"}</c>; the inner string is
+        /// returned unchanged.
+        /// </summary>
+        public async Task<string> RpcAsync(string id, string jsonPayload, CancellationToken ct)
+        {
+            RequireSession();
+            await GetFreshTokenAsync(ct);
+
+            RpcEnvelope response = await PostAsync<RpcEnvelope>(
+                "/v2/rpc/" + id, jsonPayload, useBasic: false, ct);
+            return response?.payload;
         }
 
         /// <summary>Reads one owned storage object, or null when it does not exist.</summary>
@@ -122,6 +188,7 @@ namespace MMO.Persistence
             string collection, IReadOnlyList<string> keys, CancellationToken ct)
         {
             RequireSession();
+            await GetFreshTokenAsync(ct);
 
             var result = new List<StorageObjectData>();
             if (keys == null || keys.Count == 0)
@@ -173,6 +240,7 @@ namespace MMO.Persistence
             string collection, string key, string json, string version, CancellationToken ct)
         {
             RequireSession();
+            await GetFreshTokenAsync(ct);
 
             var write = new StorageObjectWrite
             {
@@ -202,6 +270,7 @@ namespace MMO.Persistence
         public async Task DeleteObjectAsync(string collection, string key, CancellationToken ct)
         {
             RequireSession();
+            await GetFreshTokenAsync(ct);
 
             var request = new DeleteStorageObjectsRequest
             {
@@ -305,7 +374,30 @@ namespace MMO.Persistence
         private class AuthSession
         {
             public string token;
-            public string refreshToken;
+
+            // Nakama returns snake_case; JsonUtility is an exact match.
+            public string refresh_token;
+        }
+
+        [Serializable]
+        private class RefreshRequest
+        {
+            public string token;
+            public string refresh_token;
+        }
+
+        [Serializable]
+        private class RefreshResponse
+        {
+            public string token;
+            public string refresh_token;
+        }
+
+        [Serializable]
+        private class RpcEnvelope
+        {
+            public string id;
+            public string payload;
         }
 
         [Serializable]

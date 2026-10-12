@@ -43,5 +43,14 @@ namespace MMO.Social
         Task SaveGuildAsync(GuildRecord record, CancellationToken ct = default);
 
         Task DeleteGuildAsync(string guildId, CancellationToken ct = default);
+
+        Task<FriendListRecord> LoadFriendsAsync(string accountId, CancellationToken ct = default);
+
+        /// <summary>Creates when <c>record.StorageVersion</c> is empty, otherwise if-matches it.</summary>
+        Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default);
+
+        /// <summary>Batch presence read for the friend-list online flags (100 ids per call).</summary>
+        Task<List<PresenceRecord>> LoadPresencesAsync(
+            IReadOnlyList<string> accountIds, CancellationToken ct = default);
     }
 }

@@ -104,6 +104,11 @@ namespace MMO.Net
             go.AddComponent<PlayerParty>();
             go.AddComponent<PlayerGuild>();
 
+            // Chat and the friend list ride the same hub. Both resolve the account id from the join
+            // cache the save trigger populated, so they land after it like the party/guild surfaces.
+            go.AddComponent<PlayerChat>();
+            go.AddComponent<PlayerFriends>();
+
             // Travels with the prefab so a client that receives its player object has something to
             // look through. It decides whether it may drive the camera by asking IsOwner, which is
             // why it is safe for every client's copy of this prefab to carry it.

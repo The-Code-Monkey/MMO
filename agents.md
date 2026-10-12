@@ -42,3 +42,69 @@ public void Inventory_EquipItem_FailsWhenLevelRequirementNotMet() {
 
     Assert.IsFalse(result);
 }
+```
+
+---
+
+## 3. Compiling Without a Unity License (Agent / CI-less Environments)
+
+The `unity` CLI and the Editor both require an activated license (`unity license status` →
+`none active`; batch invocations then exit **198**). Agentic sandboxes and locked-down CI often have
+no license, so **you cannot run Unity, its Test Runner, or `unity test` there**. You can still
+catch the vast majority of defects — every C# syntax/type/reference error — by compiling each
+assembly directly with the **Roslyn compiler Unity itself ships** against the **`netstandard2.1`
+reference pack** and the already-built package DLLs.
+
+This is a *compile check only*: it verifies syntax, types, overloads and assembly references
+exactly as Unity would. It does **not** run tests — anything that touches the engine at runtime
+(`JsonUtility`, `GameObject`, `ScriptableObject`, …) still needs a real Unity run.
+
+### The recipe
+
+```bash
+ED=/home/andy/Unity/Hub/Editor/6000.6.5f1/Editor            # adjust to the installed editor
+CSC=("$ED/Data/DotNetSdk/dotnet" \
+     "$ED/Data/DotNetSdk/sdk/8.0.318/Roslyn/bincore/csc.dll")
+
+# 1) Start from the netstandard2.1 reference assemblies + all Unity engine modules.
+REFS=()
+for d in "$ED/Data/DotNetSdk/packs/NETStandard.Library.Ref/2.1.0/ref/netstandard2.1"/*.dll; do
+  REFS+=("-r:$d"); done
+for d in "$ED/Data/Managed/UnityEngine"/*.dll; do REFS+=("-r:$d"); done
+
+# 2) Add the project's pre-built package assemblies (FishNet, uGUI, Cinemachine, …).
+for n in FishNet.Runtime UnityEngine.UI Unity.Cinemachine GameKit.Dependencies \
+         SynapseSocket Unity.InputSystem Unity.Mathematics Unity.Collections Unity.Burst; do
+  f="Library/ScriptAssemblies/$n.dll"; [ -f "$f" ] && REFS+=("-r:$f"); done
+
+# 3) Compile the runtime assembly (repeat with the right sources/refs for Editor + test asmdefs).
+mapfile -t SRC < <(find Assets/Scripts -name '*.cs')
+"${CSC[@]}" -nologo -noconfig -nostdlib+ -target:library -langversion:9.0 \
+  -define:UNITY_6000_0_OR_NEWER -define:UNITY_EDITOR -define:UNITY_STANDALONE \
+  -out:/tmp/MMO.Runtime.dll "${REFS[@]}" "${SRC[@]}" 2>&1 | grep ': error CS'
+```
+
+Repeat per assembly, following the `references` in its `.asmdef`:
+
+- `MMO.Editor` — sources `Assets/Editor/**`, add `-r:/tmp/MMO.Runtime.dll` and the
+  `Unity.Cinemachine.Editor` / `Unity.RenderPipelines.*` DLLs. **Do not** reference the monolithic
+  `Managed/UnityEditor.dll`; its types are already in the `Managed/UnityEngine/UnityEditor.*.dll`
+  modules and referencing both causes `CS0433` duplicate-type errors.
+- `MMO.Tests.EditMode` / `MMO.Tests.PlayMode` — sources `Assets/Tests/**`, add `-r:/tmp/MMO.Runtime.dll`,
+  `-r:/tmp/MMO.Editor.dll` (EditMode only), `UnityEngine.TestRunner`, `UnityEditor.TestRunner` and
+  `nunit.framework.dll` (under
+  `Managed/.../com.unity.ext.nunit/net472/unity-custom/`), plus `-define:UNITY_INCLUDE_TESTS`.
+
+A clean run prints **no `error CS` lines**. Warnings (`CS0618` obsolete `IsServer`, `CS0649` on
+`JsonUtility` DTO fields, `CS1998` in tests) are expected and harmless.
+
+### Rules of thumb
+
+- Treat "compiles with 0 errors across all four assemblies" as the gate before handing work back
+  when no license is available, and **say so explicitly** in the summary/PR — never claim tests pass.
+- To execute the suites, activate a license (`unity license activate`) or let
+  [`.github/workflows/unity-tests.yml`](.github/workflows/unity-tests.yml) run EditMode + PlayMode
+  on a licensed runner. That is the only source of truth for passing tests.
+- Every `.cs` must ship a sibling `.meta` (`fileFormatVersion: 2` + a unique `guid`); Unity generates
+  them on import, but committing them keeps GUIDs stable. Generate one per new file when working
+  without an editor.

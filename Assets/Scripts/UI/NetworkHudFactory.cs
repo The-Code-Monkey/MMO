@@ -84,7 +84,8 @@ namespace MMO.UI
                 CreatePlayerHud(root.transform),
                 CreateTargetFrame(root.transform),
                 CreateInventoryGrid(root.transform),
-                CreateActionBar(root.transform));
+                CreateActionBar(root.transform),
+                ChatFeed.Create(root.transform));
 
             hud.BindPlayer(vitals, inventory, abilities);
             hud.BindTarget(target);

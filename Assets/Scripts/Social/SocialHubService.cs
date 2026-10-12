@@ -25,7 +25,7 @@ namespace MMO.Social
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("MMO/Social/Social Hub Service")]
-    public sealed class SocialHubService : MonoBehaviour
+    public sealed class SocialHubService : MonoBehaviour, ILocalRoster, ISocialBus
     {
         public static SocialHubService Instance { get; private set; }
 
@@ -33,23 +33,43 @@ namespace MMO.Social
         [SerializeField, Min(1)] private int _casRetries = 5;
         [SerializeField, Min(0.5f)] private float _presenceInterval = 30f;
 
+        /// <summary>How often to refresh the local players' friend-list online flags.</summary>
+        [SerializeField, Min(1f)] private float _friendRefreshInterval = 10f;
+
         /// <summary>How long to wait before trying the backend again after a failed connect.</summary>
         [SerializeField, Min(1)] private float _connectRetrySeconds = 10f;
 
         [SerializeField] private string _zoneId = "local";
 
-        private readonly Dictionary<string, LocalPlayer> _local = new Dictionary<string, LocalPlayer>();
+        private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
         private ISocialRepository _repository;
         private NakamaRestClient _rest;
+        private ISocialBus _socketBus;
+        private ChatService _chat;
         private NetworkManager _manager;
         private bool _connected;
         private bool _subscribed;
         private Task<bool> _connectTask;
         private float _nextSyncTime;
         private float _nextPresenceTime;
+        private float _nextFriendRefreshTime;
         private float _nextConnectAttemptTime;
+
+        /// <summary>Raised on the main thread for every inbound bus envelope (chat or notify).</summary>
+        public event Action<SocialBusEnvelope> EnvelopeReceived;
+
+        /// <summary>Chat routing, coded against this hub as its roster and bus.</summary>
+        public ChatService Chat => _chat;
+
+        /// <summary>The shared REST client the socket and the notify hook use, or null in tests.</summary>
+        public NakamaRestClient Rest => _rest;
+
+        bool ISocialBus.IsConnected => _socketBus != null && _socketBus.IsConnected;
+
+        bool ISocialBus.TrySend(SocialBusEnvelope envelope)
+            => _socketBus != null && _socketBus.TrySend(envelope);
 
         /// <summary>Raised with the authoritative party whenever any party this zone hosts changes.</summary>
         public event Action<PartyRecord> PartyChanged;
@@ -76,6 +96,7 @@ namespace MMO.Social
         private void Awake()
         {
             Instance = this;
+            EnsureChat();
             if (_repository == null)
             {
                 _rest = new NakamaRestClient(new BackendSettings());
@@ -85,6 +106,9 @@ namespace MMO.Social
 
         private void OnDestroy()
         {
+            if (_socketBus != null)
+                _socketBus.EnvelopeReceived -= OnEnvelope;
+
             if (Instance == this)
                 Instance = null;
         }
@@ -109,6 +133,139 @@ namespace MMO.Social
             }
         }
 
+        private void EnsureChat()
+        {
+            if (_chat == null)
+                _chat = new ChatService(this, this);
+        }
+
+        #region Realtime backbone
+
+        /// <summary>
+        /// Wires the zone server's Nakama socket. Every inbound envelope is routed here: chat
+        /// through <see cref="ChatService"/>, friend/party/guild hints as a cue to re-read and push
+        /// snapshots. Called by <c>Net.NetworkManagerFactory</c>.
+        /// </summary>
+        public void AttachSocket(NakamaSocialSocket socket)
+        {
+            if (_socketBus != null)
+                _socketBus.EnvelopeReceived -= OnEnvelope;
+
+            _socketBus = socket;
+
+            if (_socketBus != null)
+            {
+                _socketBus.EnvelopeReceived += OnEnvelope;
+                _ = AnnounceLocalPresenceAsync();
+            }
+
+            EnsureChat();
+        }
+
+        /// <summary>Attaches the shared REST client the notify hook uses for <c>social_notify</c>.</summary>
+        public void AttachRestClient(NakamaRestClient rest)
+        {
+            if (rest != null)
+                _rest = rest;
+        }
+
+        /// <summary>Called by <see cref="PlayerChat"/> (server): routes this player's chat deliveries.</summary>
+        public void AttachChat(string accountId, Action<string> deliverChat)
+        {
+            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
+                handle.DeliverChat = deliverChat;
+        }
+
+        /// <summary>Called by <see cref="PlayerChat"/> (server) when the object despawns.</summary>
+        public void DetachChat(string accountId)
+        {
+            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
+                handle.DeliverChat = null;
+        }
+
+        /// <summary>Called by <see cref="PlayerFriends"/> (server): routes this player's friend pushes.</summary>
+        public void AttachFriends(string accountId, Action<string> deliverSnapshot, Action<int> notifyEvent)
+        {
+            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
+            {
+                handle.DeliverFriends = deliverSnapshot;
+                handle.NotifyFriendEvent = notifyEvent;
+            }
+        }
+
+        /// <summary>Called by <see cref="PlayerFriends"/> (server) when the object despawns.</summary>
+        public void DetachFriends(string accountId)
+        {
+            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
+            {
+                handle.DeliverFriends = null;
+                handle.NotifyFriendEvent = null;
+            }
+        }
+
+        private void OnEnvelope(SocialBusEnvelope envelope)
+        {
+            if (envelope == null)
+                return;
+
+            EnvelopeReceived?.Invoke(envelope);
+
+            switch (envelope.t)
+            {
+                case "chat":
+                    _chat?.RouteInbound(envelope);
+                    break;
+
+                case "friend":
+                case "party":
+                case "guild":
+                    if (envelope.accounts == null)
+                        break;
+
+                    foreach (string accountId in envelope.accounts)
+                    {
+                        if (_local.ContainsKey(accountId ?? string.Empty))
+                            _ = PushFriendsAsync(accountId);
+                    }
+                    break;
+            }
+        }
+
+        private async Task AnnounceLocalPresenceAsync()
+        {
+            foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
+                await SavePresenceAsync(local);
+        }
+
+        #endregion
+
+        #region ILocalRoster
+
+        /// <summary>The zone label stamped into presence so a member's host zone can be resolved.</summary>
+        string ILocalRoster.LocalZoneId => _zoneId;
+
+        IReadOnlyList<LocalPlayerHandle> ILocalRoster.Local
+        {
+            get
+            {
+                var list = new List<LocalPlayerHandle>(_local.Count);
+                foreach (LocalPlayerHandle handle in _local.Values)
+                    list.Add(handle);
+
+                return list;
+            }
+        }
+
+        string ILocalRoster.PartyOf(string accountId)
+            => _local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle) ? handle.PartyId : null;
+
+        string ILocalRoster.NameOf(string accountId)
+            => _local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle)
+                ? handle.PlayerName
+                : accountId;
+
+        #endregion
+
         #region Registration + lifecycle
 
         private void Start()
@@ -116,6 +273,7 @@ namespace MMO.Social
             _manager = GetComponentInParent<NetworkManager>();
             _nextSyncTime = Time.time + _syncInterval;
             _nextPresenceTime = Time.time + _presenceInterval;
+            _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
         }
 
         /// <summary>
@@ -128,7 +286,7 @@ namespace MMO.Social
             if (string.IsNullOrEmpty(accountId))
                 return;
 
-            var local = new LocalPlayer
+            var local = new LocalPlayerHandle
             {
                 AccountId = accountId,
                 PlayerName = string.IsNullOrEmpty(playerName) ? accountId : playerName,
@@ -176,12 +334,43 @@ namespace MMO.Social
                 _nextSyncTime = Time.time + _syncInterval;
                 _ = SyncAsync();
             }
+
+            // Refresh friend-list online flags on a low cadence so join/transfer/login all see
+            // fresh states without hammering the database.
+            if (Time.time >= _nextFriendRefreshTime)
+            {
+                _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
+                _ = RefreshLocalFriendsAsync();
+            }
         }
 
         private void OnServerConnectionState(FishNet.Transporting.ServerConnectionStateArgs args)
         {
-            if (args.ConnectionState == FishNet.Transporting.LocalConnectionState.Started)
-                _ = EnsureConnectedAsync();
+            if (args.ConnectionState != FishNet.Transporting.LocalConnectionState.Started)
+                return;
+
+            _ = EnsureConnectedAsync();
+            EnsureSocket();
+        }
+
+        /// <summary>
+        /// Brings up the realtime bus when the server starts. The scene that ships is baked from
+        /// <c>Net.NetworkManagerFactory</c>, but a socket's transport and session are runtime-only,
+        /// so a baked component would be inert; this materialises and configures one on the zone
+        /// server. A no-op when the factory (or a prior call) already attached one, and when the
+        /// repository is a test fake with no backend to talk to.
+        /// </summary>
+        private void EnsureSocket()
+        {
+            if (_socketBus != null || _rest == null)
+                return;
+
+            NakamaSocialSocket socket = GetComponent<NakamaSocialSocket>();
+            if (socket == null)
+                socket = gameObject.AddComponent<NakamaSocialSocket>();
+
+            socket.Configure(new WebSocketTransport(), _rest);
+            AttachSocket(socket);
         }
 
         private void OnDisable()
@@ -676,6 +865,311 @@ namespace MMO.Social
 
         #endregion
 
+        #region Friend intents
+
+        /// <summary>Sends a friend request from <paramref name="requesterId"/> to the named player.</summary>
+        public async Task<FriendRule> RequestFriendAsync(string requesterId, string targetName)
+        {
+            if (string.IsNullOrEmpty(requesterId))
+                return FriendRule.NotFound;
+
+            if (!await EnsureConnectedAsync())
+                return FriendRule.BackendUnavailable;
+
+            string targetId = await _repository.ResolveNameAsync(Normalize(targetName), CancellationToken.None);
+            if (string.IsNullOrEmpty(targetId))
+                return FriendRule.NotFound;
+
+            FriendRule result = await RetryFriendAsync(async () =>
+            {
+                FriendListRecord mine = await LoadFriendsAsync(requesterId);
+                FriendListRecord theirs = await LoadFriendsAsync(targetId);
+
+                FriendRule rule = FriendRules.CanRequest(requesterId, targetId, mine, theirs);
+                if (rule != FriendRule.Ok)
+                    return rule;
+
+                long now = NowTicks();
+
+                // Target first: if the second write dies, the dangling PendingIn is derived state
+                // that the reconcile pass or the accept path repairs — never a half-friend pair.
+                FriendRules.ApplyRequest(theirs, requesterId, ((ILocalRoster)this).NameOf(requesterId), now);
+                await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
+
+                FriendRules.ApplyPendingOut(mine, targetId, now);
+                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
+                return FriendRule.Ok;
+            });
+
+            if (result == FriendRule.Ok)
+            {
+                await SafeNotifyAsync("friend", string.Empty, requesterId, targetId);
+                await PushFriendsAsync(requesterId);
+                await PushFriendsAsync(targetId);
+                NotifyEvent(targetId, FriendEvent.RequestReceived);
+            }
+
+            return result;
+        }
+
+        /// <summary>Accepts the pending friend request from <paramref name="fromAccountId"/>.</summary>
+        public async Task<FriendRule> AcceptFriendAsync(string accountId, string fromAccountId)
+        {
+            if (!await EnsureConnectedAsync())
+                return FriendRule.BackendUnavailable;
+
+            FriendRule result = await RetryFriendAsync(async () =>
+            {
+                FriendListRecord mine = await LoadFriendsAsync(accountId);
+                FriendRule rule = FriendRules.CanAccept(mine, fromAccountId);
+                if (rule != FriendRule.Ok)
+                    return rule;
+
+                long now = NowTicks();
+                FriendRules.ApplyAccept(mine, fromAccountId, now);
+                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
+
+                // Materialize the other side immediately; if this best-effort write fails, the
+                // reconcile pass sees NeedsRepair and finishes it.
+                FriendListRecord theirs = await LoadFriendsAsync(fromAccountId);
+                if (theirs != null && FriendRules.NeedsRepair(mine, theirs, accountId, fromAccountId))
+                {
+                    FriendRules.ApplyAccept(theirs, accountId, now);
+                    await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
+                }
+
+                return FriendRule.Ok;
+            });
+
+            if (result == FriendRule.Ok)
+            {
+                await SafeNotifyAsync("friend", string.Empty, accountId, fromAccountId);
+                await PushFriendsAsync(accountId);
+                await PushFriendsAsync(fromAccountId);
+                NotifyEvent(fromAccountId, FriendEvent.Accepted);
+            }
+
+            return result;
+        }
+
+        /// <summary>Declines the pending friend request from <paramref name="fromAccountId"/>.</summary>
+        public async Task<FriendRule> DeclineFriendAsync(string accountId, string fromAccountId)
+        {
+            if (!await EnsureConnectedAsync())
+                return FriendRule.BackendUnavailable;
+
+            FriendRule result = await RetryFriendAsync(async () =>
+            {
+                FriendListRecord mine = await LoadFriendsAsync(accountId);
+                FriendRule rule = FriendRules.CanDecline(mine, fromAccountId);
+                if (rule != FriendRule.Ok)
+                    return rule;
+
+                FriendRules.Remove(mine, fromAccountId);
+                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
+
+                FriendListRecord theirs = await LoadFriendsAsync(fromAccountId);
+                FriendRules.Remove(theirs, accountId);
+                await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
+                return FriendRule.Ok;
+            });
+
+            if (result == FriendRule.Ok)
+            {
+                await SafeNotifyAsync("friend", string.Empty, accountId, fromAccountId);
+                await PushFriendsAsync(accountId);
+                await PushFriendsAsync(fromAccountId);
+                NotifyEvent(fromAccountId, FriendEvent.Declined);
+            }
+
+            return result;
+        }
+
+        /// <summary>Removes an accepted friend from both sides.</summary>
+        public async Task<FriendRule> RemoveFriendAsync(string accountId, string targetId)
+        {
+            if (!await EnsureConnectedAsync())
+                return FriendRule.BackendUnavailable;
+
+            FriendRule result = await RetryFriendAsync(async () =>
+            {
+                FriendListRecord mine = await LoadFriendsAsync(accountId);
+                FriendRule rule = FriendRules.CanRemove(mine, targetId);
+                if (rule != FriendRule.Ok)
+                    return rule;
+
+                FriendRules.Remove(mine, targetId);
+                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
+
+                FriendListRecord theirs = await LoadFriendsAsync(targetId);
+                FriendRules.Remove(theirs, accountId);
+                await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
+                return FriendRule.Ok;
+            });
+
+            if (result == FriendRule.Ok)
+            {
+                await SafeNotifyAsync("friend", string.Empty, accountId, targetId);
+                await PushFriendsAsync(accountId);
+                await PushFriendsAsync(targetId);
+                NotifyEvent(targetId, FriendEvent.Removed);
+            }
+
+            return result;
+        }
+
+        /// <summary>Pushes a fresh snapshot to a local player's friend list.</summary>
+        public async Task PushFriendsAsync(string accountId)
+        {
+            if (_repository == null || string.IsNullOrEmpty(accountId))
+                return;
+
+            if (!_local.TryGetValue(accountId, out LocalPlayerHandle handle) || handle.DeliverFriends == null)
+                return;
+
+            FriendListRecord record = await LoadFriendsAsync(accountId);
+            var ids = new List<string>();
+            if (record?.Entries != null)
+            {
+                foreach (FriendEntry entry in record.Entries)
+                    ids.Add(entry.AccountId);
+            }
+
+            var online = new HashSet<string>();
+            if (ids.Count > 0)
+            {
+                List<PresenceRecord> presences = await _repository.LoadPresencesAsync(ids, CancellationToken.None);
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                foreach (PresenceRecord presence in presences)
+                {
+                    if (presence != null && presence.IsHeartbeatFresh(now))
+                        online.Add(presence.AccountId);
+                }
+            }
+
+            var snapshot = new FriendListSnapshot();
+            if (record?.Entries != null)
+            {
+                foreach (FriendEntry entry in record.Entries)
+                {
+                    snapshot.Friends.Add(new FriendView
+                    {
+                        AccountId = entry.AccountId,
+                        PlayerName = string.IsNullOrEmpty(entry.PlayerName) ? entry.AccountId : entry.PlayerName,
+                        State = entry.State,
+                        Online = online.Contains(entry.AccountId),
+                    });
+                }
+            }
+
+            handle.DeliverFriends(JsonUtility.ToJson(snapshot));
+        }
+
+        private async Task RefreshLocalFriendsAsync()
+        {
+            if (_repository == null || _local.Count == 0)
+                return;
+
+            foreach (string accountId in new List<string>(_local.Keys))
+                await PushFriendsAsync(accountId);
+        }
+
+        private async Task RepairFriendsAsync()
+        {
+            foreach (string accountId in new List<string>(_local.Keys))
+            {
+                FriendListRecord mine = await LoadFriendsAsync(accountId);
+                if (mine?.Entries == null)
+                    continue;
+
+                foreach (FriendEntry entry in new List<FriendEntry>(mine.Entries))
+                {
+                    if (entry.State != FriendState.Accepted)
+                        continue;
+
+                    FriendListRecord theirs = await LoadFriendsAsync(entry.AccountId);
+                    if (!FriendRules.NeedsRepair(mine, theirs, accountId, entry.AccountId))
+                        continue;
+
+                    try
+                    {
+                        FriendRules.ApplyAccept(theirs, accountId, NowTicks());
+                        await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning($"[Social] friend repair failed for '{entry.AccountId}': {e.Message}");
+                    }
+                }
+            }
+        }
+
+        private async Task<FriendListRecord> LoadFriendsAsync(string accountId)
+            => await _repository.LoadFriendsAsync(accountId, CancellationToken.None)
+               ?? new FriendListRecord { AccountId = accountId };
+
+        private void NotifyEvent(string accountId, FriendEvent evt)
+        {
+            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
+                handle.NotifyFriendEvent?.Invoke((int)evt);
+        }
+
+        private async Task SafeNotifyAsync(string type, string target, params string[] accounts)
+        {
+            if (_rest == null || !_rest.IsConnected)
+                return;
+
+            try
+            {
+                await _rest.RpcAsync("social_notify", JsonUtility.ToJson(new NotifyPayload
+                {
+                    t = type,
+                    target = target,
+                    accounts = accounts,
+                }), CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                // Best-effort by design: the 2 s reconcile loop recovers a lost notify, so this
+                // never fails or blocks a write.
+                Debug.LogWarning($"[Social] social_notify ({type}) failed: {e.Message}");
+            }
+        }
+
+        private static long NowTicks() => DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+
+        private async Task<FriendRule> RetryFriendAsync(Func<Task<FriendRule>> attempt)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    return await attempt();
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await BackoffAsync(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Social] Friend mutation failed: {e.Message}");
+                    return FriendRule.BackendUnavailable;
+                }
+            }
+
+            return FriendRule.Conflict;
+        }
+
+        [Serializable]
+        private sealed class NotifyPayload
+        {
+            public string t;
+            public string target;
+            public string[] accounts;
+        }
+
+        #endregion
+
         #region Reconcile (cross-zone fanout)
 
         /// <summary>
@@ -725,6 +1219,10 @@ namespace MMO.Social
 
                 _lastIndexes[index.AccountId] = index;
 
+                // Keep the local roster's party pointer in step so party chat can route.
+                if (_local.TryGetValue(index.AccountId, out LocalPlayerHandle localHandle))
+                    localHandle.PartyId = index.PartyId;
+
                 if (!string.IsNullOrEmpty(index.PartyId))
                     partyIds.Add(index.PartyId);
 
@@ -745,13 +1243,16 @@ namespace MMO.Social
                 if (record != null)
                     GuildChanged?.Invoke(record);
             }
+
+            // Repair any half-accepted friendship whose mirror write or notify was lost.
+            await RepairFriendsAsync();
         }
 
         #endregion
 
         #region Presence
 
-        private async Task AnnounceAsync(LocalPlayer local)
+        private async Task AnnounceAsync(LocalPlayerHandle local)
         {
             if (!await EnsureConnectedAsync())
                 return;
@@ -770,11 +1271,11 @@ namespace MMO.Social
 
         private async Task HeartbeatAsync()
         {
-            foreach (LocalPlayer local in new List<LocalPlayer>(_local.Values))
+            foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
                 await SavePresenceAsync(local);
         }
 
-        private async Task SavePresenceAsync(LocalPlayer local)
+        private async Task SavePresenceAsync(LocalPlayerHandle local)
         {
             if (local == null)
                 return;
@@ -812,7 +1313,7 @@ namespace MMO.Social
 
         private async Task<string> ResolveDisplayNameAsync(string accountId, SocialIndexRecord _)
         {
-            if (_local.TryGetValue(accountId, out LocalPlayer local))
+            if (_local.TryGetValue(accountId, out LocalPlayerHandle local))
                 return local.PlayerName;
 
             PresenceRecord presence = await _repository.LoadPresenceAsync(accountId, CancellationToken.None);
@@ -823,7 +1324,7 @@ namespace MMO.Social
             => new PartyMemberRecord
             {
                 AccountId = accountId,
-                PlayerName = _local.TryGetValue(accountId, out LocalPlayer local) ? local.PlayerName : accountId,
+                PlayerName = _local.TryGetValue(accountId, out LocalPlayerHandle local) ? local.PlayerName : accountId,
                 ZoneId = _zoneId,
                 JoinedAtTicks = now.UtcDateTime.Ticks,
             };
@@ -876,12 +1377,6 @@ namespace MMO.Social
 
         private static Task BackoffAsync(int attempt)
             => Task.Delay(50 * (1 << attempt));
-
-        private sealed class LocalPlayer
-        {
-            public string AccountId;
-            public string PlayerName;
-        }
 
         #endregion
     }

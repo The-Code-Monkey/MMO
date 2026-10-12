@@ -18,6 +18,9 @@ services:
       - "7349:7349"   # gRPC
       - "7350:7350"   # HTTP API (what NakamaPlayerRepository talks to)
       - "7351:7351"   # developer console
+    volumes:
+      # Loads the Lua runtime modules: social_notify (the cross-zone social bus) and friends.
+      - ./nakama/modules:/nakama/data/modules:ro
     restart: unless-stopped
 
   db:
