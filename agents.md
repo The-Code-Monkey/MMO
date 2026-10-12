@@ -1,14 +1,21 @@
 # AGENTS.md — AI Collaboration Guidelines for Unity MMO
 
+> **Full documentation lives in [`docs/`](docs/README.md).** Start with
+> [`docs/01-architecture-overview.md`](docs/01-architecture-overview.md) for how the system works and
+> [`docs/12-conventions-and-checklist.md`](docs/12-conventions-and-checklist.md) for the day-to-day
+> rules. This file states the philosophy; the docs carry the mechanics and must be kept in sync with
+> any system change.
+
 ## 1. Core Architecture & Philosophy
 This project is a 3D URP, server-authoritative MMO built with **Unity** and **FishNet**.
 
 - **Server Authority First:** The server holds true state. Clients submit inputs or intents; the server validates, executes, and syncs back. Never trust client state for positions, inventory, or abilities.
-- **Assembly Definition Separation:** Split code across Assembly Definitions (`.asmdef`) to ensure fast compile times and enforce clean architectural boundaries:
-  - `Project.Core`: Pure C# data models, math, interfaces, and database DTOs.
-  - `Project.Server`: Server-only authoritative logic, validation, database integration.
-  - `Project.Client`: Client-side prediction, UI, visual effects, local input mapping.
-  - `Project.Shared`: Networked components, FishNet SyncVars, RPC payloads.
+- **Assembly Definition Separation:** Split code across Assembly Definitions (`.asmdef`) to ensure fast compile times and enforce clean architectural boundaries. The project currently ships:
+  - `MMO.Runtime` (`Assets/Scripts`): all runtime game code — pure logic, networked components, SyncVars, RPC payloads, UI and backend clients. Keep pure logic separated from networked shells *within* this assembly (see `docs/01-architecture-overview.md`).
+  - `MMO.Editor` (`Assets/Editor`): editor-only tooling, the prefab/scene bakers and the build guard.
+  - `MMO.Tests.EditMode` (`Assets/Tests/EditMode`) and `MMO.Tests.PlayMode` (`Assets/Tests/PlayMode`): the two test suites.
+
+  The intended long-term direction is to further split the runtime into pure-core, server and client assemblies; the conceptual boundaries (`Core`, `Server`, `Client`, `Shared`) describe that target even where a single assembly is still used today.
 - **Decoupled Mechanics (ScriptableObjects):** Ability systems ("You are what you wear") must be data-driven. Gear items hold ScriptableObjects that inject abilities into generic runtime containers.
 
 ---
@@ -29,10 +36,9 @@ All core game logic and network payloads **MUST** maintain at least 90% unit tes
 // Example requirement: Every server validation method must have isolated EditMode tests.
 [Test]
 public void Inventory_EquipItem_FailsWhenLevelRequirementNotMet() {
-    var player = MockPlayer(level: 5);
-    var highLevelStaff = MockWeapon(requiredLevel: 10);
-    
-    bool result = InventoryValidator.CanEquip(player, highLevelStaff);
-    
+    ItemDefinition highLevelStaff = TestItemDefinitions.Create("Staff", requiredLevel: 10);
+
+    bool result = InventoryValidator.CanEquip(playerLevel: 5, definition: highLevelStaff);
+
     Assert.IsFalse(result);
 }

@@ -4,6 +4,25 @@ A 3D URP, server-authoritative MMO built on **Unity** and **FishNet**. The serve
 player's stats, inventory and position; clients submit intended inputs and render what the server
 replicates back.
 
+## Documentation
+
+Full development documentation lives in [`docs/`](docs/README.md). It explains how every system works
+in simple English and how to keep building it, chapter by chapter:
+
+- [Architecture overview](docs/01-architecture-overview.md) — the server-authoritative model and code layout
+- [Getting started](docs/02-getting-started.md) — Unity version, backend, first Play
+- [Backend and persistence](docs/03-backend-and-persistence.md) — Nakama, save records, the save cadence
+- [Networking and the join flow](docs/04-networking-and-the-join-flow.md) — the gate, token auth, zone transfers
+- [Gameplay: stats, combat, abilities](docs/05-gameplay-stats-combat-abilities.md)
+- [Inventory and equipment](docs/06-inventory-and-equipment.md)
+- [Crafting and gathering](docs/07-crafting-and-gathering.md)
+- [UI: main menu and HUD](docs/08-ui-main-menu-and-hud.md)
+- [Editor tooling and scenes](docs/09-editor-tooling-and-scenes.md)
+- [Testing](docs/10-testing.md)
+- [Extending the game](docs/11-extending-the-game.md)
+- [Conventions and checklist](docs/12-conventions-and-checklist.md)
+- [Social: party and guild](docs/13-social-party-and-guild.md)
+
 ## Running the backend (Nakama + PostgreSQL)
 
 Player saves (stats, inventory) live in a central database so any server instance can read the same
