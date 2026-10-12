@@ -170,5 +170,7 @@ namespace MMO.Tests
         }
 
         #endregion
+
+        #endregion
     }
 }

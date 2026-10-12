@@ -2,7 +2,7 @@
     "name": "MMO.Tests.PlayMode",
     "rootNamespace": "MMO.Tests",
     "references": [
-        "UnityEngine.TestTools",
+        "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "MMO.Runtime",
         "FishNet.Runtime",

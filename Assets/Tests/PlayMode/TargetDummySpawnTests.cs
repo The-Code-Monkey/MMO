@@ -140,6 +140,8 @@ namespace MMO.Tests
             // the prefab and every spawn returns null.
             Assert.AreEqual(1, prefabs.Prefabs[1].PrefabId,
                 "The player keeps id 0, so the dummy must be id 1 on every end.");
+
+            yield return null;
         }
 
         [UnityTest]

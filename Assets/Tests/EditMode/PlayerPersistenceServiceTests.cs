@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MMO.Persistence;
 using NUnit.Framework;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace MMO.Tests
 {

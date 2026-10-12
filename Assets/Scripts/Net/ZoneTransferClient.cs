@@ -63,7 +63,7 @@ namespace MMO.Net
         }
 
         /// <summary>Handles a redirect: arms the transfer token and connects to the destination.</summary>
-        public void OnTransferBroadcast(ZoneTransferBroadcast message)
+        public void OnTransferBroadcast(ZoneTransferBroadcast message, Channel channel)
         {
             if (IsTransferring)
                 return;

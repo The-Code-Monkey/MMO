@@ -69,7 +69,7 @@ namespace MMO.Tests
             var equipment = EquipmentList((int)EquipmentSlot.Head,
                 ItemInstance.Create(ItemDefinitionRegistry.Resolve(HelmName), 0, 0));
 
-            PlayerSaveRecord record = Capture(bag: null, equipment);
+            PlayerSaveRecord record = Capture(bag: null, equipment: equipment);
 
             Assert.AreEqual(1, record.Items.Count);
             Assert.AreEqual((int)EquipmentSlot.Head, record.Items[0].EquipmentSlot);

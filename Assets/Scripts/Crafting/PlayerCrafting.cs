@@ -90,7 +90,6 @@ namespace MMO.Crafting
         }
 
         [Server]
-        [Server]
         public void AwardCraftingXp(int amount)
         {
             _craftingXp.Value = Mathf.Max(0, _craftingXp.Value + Mathf.Max(0, amount));

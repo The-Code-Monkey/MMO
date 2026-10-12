@@ -167,5 +167,11 @@ namespace MMO.Tests
             go.AddComponent<NetworkObject>();
             return go.AddComponent<TargetDummy>();
         }
+
+        private GameObject Track(GameObject go)
+        {
+            _sceneObjects.Add(go);
+            return go;
+        }
     }
 }

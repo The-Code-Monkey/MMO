@@ -2,6 +2,7 @@ using MMO.Crafting;
 using MMO.Inventory;
 using MMO.Tests;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace MMO.Tests
