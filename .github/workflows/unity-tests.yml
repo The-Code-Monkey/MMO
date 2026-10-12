@@ -31,8 +31,9 @@ jobs:
             Library-${{ runner.os }}-
 
       # Runs both the EditMode and PlayMode suites (testMode: all).
-      # Licensing: set repo secrets UNITY_EMAIL + UNITY_PASSWORD (Unity Personal),
-      # optionally UNITY_SERIAL (Unity Pro), or UNITY_LICENSE (a manual .ulf license).
+      # Licensing (GameCI): Unity Personal authenticates with the Unity account, so
+      # set repo secrets UNITY_EMAIL + UNITY_PASSWORD. Unity Pro/Plus also needs
+      # UNITY_SERIAL. (A UNITY_LICENSE .ulf is Enterprise/Industry-only now.)
       - name: Run Unity tests
         id: tests
         uses: game-ci/unity-test-runner@v4
