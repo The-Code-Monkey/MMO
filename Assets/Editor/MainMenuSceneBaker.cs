@@ -68,11 +68,13 @@ namespace MMO.Editor
             if (!Directory.Exists("Assets/Scenes"))
                 Directory.CreateDirectory("Assets/Scenes");
 
-            string path = EditorSceneManager.SaveScene(scene, ScenePath);
-            if (string.IsNullOrEmpty(path))
+            if (!EditorSceneManager.SaveScene(scene, ScenePath))
+            {
                 Debug.LogError("Could not save the Main Menu scene.");
+                return string.Empty;
+            }
 
-            return path;
+            return ScenePath;
         }
 
         /// <summary>Adds the scene to the build list (enabled) unless it is already there.</summary>

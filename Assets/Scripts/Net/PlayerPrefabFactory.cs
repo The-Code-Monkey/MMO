@@ -9,6 +9,7 @@ using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Persistence;
+using MMO.Social;
 using UnityEngine;
 
 namespace MMO.Net
@@ -97,6 +98,11 @@ namespace MMO.Net
             // save through: it consumes the record the join gate fetched and subscribes the save
             // events only once that apply has settled.
             go.AddComponent<PlayerSaveTrigger>();
+
+            // The social surface: intent-only RPCs whose state lives behind SocialHubService. After
+            // the save trigger so ResolveIdentity finds this player's account already in the join cache.
+            go.AddComponent<PlayerParty>();
+            go.AddComponent<PlayerGuild>();
 
             // Travels with the prefab so a client that receives its player object has something to
             // look through. It decides whether it may drive the camera by asking IsOwner, which is

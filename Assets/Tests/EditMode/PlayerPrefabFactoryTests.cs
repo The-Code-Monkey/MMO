@@ -242,29 +242,27 @@ namespace MMO.Tests
 
             // A NetworkBehaviour resolves its NetworkObject through its own GameObject; a mismatch
             // is the classic "stats never replicate" bug. FishNet also wires SyncTypes in
-            // NetworkBehaviour-index order, so all six of the project's behaviours belong here —
+            // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(6, behaviours.Length,
-                "The player carries its stats, combat, inventory, ability slots, gathering loop and camera script, nothing else.");
+            Assert.AreEqual(10, behaviours.Length,
+                "The player carries stats, combat, inventory, ability slots, gathering, crafting, the save trigger, the party and guild views, and the camera script.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
             Assert.IsInstanceOf<PlayerAbilities>(behaviours[3]);
             Assert.IsInstanceOf<PlayerGathering>(behaviours[4]);
-            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[5]);
-            Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
-                "The stats and the NetworkObject must be on the same object.");
-            Assert.AreSame(nob.gameObject, behaviours[1].gameObject,
-                "The combat state and the NetworkObject must be on the same object.");
-            Assert.AreSame(nob.gameObject, behaviours[2].gameObject,
-                "The inventory and the NetworkObject must be on the same object.");
-            Assert.AreSame(nob.gameObject, behaviours[3].gameObject,
-                "The ability slots and the NetworkObject must be on the same object.");
-            Assert.AreSame(nob.gameObject, behaviours[4].gameObject,
-                "The gathering loop and the NetworkObject must be on the same object.");
-            Assert.AreSame(nob.gameObject, behaviours[5].gameObject,
-                "The camera script and the NetworkObject must be on the same object.");
+            Assert.IsInstanceOf<MMO.Crafting.PlayerCrafting>(behaviours[5]);
+            Assert.IsInstanceOf<MMO.Persistence.PlayerSaveTrigger>(behaviours[6]);
+            Assert.IsInstanceOf<MMO.Social.PlayerParty>(behaviours[7]);
+            Assert.IsInstanceOf<MMO.Social.PlayerGuild>(behaviours[8]);
+            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[9]);
+
+            foreach (NetworkBehaviour behaviour in behaviours)
+            {
+                Assert.AreSame(nob.gameObject, behaviour.gameObject,
+                    $"{behaviour.GetType().Name} and the NetworkObject must be on the same object.");
+            }
         }
 
         [Test]

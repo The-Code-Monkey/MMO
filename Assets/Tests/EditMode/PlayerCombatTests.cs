@@ -206,6 +206,12 @@ namespace MMO.Tests
             return go.AddComponent<PlayerCombat>();
         }
 
+        private GameObject Track(GameObject go)
+        {
+            _sceneObjects.Add(go);
+            return go;
+        }
+
         private static MethodInfo PublicMethod(string name, params System.Type[] parameterTypes)
         {
             MethodInfo method = typeof(PlayerCombat).GetMethod(name,

@@ -2,10 +2,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FishNet.Connection;
+using FishNet.Managing;
 using MMO.Net;
 using MMO.Persistence;
 using NUnit.Framework;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace MMO.Tests
 {

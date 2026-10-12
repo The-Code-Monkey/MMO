@@ -3,7 +3,7 @@
     "rootNamespace": "MMO.Tests",
     "references": [
         "UnityEditor.TestRunner",
-        "UnityEngine.TestTools",
+        "UnityEngine.TestRunner",
         "MMO.Runtime",
         "MMO.Editor",
         "FishNet.Runtime",
