@@ -21,6 +21,7 @@ namespace MMO.Persistence
         public const string PresenceCollection = "social_presence";
         public const string NameIndexCollection = "name_index";
         public const string GuildCollection = "guilds";
+        public const string FriendsCollection = "friends";
 
         private readonly NakamaRestClient _rest;
 
@@ -147,6 +148,46 @@ namespace MMO.Persistence
         public Task DeleteGuildAsync(string guildId, CancellationToken ct = default)
             => _rest.DeleteObjectAsync(GuildCollection, guildId, ct);
 
+        public async Task<FriendListRecord> LoadFriendsAsync(string accountId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(FriendsCollection, accountId, ct);
+            FriendListRecord record = Deserialize<FriendListRecord>(obj);
+            if (record != null && string.IsNullOrEmpty(record.AccountId))
+                record.AccountId = accountId;
+
+            return record;
+        }
+
+        public async Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                FriendsCollection, record.AccountId, JsonUtility.ToJson(record), record.StorageVersion, ct);
+        }
+
+        public async Task<List<PresenceRecord>> LoadPresencesAsync(
+            IReadOnlyList<string> accountIds, CancellationToken ct = default)
+        {
+            List<StorageObjectData> objects = await _rest.ReadObjectsAsync(PresenceCollection, accountIds, ct);
+
+            var result = new List<PresenceRecord>(objects.Count);
+            foreach (StorageObjectData obj in objects)
+            {
+                PresenceRecord record = Deserialize<PresenceRecord>(obj);
+                if (record == null)
+                    continue;
+
+                if (string.IsNullOrEmpty(record.AccountId))
+                    record.AccountId = obj.Key;
+
+                result.Add(record);
+            }
+
+            return result;
+        }
+
         private static T Deserialize<T>(StorageObjectData obj) where T : class
         {
             if (obj == null || string.IsNullOrEmpty(obj.Value))
@@ -161,6 +202,8 @@ namespace MMO.Persistence
                 index.StorageVersion = obj.Version;
             else if (record is PresenceRecord presence)
                 presence.StorageVersion = obj.Version;
+            else if (record is FriendListRecord friends)
+                friends.StorageVersion = obj.Version;
 
             return record;
         }

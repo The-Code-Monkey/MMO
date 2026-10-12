@@ -124,6 +124,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, GuildRecord> Guilds = new Dictionary<string, GuildRecord>();
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
             public readonly Dictionary<string, PresenceRecord> Presence = new Dictionary<string, PresenceRecord>();
+            public readonly Dictionary<string, FriendListRecord> Friends = new Dictionary<string, FriendListRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
 
             public Task<PartyRecord> LoadPartyAsync(string partyId, CancellationToken ct = default)
@@ -192,6 +193,28 @@ namespace MMO.Tests
             {
                 Guilds.Remove(guildId);
                 return Task.CompletedTask;
+            }
+
+            public Task<FriendListRecord> LoadFriendsAsync(string accountId, CancellationToken ct = default)
+                => Task.FromResult(Friends.TryGetValue(accountId, out FriendListRecord f) ? f : null);
+
+            public Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default)
+            {
+                Friends[record.AccountId] = record;
+                return Task.CompletedTask;
+            }
+
+            public Task<List<PresenceRecord>> LoadPresencesAsync(
+                IReadOnlyList<string> accountIds, CancellationToken ct = default)
+            {
+                var result = new List<PresenceRecord>();
+                foreach (string accountId in accountIds)
+                {
+                    if (Presence.TryGetValue(accountId, out PresenceRecord p))
+                        result.Add(p);
+                }
+
+                return Task.FromResult(result);
             }
         }
     }

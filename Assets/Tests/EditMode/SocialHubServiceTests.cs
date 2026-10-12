@@ -337,6 +337,107 @@ namespace MMO.Tests
 
         #endregion
 
+        #region Friends
+
+        [Test]
+        public async Task RequestFriendAsync_UnknownName_ReportsNotFound()
+        {
+            FriendRule result = await _hub.RequestFriendAsync("a", "ghost");
+
+            Assert.AreEqual(FriendRule.NotFound, result);
+        }
+
+        [Test]
+        public async Task RequestFriendAsync_RecordsPendingOnBothSides()
+        {
+            _repo.Names["bob"] = "b";
+
+            FriendRule result = await _hub.RequestFriendAsync("a", "bob");
+
+            Assert.AreEqual(FriendRule.Ok, result);
+            Assert.AreEqual(FriendState.PendingOut, FriendRules.Find(_repo.Friends["a"], "b").State);
+            Assert.AreEqual(FriendState.PendingIn, FriendRules.Find(_repo.Friends["b"], "a").State);
+        }
+
+        [Test]
+        public async Task RequestFriendAsync_ToSelf_IsRefused()
+        {
+            _repo.Names["alice"] = "a";
+
+            FriendRule result = await _hub.RequestFriendAsync("a", "alice");
+
+            Assert.AreEqual(FriendRule.SelfRequest, result);
+        }
+
+        [Test]
+        public async Task AcceptFriendAsync_PromotesBothSidesToAccepted()
+        {
+            _repo.Names["bob"] = "b";
+            await _hub.RequestFriendAsync("a", "bob");
+
+            FriendRule result = await _hub.AcceptFriendAsync("b", "a");
+
+            Assert.AreEqual(FriendRule.Ok, result);
+            Assert.AreEqual(FriendState.Accepted, FriendRules.Find(_repo.Friends["a"], "b").State);
+            Assert.AreEqual(FriendState.Accepted, FriendRules.Find(_repo.Friends["b"], "a").State);
+        }
+
+        [Test]
+        public async Task AcceptFriendAsync_WithoutARequest_ReportsNotPending()
+        {
+            FriendRule result = await _hub.AcceptFriendAsync("b", "a");
+
+            Assert.AreEqual(FriendRule.NotPending, result);
+        }
+
+        [Test]
+        public async Task RemoveFriendAsync_DropsTheEntryFromBothSides()
+        {
+            _repo.Names["bob"] = "b";
+            await _hub.RequestFriendAsync("a", "bob");
+            await _hub.AcceptFriendAsync("b", "a");
+
+            FriendRule result = await _hub.RemoveFriendAsync("a", "b");
+
+            Assert.AreEqual(FriendRule.Ok, result);
+            Assert.IsNull(FriendRules.Find(_repo.Friends["a"], "b").AccountId);
+            Assert.IsNull(FriendRules.Find(_repo.Friends["b"], "a").AccountId);
+        }
+
+        [Test]
+        public async Task SyncAsync_RepairsAHalfAcceptedFriendship()
+        {
+            // "a" accepted "b", but "b"'s mirror write was lost: only one side is Accepted.
+            _repo.Friends["a"] = new FriendListRecord
+            {
+                AccountId = "a",
+                Entries = new List<FriendEntry>
+                {
+                    new FriendEntry { AccountId = "b", State = FriendState.Accepted },
+                },
+            };
+            _repo.Friends["b"] = new FriendListRecord
+            {
+                AccountId = "b",
+                Entries = new List<FriendEntry>
+                {
+                    new FriendEntry { AccountId = "a", State = FriendState.PendingIn },
+                },
+            };
+
+            _hub.RegisterLocal("a", "alice");
+            _hub.RegisterLocal("b", "bob");
+
+            await _hub.SyncAsync();
+
+            Assert.AreEqual(
+                FriendState.Accepted,
+                FriendRules.Find(_repo.Friends["b"], "a").State,
+                "The reconcile pass must mirror the accepted state onto the other side.");
+        }
+
+        #endregion
+
         /// <summary>
         /// An in-memory <see cref="ISocialRepository"/> that mirrors the record versions and can
         /// inject a single optimistic-concurrency failure, so the retry loop is exercised offline.
@@ -347,6 +448,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, GuildRecord> Guilds = new Dictionary<string, GuildRecord>();
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
             public readonly Dictionary<string, PresenceRecord> Presence = new Dictionary<string, PresenceRecord>();
+            public readonly Dictionary<string, FriendListRecord> Friends = new Dictionary<string, FriendListRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
 
             public bool ConflictOnNextIndexSave;
@@ -420,6 +522,26 @@ namespace MMO.Tests
                 return Task.CompletedTask;
             }
 
+            public Task<FriendListRecord> LoadFriendsAsync(string accountId, CancellationToken ct = default)
+                => Task.FromResult(Clone(Get(Friends, accountId)));
+
+            public Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default)
+                => Save(record, Friends, record.AccountId, record.StorageVersion, () => record.StorageVersion = NextVersion());
+
+            public Task<List<PresenceRecord>> LoadPresencesAsync(
+                IReadOnlyList<string> accountIds, CancellationToken ct = default)
+            {
+                var result = new List<PresenceRecord>();
+                foreach (string accountId in accountIds)
+                {
+                    PresenceRecord presence = Clone(Get(Presence, accountId));
+                    if (presence != null)
+                        result.Add(presence);
+                }
+
+                return Task.FromResult(result);
+            }
+
             private static TValue Get<TValue>(Dictionary<string, TValue> store, string key)
                 => store.TryGetValue(key, out TValue value) ? value : default;
 
@@ -450,6 +572,7 @@ namespace MMO.Tests
                     GuildRecord guild => guild.StorageVersion,
                     SocialIndexRecord index => index.StorageVersion,
                     PresenceRecord presence => presence.StorageVersion,
+                    FriendListRecord friends => friends.StorageVersion,
                     _ => null,
                 };
 

@@ -128,6 +128,20 @@ namespace MMO.Net
 
                 go.SetActive(true);
 
+                // Client-side game socket. Activation above ran SocialHubService.Awake in PlayMode,
+                // so an authenticated session exists and the socket can be wired now. In EditMode
+                // Awake does not run, so Rest is null: skip here and let the hub materialise the
+                // socket itself when the server starts (SocialHubService.EnsureSocket). Everything
+                // the bus carries is a hint — the hub's reconcile pass is the authority — so a
+                // failed connect degrades chat only.
+                SocialHubService socialHub = go.GetComponent<SocialHubService>();
+                if (socialHub != null && socialHub.Rest != null)
+                {
+                    NakamaSocialSocket socialSocket = go.AddComponent<NakamaSocialSocket>();
+                    socialSocket.Configure(new WebSocketTransport(), socialHub.Rest);
+                    socialHub.AttachSocket(socialSocket);
+                }
+
                 // Deliberately after activation. PlayerSpawner subscribes to
                 // SceneManager.OnClientLoadedStartScenes from its own Awake, and SceneManager is
                 // only created by NetworkManager.Awake — so this must not race component Awake
