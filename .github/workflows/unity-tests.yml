@@ -1,0 +1,59 @@
+name: Unity Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# Required by game-ci to publish the test results as a check run on the PR.
+permissions:
+  contents: read
+  checks: write
+
+# Cancel superseded runs when new commits are pushed to the same PR.
+concurrency:
+  group: unity-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: EditMode + PlayMode
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ runner.os }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ runner.os }}-
+
+      # Runs both the EditMode and PlayMode suites (testMode: all).
+      # Licensing: set repo secrets UNITY_EMAIL + UNITY_PASSWORD (Unity Personal),
+      # optionally UNITY_SERIAL (Unity Pro), or UNITY_LICENSE (a manual .ulf license).
+      - name: Run Unity tests
+        id: tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          unityVersion: auto # reads ProjectSettings/ProjectVersion.txt (6000.6.5f1)
+          testMode: all
+          artifactsPath: test-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Unity Test Results
+          # Coverage instrumentation crashes some Unity versions; enable if needed.
+          coverageEnabled: false
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-test-results
+          path: ${{ steps.tests.outputs.artifactsPath }}
+          if-no-files-found: warn
