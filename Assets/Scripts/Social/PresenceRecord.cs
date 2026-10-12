@@ -34,7 +34,7 @@ namespace MMO.Social
             return age >= 0 && age <= HeartbeatTtl.Ticks;
         }
 
-        public static PresenceRecord Online(string accountId, string playerName, string zoneId, DateTimeOffset now)
+        public static PresenceRecord CreateOnline(string accountId, string playerName, string zoneId, DateTimeOffset now)
             => new PresenceRecord
             {
                 AccountId = accountId,

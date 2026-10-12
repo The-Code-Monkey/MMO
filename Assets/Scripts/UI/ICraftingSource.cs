@@ -9,6 +9,6 @@ namespace MMO.UI
         int CraftingLevel { get; }
         CraftingStation OpenedStation { get; }
         event Action RecipesChanged;
-        event Action StationOpened;
+        event Action<CraftingStation> StationOpened;
     }
 }

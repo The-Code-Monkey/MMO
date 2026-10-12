@@ -82,7 +82,7 @@ namespace MMO.Tests
         public void PresenceRecord_FreshHeartbeat_IsOnline()
         {
             var now = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
-            PresenceRecord record = PresenceRecord.Online("a", "Alice", "z1", now);
+            PresenceRecord record = PresenceRecord.CreateOnline("a", "Alice", "z1", now);
 
             Assert.IsTrue(record.IsHeartbeatFresh(now));
             Assert.IsTrue(record.IsHeartbeatFresh(now.AddSeconds(89)));
@@ -92,7 +92,7 @@ namespace MMO.Tests
         public void PresenceRecord_StaleHeartbeat_ReadsOffline()
         {
             var now = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
-            PresenceRecord record = PresenceRecord.Online("a", "Alice", "z1", now);
+            PresenceRecord record = PresenceRecord.CreateOnline("a", "Alice", "z1", now);
 
             Assert.IsFalse(record.IsHeartbeatFresh(now.AddSeconds(91)),
                 "A crashed zone must let its players go stale after the heartbeat window.");
@@ -111,7 +111,7 @@ namespace MMO.Tests
         public void PresenceRecord_RoundTrips()
         {
             var now = new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
-            PresenceRecord record = PresenceRecord.Online("a", "Alice", "z1", now);
+            PresenceRecord record = PresenceRecord.CreateOnline("a", "Alice", "z1", now);
 
             PresenceRecord copy = JsonUtility.FromJson<PresenceRecord>(JsonUtility.ToJson(record));
 

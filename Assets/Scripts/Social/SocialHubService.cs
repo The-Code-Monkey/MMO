@@ -782,7 +782,7 @@ namespace MMO.Social
             try
             {
                 PresenceRecord existing = await _repository.LoadPresenceAsync(local.AccountId, CancellationToken.None);
-                PresenceRecord record = PresenceRecord.Online(
+                PresenceRecord record = PresenceRecord.CreateOnline(
                     local.AccountId, local.PlayerName, _zoneId, DateTimeOffset.UtcNow);
 
                 if (existing != null)

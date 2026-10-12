@@ -41,7 +41,7 @@ namespace MMO.Tests
 
         private static void SeedOnline(FakeSocialRepository repo, string accountId, string name, string zoneId = "z1")
         {
-            repo.Presence[accountId] = PresenceRecord.Online(accountId, name, zoneId, DateTimeOffset.UtcNow);
+            repo.Presence[accountId] = PresenceRecord.CreateOnline(accountId, name, zoneId, DateTimeOffset.UtcNow);
             repo.Names[name.ToLowerInvariant()] = accountId;
         }
 

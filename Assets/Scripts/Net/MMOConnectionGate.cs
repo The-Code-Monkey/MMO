@@ -174,8 +174,8 @@ namespace MMO.Net
                     return;
                 }
 
-                int clientId = connection != null ? connection.ClientId : -1;
-                _ = ValidateAndDecideAsync(connection, clientId, playerName, authToken);
+                int authClientId = connection != null ? connection.ClientId : -1;
+                _ = ValidateAndDecideAsync(connection, authClientId, playerName, authToken);
                 return;
             }
 

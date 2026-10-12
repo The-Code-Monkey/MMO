@@ -3,7 +3,10 @@
     "rootNamespace": "MMO.Editor",
     "references": [
         "MMO.Runtime",
-        "FishNet.Runtime"
+        "FishNet.Runtime",
+        "Unity.Cinemachine",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [
         "Editor"
