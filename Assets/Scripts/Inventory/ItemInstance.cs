@@ -98,5 +98,18 @@ namespace MMO.Inventory
             int count = StackCount < 1 ? 1 : StackCount;
             return definition.Value * count;
         }
+
+        public long GetTotalValue()
+        {
+            if (IsEmpty)
+                return 0;
+
+            ItemDefinition definition = ItemDefinitionRegistry.Resolve(ItemName);
+            if (definition == null)
+                return 0;
+
+            int count = StackCount < 1 ? 1 : StackCount;
+            return definition.Value * count;
+        }
     }
 }
