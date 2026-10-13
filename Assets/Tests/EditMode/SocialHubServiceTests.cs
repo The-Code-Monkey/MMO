@@ -543,6 +543,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, PresenceRecord> Presence = new Dictionary<string, PresenceRecord>();
             public readonly Dictionary<string, FriendListRecord> Friends = new Dictionary<string, FriendListRecord>();
             public readonly Dictionary<string, GuildBankRecord> GuildBanks = new Dictionary<string, GuildBankRecord>();
+            public readonly Dictionary<string, GuildBankLedgerRecord> GuildBankLedgers = new Dictionary<string, GuildBankLedgerRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
 
             public bool ConflictOnNextIndexSave;
@@ -640,6 +641,12 @@ namespace MMO.Tests
 
                 return Save(record, GuildBanks, record.GuildId, record.StorageVersion, () => record.StorageVersion = NextVersion());
             }
+
+            public Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default)
+                => Task.FromResult(Clone(Get(GuildBankLedgers, guildId)));
+
+            public Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default)
+                => Save(record, GuildBankLedgers, record.GuildId, record.StorageVersion, () => record.StorageVersion = NextVersion());
 
             public Task<List<PresenceRecord>> LoadPresencesAsync(
                 IReadOnlyList<string> accountIds, CancellationToken ct = default)

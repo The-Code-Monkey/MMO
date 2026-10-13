@@ -943,6 +943,7 @@ namespace MMO.Social
                 return new GuildBankResult(GuildBankRule.NoGuild);
 
             string guildId = null;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             GuildBankResult result = await RetryBankAsync(async () =>
             {
                 SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
@@ -961,14 +962,16 @@ namespace MMO.Social
                     return new GuildBankResult(GuildBankRule.InvalidItem);
 
                 ItemInstance item = bag.Items[itemIndex];
-                GuildBankRule rule = GuildBankRules.CanDeposit(guild, bank, accountId, tabIndex, item);
+                GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
+                GuildBankRule rule = GuildBankRules.CanDeposit(guild, bank, accountId, tabIndex, item, now);
                 if (rule != GuildBankRule.Ok)
                     return new GuildBankResult(rule);
 
-                if (!GuildBankRules.Deposit(bank, tabIndex, item))
+                if (!GuildBankRules.Deposit(bank, tabIndex, item, rank, now))
                     return new GuildBankResult(GuildBankRule.TabFull);
 
                 await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                await AppendLedgerAsync(guildId, accountId, GuildBankLedgerAction.Deposit, tabIndex, item, bagX, bagY);
                 return new GuildBankResult(GuildBankRule.Ok, item);
             });
 
@@ -987,7 +990,7 @@ namespace MMO.Social
         /// Moves the item at the tab cell into the requesting member's bag. Bag space is reserved
         /// before the CAS; if the add still loses a race, the item is CAS-ed back into the bank.
         /// </summary>
-        public async Task<GuildBankResult> WithdrawAsync(string accountId, int tabIndex, int gridX, int gridY)
+        public async Task<GuildBankResult> WithdrawAsync(string accountId, int tabIndex, int gridX, int gridY, int stackCount = -1)
         {
             if (!await EnsureConnectedAsync())
                 return new GuildBankResult(GuildBankRule.BackendUnavailable);
@@ -1033,6 +1036,7 @@ namespace MMO.Social
                 cellX = freeX;
                 cellY = freeY;
                 await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                await AppendLedgerAsync(guildId, accountId, GuildBankLedgerAction.Withdraw, tabIndex, withdrawn, gridX, gridY);
                 return new GuildBankResult(GuildBankRule.Ok, withdrawn);
             });
 
@@ -1054,12 +1058,13 @@ namespace MMO.Social
 
         /// <summary>Leader-only: replaces a rank's deposit/withdraw permissions on the bank.</summary>
         public async Task<GuildBankRule> SetBankPermissionAsync(
-            string accountId, GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit)
+            string accountId, GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit,
+            long withdrawValueLimit = GuildBankRules.UnlimitedValue, long depositValueLimit = GuildBankRules.UnlimitedValue)
         {
             if (!await EnsureConnectedAsync())
                 return GuildBankRule.BackendUnavailable;
 
-            if (!GuildBankRules.IsValidPermission(allowDeposit, allowWithdraw, withdrawLimit))
+            if (!GuildBankRules.IsValidPermission(allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit))
                 return GuildBankRule.InvalidPermission;
 
             string guildId = null;
@@ -1076,7 +1081,7 @@ namespace MMO.Social
                     return rule;
 
                 GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-                GuildBankRules.SetPermission(bank, rank, allowDeposit, allowWithdraw, withdrawLimit);
+                GuildBankRules.SetPermission(bank, rank, allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit);
                 await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
                 return GuildBankRule.Ok;
             });
@@ -1129,6 +1134,57 @@ namespace MMO.Social
             });
 
             await PushBankAsync(guildId);
+        }
+
+        private async Task AppendLedgerAsync(string guildId, string actorAccountId, GuildBankLedgerAction action, int tabIndex, ItemInstance item, int gridX, int gridY)
+        {
+            if (string.IsNullOrEmpty(guildId) || item.IsEmpty)
+                return;
+
+            try
+            {
+                GuildBankLedgerRecord ledger = await _repository.LoadGuildBankLedgerAsync(guildId, CancellationToken.None);
+                if (ledger == null)
+                {
+                    ledger = new GuildBankLedgerRecord
+                    {
+                        GuildId = guildId,
+                        Entries = new List<GuildBankLedgerEntry>(),
+                    };
+                }
+                else if (ledger.Entries == null)
+                {
+                    ledger.Entries = new List<GuildBankLedgerEntry>();
+                }
+
+                ItemDefinition def = ItemDefinitionRegistry.Resolve(item.ItemName);
+                long valuePerUnit = def != null ? def.Value : 0;
+                int count = item.StackCount < 1 ? 1 : item.StackCount;
+
+                ledger.Entries.Add(new GuildBankLedgerEntry
+                {
+                    GuildId = guildId,
+                    ActorAccountId = actorAccountId,
+                    Action = action,
+                    TabIndex = tabIndex,
+                    ItemName = item.ItemName,
+                    Width = item.Width,
+                    Height = item.Height,
+                    GridX = gridX,
+                    GridY = gridY,
+                    StackCount = count,
+                    ValuePerUnit = valuePerUnit,
+                    TotalValue = valuePerUnit * count,
+                    TimestampTicks = DateTimeOffset.UtcNow.UtcTicks,
+                    AffectedCells = new List<int>(),
+                });
+
+                await _repository.SaveGuildBankLedgerAsync(ledger, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Guild bank ledger append failed: {e.Message}");
+            }
         }
 
         private async Task<GuildBankResult> RetryBankAsync(Func<Task<GuildBankResult>> attempt)

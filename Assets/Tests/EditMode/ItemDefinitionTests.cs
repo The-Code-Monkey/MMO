@@ -71,6 +71,7 @@ namespace MMO.Tests
                      {
                          "_itemName", "_equipSlot", "_requiredLevel",
                          "_gridWidth", "_gridHeight", "_maxHealthBonus", "_maxManaBonus",
+                         "_isStackable", "_maxStackSize", "_value",
                      })
             {
                 FieldInfo field = typeof(ItemDefinition).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -88,6 +89,7 @@ namespace MMO.Tests
                      {
                          "ItemName", "EquipSlot", "RequiredLevel",
                          "GridWidth", "GridHeight", "MaxHealthBonus", "MaxManaBonus",
+                         "IsStackable", "MaxStackSize", "Value",
                      })
             {
                 PropertyInfo property = typeof(ItemDefinition).GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
@@ -108,6 +110,8 @@ namespace MMO.Tests
             AssertMinOn("_maxManaBonus", 0f);
             AssertMinOn("_gridWidth", 1f);
             AssertMinOn("_gridHeight", 1f);
+            AssertMinOn("_maxStackSize", 1f);
+            AssertMinOn("_value", 0f);
         }
 
         [Test]

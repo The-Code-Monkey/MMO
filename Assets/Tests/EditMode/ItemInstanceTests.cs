@@ -28,7 +28,7 @@ namespace MMO.Tests
         [Test]
         public void ItemInstance_HoldsPublicFieldsForTheWire()
         {
-            foreach (string name in new[] { "ItemName", "GridX", "GridY", "Width", "Height" })
+            foreach (string name in new[] { "ItemName", "GridX", "GridY", "Width", "Height", "StackCount" })
             {
                 FieldInfo field = typeof(ItemInstance).GetField(name, BindingFlags.Instance | BindingFlags.Public);
 

@@ -23,6 +23,7 @@ namespace MMO.Persistence
         public const string GuildCollection = "guilds";
         public const string FriendsCollection = "friends";
         public const string GuildBankCollection = "guild_banks";
+        public const string GuildBankLedgerCollection = "guild_bank_ledgers";
 
         private readonly NakamaRestClient _rest;
 
@@ -204,6 +205,21 @@ namespace MMO.Persistence
                 GuildBankCollection, record.GuildId, JsonUtility.ToJson(record), record.StorageVersion, ct);
         }
 
+        public async Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(GuildBankLedgerCollection, guildId, ct);
+            return Deserialize<GuildBankLedgerRecord>(obj);
+        }
+
+        public async Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                GuildBankLedgerCollection, record.GuildId, JsonUtility.ToJson(record), record.StorageVersion, ct);
+        }
+
         private static T Deserialize<T>(StorageObjectData obj) where T : class
         {
             if (obj == null || string.IsNullOrEmpty(obj.Value))
@@ -222,6 +238,8 @@ namespace MMO.Persistence
                 friends.StorageVersion = obj.Version;
             else if (record is GuildBankRecord bank)
                 bank.StorageVersion = obj.Version;
+            else if (record is GuildBankLedgerRecord bankLedger)
+                bankLedger.StorageVersion = obj.Version;
 
             return record;
         }

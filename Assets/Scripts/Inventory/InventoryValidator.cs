@@ -25,5 +25,21 @@ namespace MMO.Inventory
 
             return playerLevel >= definition.RequiredLevel;
         }
+
+        public static bool CanStack(ItemDefinition source, ItemDefinition target)
+        {
+            if (source == null || target == null)
+                return false;
+
+            return source.IsStackable && target.IsStackable && source.ItemName == target.ItemName;
+        }
+
+        public static int MaxStack(ItemDefinition definition)
+        {
+            if (definition == null)
+                return 1;
+
+            return definition.IsStackable ? definition.MaxStackSize : 1;
+        }
     }
 }
