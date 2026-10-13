@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FishNet.Managing;
+using MMO.Inventory;
 using MMO.Persistence;
 using UnityEngine;
 
@@ -44,6 +45,9 @@ namespace MMO.Social
         private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
+        /// <summary>Local <see cref="PlayerGuild"/>s keyed by account, whose bags a bank mutation moves items into.</summary>
+        private readonly Dictionary<string, PlayerGuild> _localGuilds = new Dictionary<string, PlayerGuild>();
+
         private ISocialRepository _repository;
         private NakamaRestClient _rest;
         private ISocialBus _socketBus;
@@ -76,6 +80,12 @@ namespace MMO.Social
 
         /// <summary>Raised with the authoritative guild whenever a guild this zone hosts changes.</summary>
         public event Action<GuildRecord> GuildChanged;
+
+        /// <summary>
+        /// Raised with the authoritative bank whenever a guild bank this zone hosts changes (a local
+        /// deposit/withdraw/edit, or the reconcile pass seeing a change made on another zone).
+        /// </summary>
+        public event Action<GuildBankRecord> BankChanged;
 
         /// <summary>Raised for the one invited account; delivery is a <c>TargetRpc</c> underneath.</summary>
         public event Action<string, PendingPartyInvite> PartyInviteReceived;
@@ -201,6 +211,20 @@ namespace MMO.Social
                 handle.DeliverFriends = null;
                 handle.NotifyFriendEvent = null;
             }
+        }
+
+        /// <summary>Called by <see cref="PlayerGuild"/> (server): registers the local guild view for bank work.</summary>
+        public void AttachGuildView(string accountId, PlayerGuild guild)
+        {
+            if (!string.IsNullOrEmpty(accountId) && guild != null)
+                _localGuilds[accountId] = guild;
+        }
+
+        /// <summary>Called by <see cref="PlayerGuild"/> (server) when the object despawns.</summary>
+        public void DetachGuildView(string accountId)
+        {
+            if (!string.IsNullOrEmpty(accountId))
+                _localGuilds.Remove(accountId);
         }
 
         private void OnEnvelope(SocialBusEnvelope envelope)
@@ -865,6 +889,260 @@ namespace MMO.Social
 
         #endregion
 
+        #region Guild bank intents
+
+        /// <summary>
+        /// Moves the item at the bag cell into the guild bank's tab. One CAS read-modify-write on
+        /// the bank object: the bag change happens only after the write wins, so the bag can never
+        /// lose an item the bank did not gain.
+        /// </summary>
+        public async Task<GuildBankResult> DepositAsync(string accountId, int tabIndex, int bagX, int bagY)
+        {
+            if (!await EnsureConnectedAsync())
+                return new GuildBankResult(GuildBankRule.BackendUnavailable);
+
+            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+                return new GuildBankResult(GuildBankRule.NoGuild);
+
+            PlayerInventory bag = player.Inventory;
+            if (bag == null)
+                return new GuildBankResult(GuildBankRule.NoGuild);
+
+            string guildId = null;
+            GuildBankResult result = await RetryBankAsync(async () =>
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return new GuildBankResult(GuildBankRule.NoGuild);
+
+                guildId = index.GuildId;
+                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+
+                // Resolve through the cell against the live SyncList, never a client-supplied index:
+                // the bag may have shifted between the click and this call.
+                int itemIndex = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight)
+                    .FindAt(bag.Items, bagX, bagY);
+                if (itemIndex < 0)
+                    return new GuildBankResult(GuildBankRule.InvalidItem);
+
+                ItemInstance item = bag.Items[itemIndex];
+                GuildBankRule rule = GuildBankRules.CanDeposit(guild, bank, accountId, tabIndex, item);
+                if (rule != GuildBankRule.Ok)
+                    return new GuildBankResult(rule);
+
+                if (!GuildBankRules.Deposit(bank, tabIndex, item))
+                    return new GuildBankResult(GuildBankRule.TabFull);
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return new GuildBankResult(GuildBankRule.Ok, item);
+            });
+
+            if (result.Rule == GuildBankRule.Ok)
+            {
+                // The bank is durable. Only now may the bag lose the item, so a failed write can
+                // never strand an item outside both containers.
+                bag.RemoveItemAt(bagX, bagY);
+                await PushBankAsync(guildId);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Moves the item at the tab cell into the requesting member's bag. Bag space is reserved
+        /// before the CAS; if the add still loses a race, the item is CAS-ed back into the bank.
+        /// </summary>
+        public async Task<GuildBankResult> WithdrawAsync(string accountId, int tabIndex, int gridX, int gridY)
+        {
+            if (!await EnsureConnectedAsync())
+                return new GuildBankResult(GuildBankRule.BackendUnavailable);
+
+            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+                return new GuildBankResult(GuildBankRule.NoGuild);
+
+            PlayerInventory bag = player.Inventory;
+            if (bag == null)
+                return new GuildBankResult(GuildBankRule.NoGuild);
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            string guildId = null;
+            int cellX = 0;
+            int cellY = 0;
+            ItemInstance withdrawn = default;
+
+            GuildBankResult result = await RetryBankAsync(async () =>
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return new GuildBankResult(GuildBankRule.NoGuild);
+
+                guildId = index.GuildId;
+                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+
+                GuildBankRule rule = GuildBankRules.CanWithdraw(guild, bank, accountId, tabIndex, gridX, gridY, now);
+                if (rule != GuildBankRule.Ok)
+                    return new GuildBankResult(rule);
+
+                // Reserve bag space *before* the CAS: a full bag must refuse without touching the bank.
+                GuildBankTab tab = GuildBankRules.FindTab(bank, tabIndex);
+                ItemInstance candidate = GuildBankRules.ItemAt(tab, gridX, gridY);
+                var bagGrid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
+                if (candidate.IsEmpty ||
+                    !bagGrid.TryFindFreeSpace(bag.Items, candidate.Width, candidate.Height, out int freeX, out int freeY))
+                    return new GuildBankResult(GuildBankRule.BagFull);
+
+                if (!GuildBankRules.Withdraw(guild, bank, accountId, tabIndex, gridX, gridY, now, out withdrawn))
+                    return new GuildBankResult(GuildBankRule.NothingToWithdraw);
+
+                cellX = freeX;
+                cellY = freeY;
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return new GuildBankResult(GuildBankRule.Ok, withdrawn);
+            });
+
+            if (result.Rule == GuildBankRule.Ok)
+            {
+                if (!bag.TryAddExistingItem(withdrawn, cellX, cellY))
+                {
+                    // The bag shifted between the space check and now (another request landed on the
+                    // same player): put the item back so nothing is lost, then tell the player.
+                    await ReturnToBankAsync(guildId, tabIndex, withdrawn);
+                    return new GuildBankResult(GuildBankRule.BagFull);
+                }
+
+                await PushBankAsync(guildId);
+            }
+
+            return result;
+        }
+
+        /// <summary>Leader-only: replaces a rank's deposit/withdraw permissions on the bank.</summary>
+        public async Task<GuildBankRule> SetBankPermissionAsync(
+            string accountId, GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit)
+        {
+            if (!await EnsureConnectedAsync())
+                return GuildBankRule.BackendUnavailable;
+
+            if (!GuildBankRules.IsValidPermission(allowDeposit, allowWithdraw, withdrawLimit))
+                return GuildBankRule.InvalidPermission;
+
+            string guildId = null;
+            GuildBankRule result = await RetryBankPermissionAsync(async () =>
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return GuildBankRule.NoGuild;
+
+                guildId = index.GuildId;
+                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
+                GuildBankRule rule = GuildBankRules.CanEditPermissions(guild, accountId);
+                if (rule != GuildBankRule.Ok)
+                    return rule;
+
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+                GuildBankRules.SetPermission(bank, rank, allowDeposit, allowWithdraw, withdrawLimit);
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return GuildBankRule.Ok;
+            });
+
+            if (result == GuildBankRule.Ok)
+                await PushBankAsync(guildId);
+
+            return result;
+        }
+
+        private async Task<GuildBankRecord> LoadOrCreateBankAsync(string guildId)
+        {
+            if (string.IsNullOrEmpty(guildId))
+                return null;
+
+            GuildBankRecord bank = await _repository.LoadGuildBankAsync(guildId, CancellationToken.None);
+            if (bank == null)
+                bank = GuildBankRules.CreateDefault(guildId);
+            else
+                GuildBankRules.EnsureDefaults(bank);
+
+            return bank;
+        }
+
+        /// <summary>Reloads the authoritative bank and pushes it to every local member of the guild.</summary>
+        private async Task PushBankAsync(string guildId)
+        {
+            if (string.IsNullOrEmpty(guildId))
+                return;
+
+            GuildBankRecord bank = await _repository.LoadGuildBankAsync(guildId, CancellationToken.None);
+            if (bank != null)
+                BankChanged?.Invoke(bank);
+        }
+
+        /// <summary>Puts a withdrawn item back into the bank after a bag race lost; best effort.</summary>
+        private async Task ReturnToBankAsync(string guildId, int tabIndex, ItemInstance item)
+        {
+            if (string.IsNullOrEmpty(guildId) || item.IsEmpty)
+                return;
+
+            await RetryBankAsync(async () =>
+            {
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+                if (!GuildBankRules.Deposit(bank, tabIndex, item))
+                    return new GuildBankResult(GuildBankRule.TabFull);
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return new GuildBankResult(GuildBankRule.Ok);
+            });
+
+            await PushBankAsync(guildId);
+        }
+
+        private async Task<GuildBankResult> RetryBankAsync(Func<Task<GuildBankResult>> attempt)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    return await attempt();
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await BackoffAsync(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Social] Guild bank mutation failed: {e.Message}");
+                    return new GuildBankResult(GuildBankRule.BackendUnavailable);
+                }
+            }
+
+            return new GuildBankResult(GuildBankRule.Conflict);
+        }
+
+        private async Task<GuildBankRule> RetryBankPermissionAsync(Func<Task<GuildBankRule>> attempt)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    return await attempt();
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await BackoffAsync(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Social] Guild bank permission edit failed: {e.Message}");
+                    return GuildBankRule.BackendUnavailable;
+                }
+            }
+
+            return GuildBankRule.Conflict;
+        }
+
+        #endregion
+
         #region Friend intents
 
         /// <summary>Sends a friend request from <paramref name="requesterId"/> to the named player.</summary>
@@ -1242,6 +1520,16 @@ namespace MMO.Social
                 GuildRecord record = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
                 if (record != null)
                     GuildChanged?.Invoke(record);
+
+                // A bank that was never written opens with the default tabs and rank rules, so a
+                // brand-new guild still has something to render on every zone hosting its members.
+                GuildBankRecord bank = await _repository.LoadGuildBankAsync(guildId, CancellationToken.None);
+                if (bank == null)
+                    bank = GuildBankRules.CreateDefault(guildId);
+                else
+                    GuildBankRules.EnsureDefaults(bank);
+
+                BankChanged?.Invoke(bank);
             }
 
             // Repair any half-accepted friendship whose mirror write or notify was lost.

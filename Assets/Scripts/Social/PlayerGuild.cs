@@ -2,6 +2,7 @@ using System;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Inventory;
 using MMO.Persistence;
 using UnityEngine;
 
@@ -11,47 +12,67 @@ namespace MMO.Social
     /// A player's guild view, the guild half of <see cref="PlayerParty"/>: intent-only RPCs to the
     /// server, an authoritative roster replicated back through SyncVars. Guild membership persists
     /// across sessions (unlike parties), so a reconnecting player's guild reappears on the next
-    /// reconcile pass.
+    /// reconcile pass. The guild bank rides the same surface: deposit/withdraw/permission intents
+    /// to <see cref="SocialHubService"/>, and one bank SyncVar replicated back.
     /// </summary>
     public sealed class PlayerGuild : NetworkBehaviour
     {
         private readonly SyncVar<string> _guildId = new SyncVar<string>();
         private readonly SyncVar<string> _rosterJson = new SyncVar<string>();
+        private readonly SyncVar<string> _bankJson = new SyncVar<string>();
 
         private string _accountId;
 
         /// <summary>Raised on the owning client whenever the replicated guild roster changes.</summary>
         public event Action RosterChanged;
 
+        /// <summary>Raised on the owning client whenever the replicated guild bank changes.</summary>
+        public event Action BankChanged;
+
         /// <summary>Raised on the invited client when a guild invite popup should appear.</summary>
         public event Action<string, string> InviteReceived;
 
-        /// <summary>Raised on the acting client when the server refuses an intent.</summary>
+        /// <summary>Raised on the acting client when the server refuses a guild intent.</summary>
         public event Action<GuildRule> RuleFailed;
+
+        /// <summary>Raised on the acting client when the server refuses a bank intent.</summary>
+        public event Action<GuildBankRule> BankRuleFailed;
 
         public string GuildId => _guildId.Value;
 
         public string RosterJson => _rosterJson.Value;
 
+        /// <summary>The authoritative bank parsed from the replicate SyncVar, or null before one arrives.</summary>
+        public GuildBankRecord Bank
+            => string.IsNullOrEmpty(_bankJson.Value) ? null : JsonUtility.FromJson<GuildBankRecord>(_bankJson.Value);
+
+        /// <summary>The player's bag, cached on the server so bank intents can move items out of it.</summary>
+        public PlayerInventory Inventory { get; private set; }
+
         public override void OnStartNetwork()
         {
             _rosterJson.OnChange += OnRosterChanged;
+            _bankJson.OnChange += OnBankChanged;
 
             if (!IsServer)
                 return;
 
             ResolveAccountId();
+            Inventory = GetComponent<PlayerInventory>();
             SocialHubService hub = SocialHubService.Instance;
             if (hub != null)
             {
+                hub.AttachGuildView(_accountId, this);
                 hub.GuildChanged += OnGuildChanged;
                 hub.GuildInviteReceived += OnGuildInviteReceived;
+                hub.BankChanged += OnHubBankChanged;
             }
         }
 
         public override void OnStopNetwork()
         {
             _rosterJson.OnChange -= OnRosterChanged;
+            _bankJson.OnChange -= OnBankChanged;
 
             if (!IsServer)
                 return;
@@ -59,8 +80,10 @@ namespace MMO.Social
             SocialHubService hub = SocialHubService.Instance;
             if (hub != null)
             {
+                hub.DetachGuildView(_accountId);
                 hub.GuildChanged -= OnGuildChanged;
                 hub.GuildInviteReceived -= OnGuildInviteReceived;
+                hub.BankChanged -= OnHubBankChanged;
             }
         }
 
@@ -108,6 +131,31 @@ namespace MMO.Social
                 return;
 
             RpcKick(targetAccountId);
+        }
+
+        public void RequestDeposit(int tabIndex, int bagX, int bagY)
+        {
+            if (!OwnsSelf())
+                return;
+
+            RpcRequestDeposit(tabIndex, bagX, bagY);
+        }
+
+        public void RequestWithdraw(int tabIndex, int gridX, int gridY)
+        {
+            if (!OwnsSelf())
+                return;
+
+            RpcRequestWithdraw(tabIndex, gridX, gridY);
+        }
+
+        /// <param name="rank">The <see cref="GuildRank"/> whose bank permissions are edited, as its int value.</param>
+        public void RequestSetPermission(int rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit)
+        {
+            if (!OwnsSelf())
+                return;
+
+            RpcRequestSetPermission(rank, allowDeposit, allowWithdraw, withdrawLimit);
         }
 
         [ServerRpc]
@@ -164,6 +212,35 @@ namespace MMO.Social
             _ = ResolveRuleAsync(SocialHubService.Instance.KickFromGuildAsync(_accountId, targetAccountId));
         }
 
+        [ServerRpc]
+        private void RpcRequestDeposit(int tabIndex, int bagX, int bagY, NetworkConnection sender = null)
+        {
+            if (!ValidSender(sender))
+                return;
+
+            _ = ResolveBankAsync(SocialHubService.Instance.DepositAsync(_accountId, tabIndex, bagX, bagY));
+        }
+
+        [ServerRpc]
+        private void RpcRequestWithdraw(int tabIndex, int gridX, int gridY, NetworkConnection sender = null)
+        {
+            if (!ValidSender(sender))
+                return;
+
+            _ = ResolveBankAsync(SocialHubService.Instance.WithdrawAsync(_accountId, tabIndex, gridX, gridY));
+        }
+
+        [ServerRpc]
+        private void RpcRequestSetPermission(
+            int rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit, NetworkConnection sender = null)
+        {
+            if (!ValidSender(sender))
+                return;
+
+            _ = ResolveBankRuleAsync(
+                SocialHubService.Instance.SetBankPermissionAsync(_accountId, (GuildRank)rank, allowDeposit, allowWithdraw, withdrawLimit));
+        }
+
         private async System.Threading.Tasks.Task InviteAsync(string targetName)
         {
             GuildRule rule = await SocialHubService.Instance.InviteToGuildAsync(_accountId, targetName);
@@ -176,6 +253,20 @@ namespace MMO.Social
             GuildRule rule = await pending;
             if (rule != GuildRule.Ok)
                 TargetNotify(Owner, (int)rule);
+        }
+
+        private async System.Threading.Tasks.Task ResolveBankAsync(System.Threading.Tasks.Task<GuildBankResult> pending)
+        {
+            GuildBankResult result = await pending;
+            if (result.Rule != GuildBankRule.Ok)
+                TargetNotifyBank(Owner, (int)result.Rule);
+        }
+
+        private async System.Threading.Tasks.Task ResolveBankRuleAsync(System.Threading.Tasks.Task<GuildBankRule> pending)
+        {
+            GuildBankRule rule = await pending;
+            if (rule != GuildBankRule.Ok)
+                TargetNotifyBank(Owner, (int)rule);
         }
 
         #endregion
@@ -207,12 +298,29 @@ namespace MMO.Social
                 ClearRoster();
         }
 
+        /// <summary>Called by the hub when a guild bank this zone hosts changed; applies the local view.</summary>
+        private void OnHubBankChanged(GuildBankRecord record)
+        {
+            if (!IsServer || record == null || record.GuildId != _guildId.Value)
+                return;
+
+            ApplyBank(record);
+        }
+
         [Server]
         public void ApplyRoster(GuildRecord record)
         {
             _guildId.Value = record?.GuildId;
             _rosterJson.Value = record == null ? null : JsonUtility.ToJson(record);
         }
+
+        /// <summary>
+        /// Server: pushed by <see cref="SocialHubService"/> after every winning bank write or
+        /// reconcile pass; replicates to every observer of this player.
+        /// </summary>
+        [Server]
+        public void ApplyBank(GuildBankRecord record)
+            => _bankJson.Value = record == null ? null : JsonUtility.ToJson(record);
 
         [TargetRpc]
         private void TargetReceiveInvite(NetworkConnection conn, string fromName, string guildId)
@@ -222,16 +330,24 @@ namespace MMO.Social
         private void TargetNotify(NetworkConnection conn, int rule)
             => RuleFailed?.Invoke((GuildRule)rule);
 
+        [TargetRpc]
+        private void TargetNotifyBank(NetworkConnection conn, int rule)
+            => BankRuleFailed?.Invoke((GuildBankRule)rule);
+
         #endregion
 
         private void ClearRoster()
         {
             _guildId.Value = null;
             _rosterJson.Value = null;
+            _bankJson.Value = null;
         }
 
         private void OnRosterChanged(string previous, string current, bool asServer)
             => RosterChanged?.Invoke();
+
+        private void OnBankChanged(string previous, string current, bool asServer)
+            => BankChanged?.Invoke();
 
         private bool OwnsSelf()
         {

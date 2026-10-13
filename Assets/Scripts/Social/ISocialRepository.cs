@@ -49,6 +49,12 @@ namespace MMO.Social
         /// <summary>Creates when <c>record.StorageVersion</c> is empty, otherwise if-matches it.</summary>
         Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default);
 
+        /// <summary>Null when the guild has never deposited; <c>StorageVersion</c> carries the if-match token.</summary>
+        Task<GuildBankRecord> LoadGuildBankAsync(string guildId, CancellationToken ct = default);
+
+        /// <summary>Creates when <c>record.StorageVersion</c> is empty, otherwise if-matches it.</summary>
+        Task SaveGuildBankAsync(GuildBankRecord record, CancellationToken ct = default);
+
         /// <summary>Batch presence read for the friend-list online flags (100 ids per call).</summary>
         Task<List<PresenceRecord>> LoadPresencesAsync(
             IReadOnlyList<string> accountIds, CancellationToken ct = default);

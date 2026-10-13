@@ -264,6 +264,99 @@ namespace MMO.Tests
 
         #endregion
 
+        #region Guild bank
+
+        private static GuildRecord GuildWith(string guildId, params (string id, GuildRank rank)[] members)
+        {
+            var guild = new GuildRecord { GuildId = guildId, Name = "Raiders", LeaderId = members[0].id };
+            long tick = 1;
+            foreach ((string id, GuildRank rank) member in members)
+            {
+                guild.Members.Add(new GuildMemberRecord
+                {
+                    AccountId = member.id,
+                    Rank = (int)member.rank,
+                    JoinedAtTicks = tick++,
+                });
+            }
+
+            return guild;
+        }
+
+        [Test]
+        public async Task SetBankPermissionAsync_LeaderEdits_StoresThePermissionOnTheBank()
+        {
+            _repo.Guilds["g1"] = GuildWith("g1", ("a", GuildRank.Leader));
+            _repo.Indexes["a"] = new SocialIndexRecord { AccountId = "a", GuildId = "g1" };
+
+            GuildBankRule result =
+                await _hub.SetBankPermissionAsync("a", GuildRank.Officer, allowDeposit: false, allowWithdraw: true, withdrawLimit: 3);
+
+            Assert.AreEqual(GuildBankRule.Ok, result);
+            GuildBankPermission permission = GuildBankRules.PermissionFor(_repo.GuildBanks["g1"], GuildRank.Officer);
+            Assert.IsFalse(permission.AllowDeposit);
+            Assert.IsTrue(permission.AllowWithdraw);
+            Assert.AreEqual(3, permission.WithdrawLimit);
+        }
+
+        [Test]
+        public async Task SetBankPermissionAsync_NonLeader_IsRefused()
+        {
+            _repo.Guilds["g1"] = GuildWith("g1", ("a", GuildRank.Leader), ("b", GuildRank.Member));
+            _repo.Indexes["b"] = new SocialIndexRecord { AccountId = "b", GuildId = "g1" };
+
+            GuildBankRule result = await _hub.SetBankPermissionAsync("b", GuildRank.Officer, true, true, 1);
+
+            Assert.AreEqual(GuildBankRule.NotPermitted, result);
+            Assert.IsFalse(_repo.GuildBanks.ContainsKey("g1"), "A refused edit must not create the bank.");
+        }
+
+        [Test]
+        public async Task SetBankPermissionAsync_InvalidPermission_IsRefused()
+        {
+            _repo.Guilds["g1"] = GuildWith("g1", ("a", GuildRank.Leader));
+            _repo.Indexes["a"] = new SocialIndexRecord { AccountId = "a", GuildId = "g1" };
+
+            GuildBankRule result =
+                await _hub.SetBankPermissionAsync("a", GuildRank.Leader, allowDeposit: false, allowWithdraw: false, withdrawLimit: 1);
+
+            Assert.AreEqual(GuildBankRule.InvalidPermission, result);
+            Assert.IsFalse(_repo.GuildBanks.ContainsKey("g1"));
+        }
+
+        [Test]
+        public async Task SetBankPermissionAsync_RetriesAfterAVersionConflict()
+        {
+            _repo.Guilds["g1"] = GuildWith("g1", ("a", GuildRank.Leader));
+            _repo.Indexes["a"] = new SocialIndexRecord { AccountId = "a", GuildId = "g1" };
+            _repo.GuildBanks["g1"] = GuildBankRules.CreateDefault("g1");
+            _repo.ConflictOnNextBankSave = true;
+
+            GuildBankRule result = await _hub.SetBankPermissionAsync("a", GuildRank.Member, true, true, 2);
+
+            Assert.AreEqual(GuildBankRule.Ok, result);
+            Assert.GreaterOrEqual(_repo.BankSaveCalls, 2, "The 409 must re-read and retry, not give up.");
+            Assert.AreEqual(2, GuildBankRules.PermissionFor(_repo.GuildBanks["g1"], GuildRank.Member).WithdrawLimit);
+        }
+
+        [Test]
+        public async Task SyncAsync_RaisesBankChangedForAHostedMember()
+        {
+            _repo.Guilds["g1"] = GuildWith("g1", ("a", GuildRank.Leader));
+
+            GuildBankRecord received = null;
+            _hub.BankChanged += record => received = record;
+            _hub.RegisterLocal("a", "alice");
+            _repo.Indexes["a"] = new SocialIndexRecord { AccountId = "a", GuildId = "g1" };
+
+            await _hub.SyncAsync();
+
+            Assert.IsNotNull(received, "The reconcile pass must push the hosted guild's bank.");
+            Assert.AreEqual("g1", received.GuildId);
+        }
+
+        #endregion
+
         #region Reconcile
 
         [Test]
@@ -449,10 +542,14 @@ namespace MMO.Tests
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
             public readonly Dictionary<string, PresenceRecord> Presence = new Dictionary<string, PresenceRecord>();
             public readonly Dictionary<string, FriendListRecord> Friends = new Dictionary<string, FriendListRecord>();
+            public readonly Dictionary<string, GuildBankRecord> GuildBanks = new Dictionary<string, GuildBankRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
 
             public bool ConflictOnNextIndexSave;
             public int IndexSaveCalls;
+
+            public bool ConflictOnNextBankSave;
+            public int BankSaveCalls;
 
             private int _versions;
 
@@ -528,6 +625,22 @@ namespace MMO.Tests
             public Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default)
                 => Save(record, Friends, record.AccountId, record.StorageVersion, () => record.StorageVersion = NextVersion());
 
+            public Task<GuildBankRecord> LoadGuildBankAsync(string guildId, CancellationToken ct = default)
+                => Task.FromResult(Clone(Get(GuildBanks, guildId)));
+
+            public Task SaveGuildBankAsync(GuildBankRecord record, CancellationToken ct = default)
+            {
+                BankSaveCalls++;
+
+                if (ConflictOnNextBankSave)
+                {
+                    ConflictOnNextBankSave = false;
+                    return Task.FromException(new StorageVersionConflictException("injected bank conflict"));
+                }
+
+                return Save(record, GuildBanks, record.GuildId, record.StorageVersion, () => record.StorageVersion = NextVersion());
+            }
+
             public Task<List<PresenceRecord>> LoadPresencesAsync(
                 IReadOnlyList<string> accountIds, CancellationToken ct = default)
             {
@@ -573,6 +686,7 @@ namespace MMO.Tests
                     SocialIndexRecord index => index.StorageVersion,
                     PresenceRecord presence => presence.StorageVersion,
                     FriendListRecord friends => friends.StorageVersion,
+                    GuildBankRecord bank => bank.StorageVersion,
                     _ => null,
                 };
 

@@ -290,6 +290,42 @@ namespace MMO.Inventory
         }
 
         /// <summary>
+        /// Server: remove the item covering bag cell (<paramref name="gridX"/>, <paramref name="gridY"/>).
+        /// Used by the guild bank deposit path, which removes from the bag only after the bank's
+        /// versioned write has won, so the item can never be lost. Returns false on an empty cell.
+        /// </summary>
+        [Server]
+        public bool RemoveItemAt(int gridX, int gridY)
+        {
+            int index = _grid.FindAt(_items, gridX, gridY);
+            if (index < 0)
+                return false;
+
+            _items.RemoveAt(index);
+            return true;
+        }
+
+        /// <summary>
+        /// Server: drop an existing item (e.g. one withdrawn from a guild bank) into a specific free
+        /// cell, re-validating that the rectangle is still clear. Returns false when the cell is
+        /// occupied — the caller must not lose the item in that case.
+        /// </summary>
+        [Server]
+        public bool TryAddExistingItem(ItemInstance item, int gridX, int gridY)
+        {
+            if (item.IsEmpty)
+                return false;
+
+            if (!_grid.CanPlace(_items, gridX, gridY, Math.Max(1, item.Width), Math.Max(1, item.Height)))
+                return false;
+
+            item.GridX = gridX;
+            item.GridY = gridY;
+            _items.Add(item);
+            return true;
+        }
+
+        /// <summary>
         /// Server: rebuild the equipped-item picture from the equipment list and push the sums
         /// into <c>PlayerStats</c>. Called after every equip/unequip so the stat caps are always
         /// derived from state, never incremented — recalculating instead of adding is what makes
