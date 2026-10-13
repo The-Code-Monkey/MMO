@@ -22,6 +22,7 @@ namespace MMO.Persistence
         public const string NameIndexCollection = "name_index";
         public const string GuildCollection = "guilds";
         public const string FriendsCollection = "friends";
+        public const string GuildBankCollection = "guild_banks";
 
         private readonly NakamaRestClient _rest;
 
@@ -188,6 +189,21 @@ namespace MMO.Persistence
             return result;
         }
 
+        public async Task<GuildBankRecord> LoadGuildBankAsync(string guildId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(GuildBankCollection, guildId, ct);
+            return Deserialize<GuildBankRecord>(obj);
+        }
+
+        public async Task SaveGuildBankAsync(GuildBankRecord record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                GuildBankCollection, record.GuildId, JsonUtility.ToJson(record), record.StorageVersion, ct);
+        }
+
         private static T Deserialize<T>(StorageObjectData obj) where T : class
         {
             if (obj == null || string.IsNullOrEmpty(obj.Value))
@@ -204,6 +220,8 @@ namespace MMO.Persistence
                 presence.StorageVersion = obj.Version;
             else if (record is FriendListRecord friends)
                 friends.StorageVersion = obj.Version;
+            else if (record is GuildBankRecord bank)
+                bank.StorageVersion = obj.Version;
 
             return record;
         }

@@ -65,7 +65,8 @@ namespace MMO.UI
             IInventorySource inventory = null,
             IAbilityBarSource abilities = null,
             ITargetSource target = null,
-            bool createEventSystem = true)
+            bool createEventSystem = true,
+            bool createGuildBankFrame = false)
         {
             GameObject root = new GameObject(HudName, typeof(RectTransform));
 
@@ -86,6 +87,9 @@ namespace MMO.UI
                 CreateInventoryGrid(root.transform),
                 CreateActionBar(root.transform),
                 ChatFeed.Create(root.transform));
+
+            if (createGuildBankFrame)
+                hud.SetGuildBankFrame(GuildBankFrameFactory.Create(root.transform));
 
             hud.BindPlayer(vitals, inventory, abilities);
             hud.BindTarget(target);

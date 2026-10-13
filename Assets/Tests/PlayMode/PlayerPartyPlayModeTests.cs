@@ -125,6 +125,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
             public readonly Dictionary<string, PresenceRecord> Presence = new Dictionary<string, PresenceRecord>();
             public readonly Dictionary<string, FriendListRecord> Friends = new Dictionary<string, FriendListRecord>();
+            public readonly Dictionary<string, GuildBankRecord> GuildBanks = new Dictionary<string, GuildBankRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
 
             public Task<PartyRecord> LoadPartyAsync(string partyId, CancellationToken ct = default)
@@ -201,6 +202,15 @@ namespace MMO.Tests
             public Task SaveFriendsAsync(FriendListRecord record, CancellationToken ct = default)
             {
                 Friends[record.AccountId] = record;
+                return Task.CompletedTask;
+            }
+
+            public Task<GuildBankRecord> LoadGuildBankAsync(string guildId, CancellationToken ct = default)
+                => Task.FromResult(GuildBanks.TryGetValue(guildId, out GuildBankRecord b) ? b : null);
+
+            public Task SaveGuildBankAsync(GuildBankRecord record, CancellationToken ct = default)
+            {
+                GuildBanks[record.GuildId] = record;
                 return Task.CompletedTask;
             }
 

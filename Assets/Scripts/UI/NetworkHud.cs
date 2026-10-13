@@ -25,6 +25,7 @@ namespace MMO.UI
         private InventoryGridView _inventoryGrid;
         private ActionBarView _actionBar;
         private ChatFeed _chatFeed;
+        private GuildBankFrameView _guildBankFrame;
 
         /// <summary>The health/mana pair, or null before views were assigned.</summary>
         public PlayerHudView PlayerHud => _playerHud;
@@ -41,7 +42,12 @@ namespace MMO.UI
         /// <summary>The chat box and friend list, or null when the factory was told to omit it.</summary>
         public ChatFeed ChatFeed => _chatFeed;
 
-        /// <summary>Hands the assembled screens to the HUD; called by the factory.</summary>
+        /// <summary>The guild bank window, or null when the factory was told to omit it.</summary>
+        public GuildBankFrameView GuildBankFrame => _guildBankFrame;
+
+        /// <summary>
+        /// Hands the assembled screens to the HUD; called by the factory.
+        /// </summary>
         public void SetViews(
             PlayerHudView playerHud,
             TargetFrameView targetFrame,
@@ -54,6 +60,13 @@ namespace MMO.UI
             _inventoryGrid = inventoryGrid;
             _actionBar = actionBar;
             _chatFeed = chatFeed;
+        }
+
+        /// <summary>Gives the HUD the guild bank window the factory built; starts concealed.</summary>
+        public void SetGuildBankFrame(GuildBankFrameView guildBankFrame)
+        {
+            _guildBankFrame = guildBankFrame;
+            _guildBankFrame?.Conceal();
         }
 
         /// <summary>
@@ -93,6 +106,17 @@ namespace MMO.UI
                 _targetFrame.Bind(target);
         }
 
+        /// <summary>
+        /// Binds the guild bank window to the local player's guild and bag, reopening it. Either
+        /// may be null — a null guild simply conceals the window.
+        /// </summary>
+        public void BindGuildBank(Social.PlayerGuild guild, PlayerInventory bag)
+            => _guildBankFrame?.Reveal(guild, bag);
+
+        /// <summary>Opens or closes the guild bank window without touching its bindings.</summary>
+        public void SetGuildBankVisible(bool visible)
+            => _guildBankFrame?.SetVisible(visible);
+
         /// <summary>Detaches every screen from every source. The HUD stops repainting entirely.</summary>
         public void Unbind()
         {
@@ -107,6 +131,9 @@ namespace MMO.UI
 
             if (_actionBar != null)
                 _actionBar.Unbind();
+
+            if (_guildBankFrame != null)
+                _guildBankFrame.Conceal();
         }
 
         private void OnDestroy() => Unbind();
