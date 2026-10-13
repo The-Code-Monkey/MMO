@@ -108,6 +108,7 @@ namespace MMO.Net
             // cache the save trigger populated, so they land after it like the party/guild surfaces.
             go.AddComponent<PlayerChat>();
             go.AddComponent<PlayerFriends>();
+            go.AddComponent<PlayerRaid>();
 
             // Travels with the prefab so a client that receives its player object has something to
             // look through. It decides whether it may drive the camera by asking IsOwner, which is

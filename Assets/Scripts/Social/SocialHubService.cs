@@ -42,16 +42,27 @@ namespace MMO.Social
 
         [SerializeField] private string _zoneId = "local";
 
+        /// <summary>Address the zone advertises as its raid instance host when it allocates one.</summary>
+        [SerializeField] private string _instanceHostAddress = "127.0.0.1";
+
+        /// <summary>Port the zone advertises as its raid instance host when it allocates one.</summary>
+        [SerializeField] private ushort _instanceHostPort;
+
         private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
+
+        /// <summary>Last raid instance a local member was told to transfer to, so a sync does not repeat it.</summary>
+        private readonly Dictionary<string, string> _lastRaidTransfers = new Dictionary<string, string>();
 
         /// <summary>Local <see cref="PlayerGuild"/>s keyed by account, whose bags a bank mutation moves items into.</summary>
         private readonly Dictionary<string, PlayerGuild> _localGuilds = new Dictionary<string, PlayerGuild>();
 
         private ISocialRepository _repository;
+        private IRaidInstanceRepository _raidRepository;
         private NakamaRestClient _rest;
         private ISocialBus _socketBus;
         private ChatService _chat;
+        private RaidInstanceService _raidService;
         private NetworkManager _manager;
         private bool _connected;
         private bool _subscribed;
@@ -87,6 +98,9 @@ namespace MMO.Social
         /// </summary>
         public event Action<GuildBankRecord> BankChanged;
 
+        /// <summary>Raised when a local member must move to another zone to join its party's raid instance.</summary>
+        public event Action<string, RaidInstanceRecord> RaidTransferRequested;
+
         /// <summary>Raised for the one invited account; delivery is a <c>TargetRpc</c> underneath.</summary>
         public event Action<string, PendingPartyInvite> PartyInviteReceived;
 
@@ -110,7 +124,8 @@ namespace MMO.Social
             if (_repository == null)
             {
                 _rest = new NakamaRestClient(new BackendSettings());
-                Configure(new NakamaSocialRepository(_rest));
+                NakamaSocialRepository nakamaRepo = new NakamaSocialRepository(_rest);
+                Configure(nakamaRepo, new NakamaRaidInstanceRepository(_rest));
             }
         }
 
@@ -127,9 +142,10 @@ namespace MMO.Social
         /// Points the service at a repository. Production reaches the Nakama-backed default in
         /// <see cref="Awake"/>; tests inject an in-memory fake here, which needs no connection.
         /// </summary>
-        public void Configure(ISocialRepository repository)
+        public void Configure(ISocialRepository repository, IRaidInstanceRepository raidRepository = null)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _raidRepository = raidRepository;
 
             if (repository is NakamaSocialRepository nakama)
             {
@@ -141,6 +157,15 @@ namespace MMO.Social
                 _rest = null;
                 _connected = true;
             }
+
+            if (_raidRepository == null && _rest != null)
+                _raidRepository = new NakamaRaidInstanceRepository(_rest);
+
+            // With neither a raid repository nor a REST client (a pure social fake) raids are off;
+            // the hub surfaces BackendUnavailable rather than throwing on a null endpoint.
+            _raidService = _raidRepository != null
+                ? new RaidInstanceService(_repository, _raidRepository, _casRetries)
+                : null;
         }
 
         private void EnsureChat()
@@ -324,7 +349,10 @@ namespace MMO.Social
         public void UnregisterLocal(string accountId)
         {
             if (!string.IsNullOrEmpty(accountId))
+            {
                 _local.Remove(accountId);
+                _lastRaidTransfers.Remove(accountId);
+            }
         }
 
         private void Update()
@@ -588,7 +616,10 @@ namespace MMO.Social
 
                 PartyRecord remaining = PartyRules.Remove(party, accountId);
                 if (remaining == null)
+                {
+                    await TeardownRaidAsync(party);
                     await _repository.DeletePartyAsync(party.PartyId, CancellationToken.None);
+                }
                 else
                     await _repository.SavePartyAsync(remaining, CancellationToken.None);
 
@@ -623,7 +654,10 @@ namespace MMO.Social
 
                 PartyRecord remaining = PartyRules.Remove(party, targetId);
                 if (remaining == null)
+                {
+                    await TeardownRaidAsync(party);
                     await _repository.DeletePartyAsync(party.PartyId, CancellationToken.None);
+                }
                 else
                     await _repository.SavePartyAsync(remaining, CancellationToken.None);
 
@@ -1534,6 +1568,64 @@ namespace MMO.Social
 
             // Repair any half-accepted friendship whose mirror write or notify was lost.
             await RepairFriendsAsync();
+
+            // Raid handoff: a party whose raid instance is hosted on another zone must move its
+            // local members there. The pointer is authoritative; only the zone already holding a
+            // member reacts, and only once per instance id.
+            if (_raidRepository != null)
+                await SyncRaidTransfersAsync(partyIds);
+        }
+
+        /// <summary>Deletes a disbanding party's raid instance record, if it had one.</summary>
+        private async Task TeardownRaidAsync(PartyRecord party)
+        {
+            if (_raidRepository == null || party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+                return;
+
+            try
+            {
+                await _raidRepository.DeleteRaidInstanceAsync(party.RaidInstanceId, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Social] Failed to tear down raid '{party.RaidInstanceId}': {e.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Walks this zone's hosted parties for an allocated raid and asks each local member's
+        /// <see cref="PlayerRaid"/> to transfer when this zone is not the instance host.
+        /// </summary>
+        private async Task SyncRaidTransfersAsync(HashSet<string> partyIds)
+        {
+            foreach (string partyId in partyIds)
+            {
+                PartyRecord party = await _repository.LoadPartyAsync(partyId, CancellationToken.None);
+                if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+                    continue;
+
+                RaidInstanceRecord instance = await _raidRepository.LoadRaidInstanceAsync(party.RaidInstanceId, CancellationToken.None);
+                if (instance == null)
+                    continue;
+
+                foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
+                {
+                    if (!PartyRules.IsMember(party, local.AccountId))
+                        continue;
+
+                    if (!RaidRules.NeedsTransfer(instance.InstanceId, _zoneId, instance.HostZoneId))
+                    {
+                        _lastRaidTransfers.Remove(local.AccountId);
+                        continue;
+                    }
+
+                    if (_lastRaidTransfers.TryGetValue(local.AccountId, out string last) && last == instance.InstanceId)
+                        continue;
+
+                    _lastRaidTransfers[local.AccountId] = instance.InstanceId;
+                    RaidTransferRequested?.Invoke(local.AccountId, instance);
+                }
+            }
         }
 
         #endregion
@@ -1665,6 +1757,32 @@ namespace MMO.Social
 
         private static Task BackoffAsync(int attempt)
             => Task.Delay(50 * (1 << attempt));
+
+        #endregion
+
+        #region Raid intents
+
+        /// <summary>Leader-only: allocates a raid instance for the requester's party.</summary>
+        public async Task<(RaidRule Rule, RaidInstanceRecord Instance)> AllocateRaidAsync(string requesterId)
+        {
+            if (_raidService == null)
+                return (RaidRule.BackendUnavailable, null);
+            var result = await _raidService.AllocateAsync(requesterId, _zoneId, _instanceHostAddress, _instanceHostPort);
+            if (result.Rule == RaidRule.Ok)
+                await SyncAsync();
+            return result;
+        }
+
+        /// <summary>Leader-only: completes the raid and tears its instance down.</summary>
+        public async Task<RaidRule> CompleteRaidAsync(string requesterId)
+        {
+            if (_raidService == null)
+                return RaidRule.BackendUnavailable;
+            RaidRule rule = await _raidService.CompleteAsync(requesterId);
+            if (rule == RaidRule.Ok)
+                await SyncAsync();
+            return rule;
+        }
 
         #endregion
     }

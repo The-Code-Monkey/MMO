@@ -25,7 +25,7 @@ chapter explains the records, the rules, the hub that owns the state, and how cl
 | `PartyId` | Unique id. |
 | `LeaderId` | The leader's account id. |
 | `Members` | A list of `PartyMemberRecord`. |
-| `RaidInstanceId` | Reserved for future dynamic raid instances. |
+| `RaidInstanceId` | Set when the leader allocates a raid instance; cleared on complete/disband. |
 | `StorageVersion` | Backend revision hash for the optimistic write. |
 
 `PartyMemberRecord` (`:8`) holds `AccountId`, `PlayerName`, `ZoneId` (refreshed by presence
@@ -203,3 +203,55 @@ PLAYER B (zone 2)
   loop. Add a repository method only if it needs new storage.
 - **Test social logic offline.** Use `FakeSocialRepository` (in `SocialHubServiceTests` and
   `PlayerPartyPlayModeTests`) instead of Nakama; see [10](10-testing.md).
+
+## 8. Raids (dynamic instance handoff)
+
+A party of at least `RaidRules.MinRaidSize` (5) may be promoted to a raid by its leader. The
+allocation is leader-only and CAS-guarded, exactly like every other social write.
+
+### The rules
+
+`RaidRules` (`Assets/Scripts/Social/RaidRules.cs`) is pure and EditMode-tested:
+
+- `CanAllocate(party, requesterId)` — party exists, requester is the leader, the party has no raid
+  yet (`AlreadyInRaid`, so a racing second call is a no-op), and it is at least `MinRaidSize`
+  (`PartyTooSmall`).
+- `CanComplete(party, requesterId)` — a raid is allocated (`RaidMissing`) and the requester is the
+  leader (`NotLeader`).
+- `NeedsTransfer(instanceId, localServerId, hostServerId)` — true when an instance exists and some
+  other server is the host, so the host zone moves nobody.
+
+### The records and repository
+
+`RaidInstanceRecord` (`Assets/Scripts/Social/RaidInstanceRecord.cs`) holds the `InstanceId`, the
+`PartyId`, the host `HostZoneId`/`HostAddress`/`HostPort`, the member snapshot and its
+`StorageVersion`. `IRaidInstanceRepository` is the storage boundary; the production implementation is
+`NakamaRaidInstanceRepository` (collection `raid_instances`), and `SocialHubService.Configure` takes
+it as an optional second argument (tests inject a fake).
+
+### Allocation, handoff and teardown
+
+`RaidInstanceService` (`Assets/Scripts/Social/RaidInstanceService.cs`) runs the bounded CAS loop:
+
+- **Allocate** — load the party, `RaidRules.CanAllocate`, write the instance record, then CAS
+  `PartyRecord.RaidInstanceId`. A conflict retries; the instance record is written first so a lost
+  pointer write cannot orphan a used instance id.
+- **Complete** — `RaidRules.CanComplete`, clear `RaidInstanceId`, delete the instance record.
+- **Disband** — `SocialHubService` calls `TeardownRaidAsync` before deleting a party whose last
+  member left or was kicked, so the instance record never outlives its party.
+
+The `PlayerRaid` shell exposes `RequestAllocateRaid`/`RequestCompleteRaid` → `[ServerRpc]` →
+`SocialHubService.AllocateRaidAsync`/`CompleteRaidAsync`. On every reconcile pass
+`SyncRaidTransfersAsync` loads each hosted party's instance and raises
+`RaidTransferRequested(accountId, instance)` for a local member whose host is another zone (once per
+instance id). `PlayerRaid` answers that by running the existing `ZoneTransferHandoff`
+(flush → token → `ZoneTransferBroadcast`), so a raid member arrives at the instance host through the
+same tested pipeline as a normal zone transition.
+
+### Common tasks
+
+- **Change the raid size.** Edit `RaidRules.MinRaidSize` / `MaxRaidSize`; tests pin the boundary.
+- **Advertise the host address.** Edit `_instanceHostAddress` / `_instanceHostPort` on the
+  `SocialHubService` component.
+- **Test raid logic offline.** `RaidRulesTests`, `RaidInstanceServiceTests` and
+  `SocialHubRaidSyncTests` use in-memory fakes and an EditMode hub.
