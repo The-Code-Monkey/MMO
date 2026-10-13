@@ -41,6 +41,8 @@ namespace MMO.Inventory
         /// <summary>Footprint height in cells, copied from the definition when the item is created.</summary>
         public int Height;
 
+        public int StackCount;
+
         /// <summary>True when this instance stands for an empty cell or an empty equipment slot.</summary>
         public bool IsEmpty => string.IsNullOrEmpty(ItemName);
 
@@ -64,7 +66,37 @@ namespace MMO.Inventory
                 GridY = gridY,
                 Width = definition.GridWidth,
                 Height = definition.GridHeight,
+                StackCount = definition.IsStackable ? 1 : 1,
             };
+        }
+
+        public static ItemInstance Create(ItemDefinition definition, int gridX, int gridY, int stackCount)
+        {
+            if (definition == null)
+                throw new ArgumentNullException(nameof(definition));
+
+            int count = stackCount < 1 ? 1 : stackCount;
+            if (definition.IsStackable && definition.MaxStackSize >= 1 && count > definition.MaxStackSize)
+                count = definition.MaxStackSize;
+
+            return new ItemInstance
+            {
+                ItemName = definition.ItemName,
+                GridX = gridX,
+                GridY = gridY,
+                Width = definition.GridWidth,
+                Height = definition.GridHeight,
+                StackCount = count,
+            };
+        }
+
+        public long GetTotalValue(ItemDefinition definition)
+        {
+            if (IsEmpty || definition == null)
+                return 0;
+
+            int count = StackCount < 1 ? 1 : StackCount;
+            return definition.Value * count;
         }
     }
 }

@@ -30,6 +30,9 @@ namespace MMO.Inventory
         [SerializeField, Min(1)] private int _gridHeight = 1;
         [SerializeField, Min(0)] private int _maxHealthBonus;
         [SerializeField, Min(0)] private int _maxManaBonus;
+        [SerializeField] private bool _isStackable;
+        [SerializeField, Min(1)] private int _maxStackSize = 1;
+        [SerializeField, Min(0)] private long _value;
 
         /// <summary>
         /// The stable key both ends of the connection use to identify this item. It is what
@@ -60,6 +63,13 @@ namespace MMO.Inventory
 
         /// <summary>Maximum mana granted while this item is equipped.</summary>
         public int MaxManaBonus => _maxManaBonus;
+
+        public bool IsStackable => _isStackable;
+
+        public int MaxStackSize => _maxStackSize < 1 ? 1 : _maxStackSize;
+
+        /// <summary>The monetary/value of a single item unit (in game currency units).</summary>
+        public long Value => _value;
 
         // A definition deserialized from disk already carries its name here, so loading an asset
         // registers it; one created in code has no name yet and registers after the Inspector

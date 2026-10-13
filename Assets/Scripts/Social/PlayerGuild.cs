@@ -141,12 +141,12 @@ namespace MMO.Social
             RpcRequestDeposit(tabIndex, bagX, bagY);
         }
 
-        public void RequestWithdraw(int tabIndex, int gridX, int gridY)
+        public void RequestWithdraw(int tabIndex, int gridX, int gridY, int stackCount = -1)
         {
             if (!OwnsSelf())
                 return;
 
-            RpcRequestWithdraw(tabIndex, gridX, gridY);
+            RpcRequestWithdraw(tabIndex, gridX, gridY, stackCount);
         }
 
         /// <param name="rank">The <see cref="GuildRank"/> whose bank permissions are edited, as its int value.</param>
@@ -155,7 +155,15 @@ namespace MMO.Social
             if (!OwnsSelf())
                 return;
 
-            RpcRequestSetPermission(rank, allowDeposit, allowWithdraw, withdrawLimit);
+            RpcRequestSetPermission(rank, allowDeposit, allowWithdraw, withdrawLimit, GuildBankRules.UnlimitedValue, GuildBankRules.UnlimitedValue);
+        }
+
+        public void RequestSetPermission(int rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit, long withdrawValueLimit, long depositValueLimit)
+        {
+            if (!OwnsSelf())
+                return;
+
+            RpcRequestSetPermission(rank, allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit);
         }
 
         [ServerRpc]
@@ -222,23 +230,23 @@ namespace MMO.Social
         }
 
         [ServerRpc]
-        private void RpcRequestWithdraw(int tabIndex, int gridX, int gridY, NetworkConnection sender = null)
+        private void RpcRequestWithdraw(int tabIndex, int gridX, int gridY, int stackCount = -1, NetworkConnection sender = null)
         {
             if (!ValidSender(sender))
                 return;
 
-            _ = ResolveBankAsync(SocialHubService.Instance.WithdrawAsync(_accountId, tabIndex, gridX, gridY));
+            _ = ResolveBankAsync(SocialHubService.Instance.WithdrawAsync(_accountId, tabIndex, gridX, gridY, stackCount));
         }
 
         [ServerRpc]
         private void RpcRequestSetPermission(
-            int rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit, NetworkConnection sender = null)
+            int rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit, long withdrawValueLimit, long depositValueLimit, NetworkConnection sender = null)
         {
             if (!ValidSender(sender))
                 return;
 
             _ = ResolveBankRuleAsync(
-                SocialHubService.Instance.SetBankPermissionAsync(_accountId, (GuildRank)rank, allowDeposit, allowWithdraw, withdrawLimit));
+                SocialHubService.Instance.SetBankPermissionAsync(_accountId, (GuildRank)rank, allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit));
         }
 
         private async System.Threading.Tasks.Task InviteAsync(string targetName)

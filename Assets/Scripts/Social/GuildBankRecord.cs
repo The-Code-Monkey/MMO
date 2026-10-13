@@ -45,6 +45,18 @@ namespace MMO.Social
 
         /// <summary>UTC ticks the current quota period began; <c>0</c> means "not started".</summary>
         public long PeriodStartTicks;
+
+        /// <summary>Max total value withdrawn per period; negative means unlimited.</summary>
+        public long WithdrawValueLimit;
+
+        /// <summary>Total value withdrawn in the current period; server-maintained.</summary>
+        public long WithdrawnValueThisPeriod;
+
+        /// <summary>Max total value deposited per period; negative means unlimited.</summary>
+        public long DepositValueLimit;
+
+        /// <summary>Total value deposited in the current period; server-maintained.</summary>
+        public long DepositedValueThisPeriod;
     }
 
     /// <summary>

@@ -44,6 +44,7 @@ namespace MMO.Social
 
         /// <summary>A negative <see cref="GuildBankPermission.WithdrawLimit"/> means no cap.</summary>
         public const int UnlimitedWithdraw = -1;
+        public const long UnlimitedValue = -1;
 
         /// <summary>How long a rank's withdrawal allowance lasts before it refills.</summary>
         public static readonly TimeSpan QuotaPeriod = TimeSpan.FromHours(1);
@@ -140,11 +141,11 @@ namespace MMO.Social
             switch (rank)
             {
                 case GuildRank.Leader:
-                    return NewPermission(rank, allowDeposit: true, allowWithdraw: true, withdrawLimit: UnlimitedWithdraw);
+                    return NewPermission(rank, allowDeposit: true, allowWithdraw: true, withdrawLimit: UnlimitedWithdraw, withdrawValueLimit: UnlimitedValue, depositValueLimit: UnlimitedValue);
                 case GuildRank.Officer:
-                    return NewPermission(rank, allowDeposit: true, allowWithdraw: true, withdrawLimit: 10);
+                    return NewPermission(rank, allowDeposit: true, allowWithdraw: true, withdrawLimit: 10, withdrawValueLimit: UnlimitedValue, depositValueLimit: UnlimitedValue);
                 default:
-                    return NewPermission(rank, allowDeposit: true, allowWithdraw: true, withdrawLimit: 1);
+                    return NewPermission(rank, allowDeposit: true, allowWithdraw: true, withdrawLimit: 1, withdrawValueLimit: UnlimitedValue, depositValueLimit: UnlimitedValue);
             }
         }
 
@@ -153,6 +154,18 @@ namespace MMO.Social
 
         public static bool RankAllowsWithdraw(GuildBankRecord bank, GuildRank rank)
             => PermissionFor(bank, rank).AllowWithdraw;
+
+        public static long GetWithdrawValueLimit(GuildBankPermission permission)
+            => permission.WithdrawValueLimit;
+
+        public static long GetDepositValueLimit(GuildBankPermission permission)
+            => permission.DepositValueLimit;
+
+        public static long GetEffectiveWithdrawnValue(GuildBankPermission permission, DateTimeOffset now)
+            => EffectiveWithdrawnValue(permission, now);
+
+        public static long GetEffectiveDepositedValue(GuildBankPermission permission, DateTimeOffset now)
+            => EffectiveDepositedValue(permission, now);
 
         /// <summary>Whether the requester may look at the bank at all: any guild member may.</summary>
         public static GuildBankRule CanView(GuildRecord guild, string accountId)
@@ -168,7 +181,7 @@ namespace MMO.Social
         /// guild/member, bank, item, rank permission, tab exists, tab has room.
         /// </summary>
         public static GuildBankRule CanDeposit(
-            GuildRecord guild, GuildBankRecord bank, string accountId, int tabIndex, ItemInstance item)
+            GuildRecord guild, GuildBankRecord bank, string accountId, int tabIndex, ItemInstance item, DateTimeOffset now)
         {
             if (guild == null)
                 return GuildBankRule.NoGuild;
@@ -183,7 +196,14 @@ namespace MMO.Social
             if (item.IsEmpty || item.Width < 1 || item.Height < 1)
                 return GuildBankRule.InvalidItem;
 
-            if (!RankAllowsDeposit(bank, GuildRules.RankOf(member)))
+            GuildRank rank = GuildRules.RankOf(member);
+            if (!RankAllowsDeposit(bank, rank))
+                return GuildBankRule.NotPermitted;
+
+            GuildBankPermission permission = PermissionFor(bank, rank);
+            long itemValue = item.GetTotalValue(ItemDefinitionRegistry.Resolve(item.ItemName));
+            if (permission.DepositValueLimit >= 0 &&
+                EffectiveDepositedValue(permission, now) + itemValue > permission.DepositValueLimit)
                 return GuildBankRule.NotPermitted;
 
             GuildBankTab tab = FindTab(bank, tabIndex);
@@ -195,6 +215,10 @@ namespace MMO.Social
 
             return GuildBankRule.Ok;
         }
+
+        public static GuildBankRule CanDeposit(
+            GuildRecord guild, GuildBankRecord bank, string accountId, int tabIndex, ItemInstance item)
+            => CanDeposit(guild, bank, accountId, tabIndex, item, DateTimeOffset.UtcNow);
 
         /// <summary>
         /// Whether the requester may withdraw the item at a tab cell. Order: guild/member, bank,
@@ -214,7 +238,8 @@ namespace MMO.Social
             if (bank == null)
                 return GuildBankRule.NoBank;
 
-            GuildBankPermission permission = PermissionFor(bank, GuildRules.RankOf(member));
+            GuildRank rank = GuildRules.RankOf(member);
+            GuildBankPermission permission = PermissionFor(bank, rank);
             if (!permission.AllowWithdraw)
                 return GuildBankRule.NotPermitted;
 
@@ -226,8 +251,17 @@ namespace MMO.Social
             if (tab == null)
                 return GuildBankRule.InvalidTab;
 
-            if (Grid.FindAt(tab.Items, gridX, gridY) < 0)
+            int idx = Grid.FindAt(tab.Items, gridX, gridY);
+            if (idx < 0)
                 return GuildBankRule.NothingToWithdraw;
+
+            if (permission.WithdrawValueLimit >= 0)
+            {
+                ItemInstance candidate = tab.Items[idx];
+                long candidateValue = candidate.GetTotalValue(ItemDefinitionRegistry.Resolve(candidate.ItemName));
+                if (EffectiveWithdrawnValue(permission, now) + candidateValue > permission.WithdrawValueLimit)
+                    return GuildBankRule.WithdrawLimitReached;
+            }
 
             return GuildBankRule.Ok;
         }
@@ -249,6 +283,23 @@ namespace MMO.Social
         /// Applies a deposit: places the item in the first free cell of the tab. Assumes
         /// <see cref="CanDeposit"/> passed. Returns false only when the caller lied about space.
         /// </summary>
+        public static bool Deposit(GuildBankRecord bank, int tabIndex, ItemInstance item, GuildRank rank, DateTimeOffset now)
+        {
+            GuildBankTab tab = FindTab(bank, tabIndex);
+            if (tab == null || !Grid.TryFindFreeSpace(tab.Items, item.Width, item.Height, out int x, out int y))
+                return false;
+
+            item.GridX = x;
+            item.GridY = y;
+            tab.Items.Add(item);
+            if (bank != null && rank != GuildRank.None)
+            {
+                long value = item.GetTotalValue(ItemDefinitionRegistry.Resolve(item.ItemName));
+                SpendDepositQuota(bank, rank, now, value);
+            }
+            return true;
+        }
+
         public static bool Deposit(GuildBankRecord bank, int tabIndex, ItemInstance item)
         {
             GuildBankTab tab = FindTab(bank, tabIndex);
@@ -285,7 +336,8 @@ namespace MMO.Social
             tab.Items.RemoveAt(index);
 
             GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
-            SpendQuota(bank, rank, now);
+            long value = item.GetTotalValue(ItemDefinitionRegistry.Resolve(item.ItemName));
+            SpendQuota(bank, rank, now, value);
             return true;
         }
 
@@ -295,7 +347,8 @@ namespace MMO.Social
         /// a free quota reset.
         /// </summary>
         public static void SetPermission(
-            GuildBankRecord bank, GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit)
+            GuildBankRecord bank, GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit,
+            long withdrawValueLimit = UnlimitedValue, long depositValueLimit = UnlimitedValue)
         {
             if (bank == null)
                 return;
@@ -317,6 +370,8 @@ namespace MMO.Social
             permission.AllowDeposit = allowDeposit;
             permission.AllowWithdraw = allowWithdraw;
             permission.WithdrawLimit = withdrawLimit < UnlimitedWithdraw ? UnlimitedWithdraw : withdrawLimit;
+            permission.WithdrawValueLimit = withdrawValueLimit < UnlimitedValue ? UnlimitedValue : withdrawValueLimit;
+            permission.DepositValueLimit = depositValueLimit < UnlimitedValue ? UnlimitedValue : depositValueLimit;
 
             if (index >= 0)
                 bank.Permissions[index] = permission;
@@ -333,6 +388,23 @@ namespace MMO.Social
                 return false;
 
             return withdrawLimit >= UnlimitedWithdraw;
+        }
+
+        public static bool IsValidPermission(bool allowDeposit, bool allowWithdraw, int withdrawLimit, long withdrawValueLimit, long depositValueLimit)
+        {
+            if (!allowDeposit && !allowWithdraw)
+                return false;
+
+            if (withdrawLimit < UnlimitedWithdraw)
+                return false;
+
+            if (withdrawValueLimit < UnlimitedValue)
+                return false;
+
+            if (depositValueLimit < UnlimitedValue)
+                return false;
+
+            return true;
         }
 
         /// <summary>True when the tab's grid can hold a rectangle of the given size somewhere.</summary>
@@ -360,8 +432,19 @@ namespace MMO.Social
         private static int EffectiveWithdrawn(GuildBankPermission permission, DateTimeOffset now)
             => IsQuotaStale(permission, now) ? 0 : permission.WithdrawnThisPeriod;
 
-        private static void SpendQuota(GuildBankRecord bank, GuildRank rank, DateTimeOffset now)
+        private static long EffectiveWithdrawnValue(GuildBankPermission permission, DateTimeOffset now)
+            => IsQuotaStale(permission, now) ? 0 : permission.WithdrawnValueThisPeriod;
+
+        private static long EffectiveDepositedValue(GuildBankPermission permission, DateTimeOffset now)
+            => IsQuotaStale(permission, now) ? 0 : permission.DepositedValueThisPeriod;
+
+
+
+        public static void SpendQuota(GuildBankRecord bank, GuildRank rank, DateTimeOffset now, long withdrawValue)
         {
+            if (bank == null)
+                return;
+
             bank.Permissions ??= new List<GuildBankPermission>();
 
             int index = -1;
@@ -378,10 +461,47 @@ namespace MMO.Social
             if (IsQuotaStale(permission, now))
             {
                 permission.WithdrawnThisPeriod = 0;
+                permission.WithdrawnValueThisPeriod = 0;
+                permission.DepositedValueThisPeriod = 0;
                 permission.PeriodStartTicks = now.UtcDateTime.Ticks;
             }
 
             permission.WithdrawnThisPeriod++;
+            permission.WithdrawnValueThisPeriod += withdrawValue;
+
+            if (index >= 0)
+                bank.Permissions[index] = permission;
+            else
+                bank.Permissions.Add(permission);
+        }
+
+        public static void SpendDepositQuota(GuildBankRecord bank, GuildRank rank, DateTimeOffset now, long depositValue)
+        {
+            if (bank == null)
+                return;
+
+            bank.Permissions ??= new List<GuildBankPermission>();
+
+            int index = -1;
+            for (int i = 0; i < bank.Permissions.Count; i++)
+            {
+                if (bank.Permissions[i].Rank == (int)rank)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            GuildBankPermission permission = index >= 0 ? bank.Permissions[index] : DefaultPermission(rank);
+            if (IsQuotaStale(permission, now))
+            {
+                permission.WithdrawnThisPeriod = 0;
+                permission.WithdrawnValueThisPeriod = 0;
+                permission.DepositedValueThisPeriod = 0;
+                permission.PeriodStartTicks = now.UtcDateTime.Ticks;
+            }
+
+            permission.DepositedValueThisPeriod += depositValue;
 
             if (index >= 0)
                 bank.Permissions[index] = permission;
@@ -390,13 +510,16 @@ namespace MMO.Social
         }
 
         private static GuildBankPermission NewPermission(
-            GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit)
+            GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit,
+            long withdrawValueLimit = UnlimitedValue, long depositValueLimit = UnlimitedValue)
             => new GuildBankPermission
             {
                 Rank = (int)rank,
                 AllowDeposit = allowDeposit,
                 AllowWithdraw = allowWithdraw,
                 WithdrawLimit = withdrawLimit,
+                WithdrawValueLimit = withdrawValueLimit,
+                DepositValueLimit = depositValueLimit,
             };
     }
 }

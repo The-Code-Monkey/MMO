@@ -156,5 +156,60 @@ namespace MMO.Inventory
         {
             return ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
         }
+
+        public static bool CanMergeStacks(ItemInstance existing, ItemInstance incoming, ItemDefinition definition)
+        {
+            if (existing.IsEmpty || incoming.IsEmpty || definition == null)
+                return false;
+
+            if (!InventoryValidator.CanStack(definition, ItemDefinitionRegistry.Resolve(existing.ItemName)))
+                return false;
+
+            int existingCount = existing.StackCount < 1 ? 1 : existing.StackCount;
+            int incomingCount = incoming.StackCount < 1 ? 1 : incoming.StackCount;
+            return existingCount + incomingCount <= definition.MaxStackSize;
+        }
+
+        public static ItemInstance MergeStacks(ItemInstance existing, ItemInstance incoming, ItemDefinition definition)
+        {
+            if (existing.IsEmpty)
+                return incoming;
+
+            if (incoming.IsEmpty || definition == null)
+                return existing;
+
+            if (!InventoryValidator.CanStack(definition, ItemDefinitionRegistry.Resolve(existing.ItemName)))
+                return existing;
+
+            int existingCount = existing.StackCount < 1 ? 1 : existing.StackCount;
+            int incomingCount = incoming.StackCount < 1 ? 1 : incoming.StackCount;
+            int total = existingCount + incomingCount;
+            if (total > definition.MaxStackSize)
+                total = definition.MaxStackSize;
+
+            existing.StackCount = total;
+            return existing;
+        }
+
+        public static (ItemInstance remainder, ItemInstance taken) SplitStack(ItemInstance source, int takeCount, ItemDefinition definition)
+        {
+            if (source.IsEmpty || definition == null || takeCount <= 0)
+                return (source, ItemInstance.Empty);
+
+            int sourceCount = source.StackCount < 1 ? 1 : source.StackCount;
+            int toTake = takeCount > sourceCount ? sourceCount : takeCount;
+
+            ItemInstance taken = source;
+            taken.StackCount = toTake;
+
+            ItemInstance remainder = ItemInstance.Empty;
+            if (sourceCount > toTake)
+            {
+                remainder = source;
+                remainder.StackCount = sourceCount - toTake;
+            }
+
+            return (remainder, taken);
+        }
     }
 }
