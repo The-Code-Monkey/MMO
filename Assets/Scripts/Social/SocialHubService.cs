@@ -54,6 +54,15 @@ namespace MMO.Social
         /// <summary>Last raid instance a local member was told to transfer to, so a sync does not repeat it.</summary>
         private readonly Dictionary<string, string> _lastRaidTransfers = new Dictionary<string, string>();
 
+        /// <summary>Last known RaidInstanceId per account, for detecting cleared pointers on completion.</summary>
+        private readonly Dictionary<string, string> _lastRaidInstanceIds = new Dictionary<string, string>();
+
+        /// <summary>Cached raid records for hosted instances (key = instanceId), so anchors survive Delete.</summary>
+        private readonly Dictionary<string, RaidInstanceRecord> _hostedRaidCache = new Dictionary<string, RaidInstanceRecord>();
+
+        /// <summary>Members already issued a return transfer this session (exactly-once per session).</summary>
+        private readonly HashSet<string> _returnedMembers = new HashSet<string>();
+
         /// <summary>Local <see cref="PlayerGuild"/>s keyed by account, whose bags a bank mutation moves items into.</summary>
         private readonly Dictionary<string, PlayerGuild> _localGuilds = new Dictionary<string, PlayerGuild>();
 
@@ -100,6 +109,9 @@ namespace MMO.Social
 
         /// <summary>Raised when a local member must move to another zone to join its party's raid instance.</summary>
         public event Action<string, RaidInstanceRecord> RaidTransferRequested;
+
+        /// <summary>Raised when a local member must return to their origin zone after raid completion.</summary>
+        public event Action<string, RaidReturnAnchor> RaidReturnRequested;
 
         /// <summary>
         /// Raised with the authoritative raid whenever a raid this zone hosts a member of changes, so
@@ -1615,6 +1627,35 @@ namespace MMO.Social
                 PartyRecord record = await _repository.LoadPartyAsync(partyId, CancellationToken.None);
                 if (record != null)
                     PartyChanged?.Invoke(record);
+
+                // Detect raid completion: RaidInstanceId went from set → empty while members are local.
+                // This zone is the host if it has members in this party and we cached the raid record.
+                if (record != null && _raidRepository != null)
+                {
+                    _lastRaidInstanceIds.TryGetValue(record.PartyId, out string lastInstanceId);
+                    string currentInstanceId = record.RaidInstanceId;
+
+                    if (!string.IsNullOrEmpty(lastInstanceId) && string.IsNullOrEmpty(currentInstanceId))
+                    {
+                        // Raid completed for this party — drive return for each local member
+                        if (record.Members != null)
+                        {
+                            foreach (PartyMemberRecord member in record.Members)
+                            {
+                                if (!string.IsNullOrEmpty(member.AccountId) && _local.ContainsKey(member.AccountId))
+                                {
+                                    await TryTransferHomeAsync(member.AccountId, lastInstanceId);
+                                }
+                            }
+                        }
+                    }
+
+                    // Update the last known instance id
+                    if (!string.IsNullOrEmpty(currentInstanceId))
+                        _lastRaidInstanceIds[record.PartyId] = currentInstanceId;
+                    else
+                        _lastRaidInstanceIds.Remove(record.PartyId);
+                }
             }
 
             foreach (string guildId in guildIds)
@@ -1706,6 +1747,13 @@ namespace MMO.Social
                     continue;
                 }
 
+                // Cache the raid record if this zone is the instance host, so we have the anchors
+                // after the record is deleted on completion.
+                if (string.Equals(_zoneId, instance.HostZoneId, StringComparison.Ordinal))
+                {
+                    _hostedRaidCache[instance.InstanceId] = instance;
+                }
+
                 bool rosterRaised = false;
                 foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
                 {
@@ -1727,6 +1775,15 @@ namespace MMO.Social
 
                     if (_lastRaidTransfers.TryGetValue(local.AccountId, out string last) && last == instance.InstanceId)
                         continue;
+
+                    // Record return anchor before transferring — a member must never be sent to a
+                    // host that doesn't know where to send them back.
+                    bool anchorRecorded = await RecordReturnAnchorAsync(instance, local.AccountId);
+                    if (!anchorRecorded)
+                    {
+                        Debug.LogWarning($"[Raid] Skipping transfer for '{local.AccountId}' — failed to record return anchor.");
+                        continue;
+                    }
 
                     _lastRaidTransfers[local.AccountId] = instance.InstanceId;
                     RaidTransferRequested?.Invoke(local.AccountId, instance);
@@ -1757,6 +1814,170 @@ namespace MMO.Social
                 await _repository.SavePartyAsync(current, CancellationToken.None);
                 return PartyRule.Ok;
             });
+        }
+
+        /// <summary>
+        /// CAS-appends a return anchor for a member being transferred to the raid host. Returns true
+        /// if the anchor was recorded (or already exists for this account), false if the CAS loop
+        /// was exhausted and the member must not be transferred.
+        /// </summary>
+        private async Task<bool> RecordReturnAnchorAsync(RaidInstanceRecord instance, string accountId)
+        {
+            if (instance == null || string.IsNullOrEmpty(accountId) || _raidRepository == null)
+                return false;
+
+            string instanceId = instance.InstanceId;
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    RaidInstanceRecord current = await _raidRepository.LoadRaidInstanceAsync(instanceId, CancellationToken.None);
+                    if (current == null)
+                        return false;
+
+                    if (current.ReturnAnchors == null)
+                        current.ReturnAnchors = new List<RaidReturnAnchor>();
+
+                    // Check if anchor already exists for this account
+                    bool exists = false;
+                    foreach (RaidReturnAnchor a in current.ReturnAnchors)
+                    {
+                        if (a.AccountId == accountId)
+                        {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!exists)
+                    {
+                        current.ReturnAnchors.Add(new RaidReturnAnchor
+                        {
+                            AccountId = accountId,
+                            OriginHost = _instanceHostAddress,
+                            OriginPort = _instanceHostPort,
+                            OriginServerId = _zoneId,
+                            Returned = false,
+                        });
+                    }
+
+                    await _raidRepository.SaveRaidInstanceAsync(current);
+                    return true;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Raid] Failed to record return anchor for '{accountId}': {e.Message}");
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Attempts to transfer a member back to their origin zone using the recorded anchor.
+        /// Called when the raid completes (RaidInstanceId cleared) and the member is still local.
+        /// </summary>
+        private async Task TryTransferHomeAsync(string accountId, string instanceId)
+        {
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(instanceId))
+                return;
+
+            // Exactly-once per session: skip if we've already issued a return for this member
+            string key = accountId + ":" + instanceId;
+            if (_returnedMembers.Contains(key))
+                return;
+
+            // Load the cached raid record (survives DeleteRaidInstanceAsync)
+            if (!_hostedRaidCache.TryGetValue(instanceId, out RaidInstanceRecord raid))
+                return;
+
+            if (raid.ReturnAnchors == null)
+                return;
+
+            RaidReturnAnchor anchor = default;
+            bool found = false;
+            foreach (RaidReturnAnchor a in raid.ReturnAnchors)
+            {
+                if (a.AccountId == accountId)
+                {
+                    anchor = a;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+                return;
+
+            // Check if member is still local to this host zone
+            bool memberStillLocal = _local.ContainsKey(accountId);
+
+            // Pure decision: can we transfer back?
+            RaidTransferRule rule = RaidTransferRules.CanTransferBack(accountId, _zoneId, anchor, memberStillLocal);
+            if (rule != RaidTransferRule.Ok)
+                return;
+
+            // Mark as returned in-memory (session-level exactly-once)
+            _returnedMembers.Add(key);
+
+            // Raise the return event; PlayerRaid will run the handoff to the anchor's origin
+            RaidReturnRequested?.Invoke(accountId, anchor);
+
+            // CAS the anchor's Returned = true for cross-session durability
+            await MarkAnchorReturnedAsync(instanceId, accountId);
+        }
+
+        /// <summary>
+        /// CAS-sets the Returned flag on the anchor after the token has been minted.
+        /// Best-effort: a failure leaves the anchor unreturned so the next pass retries.
+        /// </summary>
+        private async Task MarkAnchorReturnedAsync(string instanceId, string accountId)
+        {
+            if (_raidRepository == null)
+                return;
+
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    RaidInstanceRecord current = await _raidRepository.LoadRaidInstanceAsync(instanceId, CancellationToken.None);
+                    if (current == null || current.ReturnAnchors == null)
+                        return;
+
+                    bool modified = false;
+                    for (int j = 0; j < current.ReturnAnchors.Count; j++)
+                    {
+                        if (current.ReturnAnchors[j].AccountId == accountId && !current.ReturnAnchors[j].Returned)
+                        {
+                            var anchor = current.ReturnAnchors[j];
+                            anchor.Returned = true;
+                            current.ReturnAnchors[j] = anchor;
+                            modified = true;
+                            break;
+                        }
+                    }
+
+                    if (!modified)
+                        return;
+
+                    await _raidRepository.SaveRaidInstanceAsync(current);
+                    return;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Raid] Failed to mark anchor returned for '{accountId}': {e.Message}");
+                    return;
+                }
+            }
         }
 
         #endregion

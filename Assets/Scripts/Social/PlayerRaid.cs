@@ -55,6 +55,7 @@ namespace MMO.Social
             if (hub != null)
             {
                 hub.RaidTransferRequested += OnRaidTransferRequested;
+                hub.RaidReturnRequested += OnRaidReturnRequested;
                 hub.RaidChanged += OnRaidChanged;
             }
         }
@@ -70,6 +71,7 @@ namespace MMO.Social
             if (hub != null)
             {
                 hub.RaidTransferRequested -= OnRaidTransferRequested;
+                hub.RaidReturnRequested -= OnRaidReturnRequested;
                 hub.RaidChanged -= OnRaidChanged;
             }
         }
@@ -227,6 +229,14 @@ namespace MMO.Social
             _ = HandoffAsync(instance);
         }
 
+        private void OnRaidReturnRequested(string accountId, RaidReturnAnchor anchor)
+        {
+            if (!IsServer || accountId != _accountId)
+                return;
+
+            _ = HandoffHomeAsync(anchor);
+        }
+
         /// <summary>
         /// Flush, mint a token bound to the instance host, and broadcast the redirect. A failed
         /// save aborts the handoff so the member is never told to leave before their state lands.
@@ -256,6 +266,43 @@ namespace MMO.Social
                 persistence.FlushAsync);
 
             ZoneTransferBroadcast? redirect = await handoff.RunAsync(_accountId, "Raid instance", CancellationToken.None);
+            if (redirect == null || owner == null || !owner.IsValid)
+                return;
+
+            NetworkManager manager = NetworkManager;
+            if (manager != null && manager.ServerManager != null)
+                manager.ServerManager.Broadcast(owner, redirect.Value, requireAuthenticated: true);
+        }
+
+        /// <summary>
+        /// Flush, mint a token bound to the member's origin zone, and broadcast the redirect.
+        /// Used when the raid completes to send the member back home.
+        /// </summary>
+        private async Task HandoffHomeAsync(RaidReturnAnchor anchor)
+        {
+            if (string.IsNullOrEmpty(anchor.OriginHost) || anchor.OriginPort == 0 || string.IsNullOrEmpty(anchor.OriginServerId))
+                return;
+
+            NetworkConnection owner = Owner;
+            if (owner == null || !owner.IsValid)
+                return;
+
+            IZoneTransferTokenStore store = ZoneTransferTokenService.Instance != null
+                ? ZoneTransferTokenService.Instance.Store
+                : null;
+            PlayerPersistenceService persistence = PlayerPersistenceService.Instance;
+            if (store == null || persistence == null)
+                return;
+
+            var handoff = new ZoneTransferHandoff(
+                store,
+                anchor.OriginHost,
+                anchor.OriginPort,
+                anchor.OriginServerId,
+                ResolveSourceServerId(),
+                persistence.FlushAsync);
+
+            ZoneTransferBroadcast? redirect = await handoff.RunAsync(_accountId, "Raid completed", CancellationToken.None);
             if (redirect == null || owner == null || !owner.IsValid)
                 return;
 
