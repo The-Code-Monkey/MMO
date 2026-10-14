@@ -125,7 +125,7 @@ namespace MMO.Net
             if (!status.port.HasValue)
                 return null;
 
-            return (status.host ?? "host.docker.internal", status.port.Value);
+            return (status.host ?? "host.docker.internal", (ushort)status.port.Value);
         }
 
         private async Task<T> GetAsync<T>(string path, CancellationToken ct)

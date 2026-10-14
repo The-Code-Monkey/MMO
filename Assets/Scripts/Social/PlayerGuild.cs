@@ -42,6 +42,13 @@ namespace MMO.Social
 
         public string RosterJson => _rosterJson.Value;
 
+        /// <summary>
+        /// The Nakama account id resolved for this player's connection, or null before
+        /// <see cref="ResolveAccountId"/> has run. Used by systems that need the account id a
+        /// player's guild view was built around (for example, routing auction calls).
+        /// </summary>
+        public string AccountId => _accountId;
+
         /// <summary>The authoritative bank parsed from the replicate SyncVar, or null before one arrives.</summary>
         public GuildBankRecord Bank
             => string.IsNullOrEmpty(_bankJson.Value) ? null : JsonUtility.FromJson<GuildBankRecord>(_bankJson.Value);

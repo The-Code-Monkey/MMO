@@ -2362,10 +2362,10 @@ namespace MMO.Social
                     return (RaidRule.NoParty, null);
 
                 PartyRecord party = await _repository.LoadPartyAsync(index.PartyId);
-                var result = await _orchestrationService.EnterRaidAsync(party, CancellationToken.None);
-                if (result.Rule == RaidRule.Ok)
+                var orchestrated = await _orchestrationService.EnterRaidAsync(party, CancellationToken.None);
+                if (orchestrated.Rule == RaidRule.Ok)
                     await SyncAsync();
-                return result;
+                return orchestrated;
             }
 
             var result = await _raidService.AllocateAsync(requesterId);

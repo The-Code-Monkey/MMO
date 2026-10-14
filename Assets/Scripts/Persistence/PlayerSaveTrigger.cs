@@ -88,7 +88,8 @@ namespace MMO.Persistence
             service.RegisterLivePlayer(_accountId, Capture);
             _stats.LevelChanged += OnLevelChanged;
             _inventory.ContainersChanged += OnInventoryChanged;
-            _wallet?.OnGoldChanged += OnGoldChanged;
+            if (_wallet != null)
+                _wallet.OnGoldChanged += OnGoldChanged;
             _subscribed = true;
         }
 

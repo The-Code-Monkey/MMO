@@ -74,7 +74,7 @@ namespace MMO.Tests
             Assert.AreEqual(1, record.Items.Count);
             Assert.AreEqual((int)EquipmentSlot.Head, record.Items[0].EquipmentSlot);
 
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipmentOut, out int skipped);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipmentOut, out int skipped, out _);
 
             Assert.AreEqual(0, skipped);
             Assert.IsEmpty(bag);

@@ -431,6 +431,12 @@ namespace MMO.Tests
                 Zones[record.ServerId] = clone;
                 return Task.CompletedTask;
             }
+
+            public Task DeleteZoneAsync(string serverId, CancellationToken ct = default)
+            {
+                Zones.Remove(serverId);
+                return Task.CompletedTask;
+            }
         }
 
         #endregion
