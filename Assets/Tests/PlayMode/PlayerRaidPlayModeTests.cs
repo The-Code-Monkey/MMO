@@ -181,6 +181,82 @@ namespace MMO.Tests
         }
 
         [UnityTest]
+        public IEnumerator RequestJoinRaid_AsLeaderOfASecondParty_JoinsTheRaid()
+        {
+            yield return StartHostAndGetPlayer();
+            SeedParty(_accountId, memberCount: RaidRules.MinRaidSize);
+            SeedHostedRaid(seedPartyId: "p0", memberPartyIds: new[] { "p0" });
+
+            bool failed = false;
+            _raid.RuleFailed += _ => failed = true;
+
+            _raid.RequestJoinRaid(RaidInstanceId);
+
+            int frames = 0;
+            while (_repo.Parties[PartyId].RaidInstanceId == null && frames++ < 300)
+                yield return null;
+
+            Assert.IsFalse(failed, "A valid leader join must not be refused.");
+            Assert.AreEqual(RaidInstanceId, _repo.Parties[PartyId].RaidInstanceId);
+            CollectionAssert.Contains(_raids.Instances[RaidInstanceId].MemberPartyIds, PartyId);
+        }
+
+        [UnityTest]
+        public IEnumerator RequestLeaveRaid_PullsThePartyOutAndKeepsTheRaidAlive()
+        {
+            yield return StartHostAndGetPlayer();
+            SeedParty(_accountId, memberCount: RaidRules.MinRaidSize, raidInstanceId: RaidInstanceId);
+            SeedHostedRaid(seedPartyId: PartyId, memberPartyIds: new[] { PartyId, "p2" });
+
+            _raid.RequestLeaveRaid();
+
+            int frames = 0;
+            while (_repo.Parties[PartyId].RaidInstanceId != null && frames++ < 300)
+                yield return null;
+
+            Assert.IsNull(_repo.Parties[PartyId].RaidInstanceId);
+            Assert.IsTrue(_raids.Instances.ContainsKey(RaidInstanceId), "A sibling party keeps the raid alive.");
+            CollectionAssert.DoesNotContain(_raids.Instances[RaidInstanceId].MemberPartyIds, PartyId);
+        }
+
+        [UnityTest]
+        public IEnumerator RpcJoinRaid_FromANonOwner_IsIgnoredByTheServer()
+        {
+            yield return StartHostAndGetPlayer();
+            SeedParty(_accountId, memberCount: RaidRules.MinRaidSize);
+            SeedHostedRaid(seedPartyId: "p0", memberPartyIds: new[] { "p0" });
+
+            bool failed = false;
+            _raid.RuleFailed += _ => failed = true;
+
+            var intruder = new NetworkConnection(_manager, clientId: 987655, transportIndex: 0, asServer: true);
+            MethodInfo rpc = typeof(PlayerRaid).GetMethod("RpcJoinRaid", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(rpc, "RpcJoinRaid lost its name or access; the ServerRpc seam moved.");
+            rpc.Invoke(_raid, new object[] { RaidInstanceId, intruder });
+
+            for (int i = 0; i < 60; i++)
+                yield return null;
+
+            Assert.IsFalse(failed, "A non-owner must not provoke a response.");
+            Assert.IsNull(_repo.Parties[PartyId].RaidInstanceId, "A non-owner must not join the raid.");
+        }
+
+        private void SeedHostedRaid(string seedPartyId, string[] memberPartyIds)
+        {
+            var raid = new RaidInstanceRecord
+            {
+                InstanceId = RaidInstanceId,
+                PartyId = seedPartyId,
+                SeedPartyId = seedPartyId,
+                LeaderId = seedPartyId + "leader",
+                HostZoneId = "local",
+                HostAddress = null,
+            };
+            raid.MemberPartyIds.AddRange(memberPartyIds);
+            _raids.Instances[RaidInstanceId] = raid;
+        }
+
+        [UnityTest]
         public IEnumerator RpcAllocateRaid_FromANonOwner_IsIgnoredByTheServer()
         {
             yield return StartHostAndGetPlayer();

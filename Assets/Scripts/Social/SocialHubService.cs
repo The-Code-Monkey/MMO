@@ -101,6 +101,12 @@ namespace MMO.Social
         /// <summary>Raised when a local member must move to another zone to join its party's raid instance.</summary>
         public event Action<string, RaidInstanceRecord> RaidTransferRequested;
 
+        /// <summary>
+        /// Raised with the authoritative raid whenever a raid this zone hosts a member of changes, so
+        /// <see cref="PlayerRaid"/> can repaint the replicated roster (mirrors <see cref="PartyChanged"/>).
+        /// </summary>
+        public event Action<RaidInstanceRecord> RaidChanged;
+
         /// <summary>Raised for the one invited account; delivery is a <c>TargetRpc</c> underneath.</summary>
         public event Action<string, PendingPartyInvite> PartyInviteReceived;
 
@@ -1657,19 +1663,23 @@ namespace MMO.Social
             return SyncAsync();
         }
 
-        /// <summary>Deletes a disbanding party's raid instance record, if it had one.</summary>
+        /// <summary>
+        /// Removes a disbanding party (its last member left) from its raid. Since #54 a raid groups
+        /// many parties, so this is a <em>partial</em> teardown: the raid and its other member
+        /// parties survive; only the whole raid disappears when this was the last party.
+        /// </summary>
         private async Task TeardownRaidAsync(PartyRecord party)
         {
-            if (_raidRepository == null || party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+            if (_raidService == null || party == null || string.IsNullOrEmpty(party.RaidInstanceId))
                 return;
 
             try
             {
-                await _raidRepository.DeleteRaidInstanceAsync(party.RaidInstanceId, CancellationToken.None);
+                await _raidService.RemovePartyFromRaidAsync(party.PartyId);
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[Social] Failed to tear down raid '{party.RaidInstanceId}': {e.Message}");
+                Debug.LogWarning($"[Social] Failed to tear down raid membership for '{party.PartyId}': {e.Message}");
             }
         }
 
@@ -1686,13 +1696,28 @@ namespace MMO.Social
                     continue;
 
                 RaidInstanceRecord instance = await _raidRepository.LoadRaidInstanceAsync(party.RaidInstanceId, CancellationToken.None);
-                if (instance == null)
-                    continue;
 
+                // Reconcile repair: a pointer whose raid is gone, or whose raid no longer lists this
+                // party among its member parties, is stale. Clear it so the party stops steering its
+                // members at a dead instance; #54's cross-object writes can leave exactly this state.
+                if (instance == null || !RaidRules.IncludesParty(instance, party.PartyId))
+                {
+                    await RepairDanglingRaidPointerAsync(party);
+                    continue;
+                }
+
+                bool rosterRaised = false;
                 foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
                 {
                     if (!PartyRules.IsMember(party, local.AccountId))
                         continue;
+
+                    // Repaint the raid view once per hosted party, before deciding on any handoff.
+                    if (!rosterRaised)
+                    {
+                        rosterRaised = true;
+                        RaidChanged?.Invoke(instance);
+                    }
 
                     if (!RaidRules.NeedsTransfer(instance.InstanceId, _zoneId, instance.HostZoneId))
                     {
@@ -1707,6 +1732,31 @@ namespace MMO.Social
                     RaidTransferRequested?.Invoke(local.AccountId, instance);
                 }
             }
+        }
+
+        /// <summary>
+        /// Clears a party's raid pointer after the reconcile pass found no matching membership entry.
+        /// Version-guarded like every other write: a conflict re-reads, and a pointer that another
+        /// actor already changed (or cleared) is left alone.
+        /// </summary>
+        private async Task RepairDanglingRaidPointerAsync(PartyRecord party)
+        {
+            if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+                return;
+
+            await RetryPartyAsync(async () =>
+            {
+                PartyRecord current = await _repository.LoadPartyAsync(party.PartyId, CancellationToken.None);
+                if (current == null || string.IsNullOrEmpty(current.RaidInstanceId))
+                    return PartyRule.Ok;
+
+                if (current.RaidInstanceId != party.RaidInstanceId)
+                    return PartyRule.Ok;
+
+                current.RaidInstanceId = null;
+                await _repository.SavePartyAsync(current, CancellationToken.None);
+                return PartyRule.Ok;
+            });
         }
 
         #endregion
@@ -1852,6 +1902,43 @@ namespace MMO.Social
             if (result.Rule == RaidRule.Ok)
                 await SyncAsync();
             return result;
+        }
+
+        /// <summary>
+        /// Leader-only: joins the requester's party into an existing raid. Capacity is re-checked
+        /// against the live roster inside the service's CAS loop, so a race for the last seat loses
+        /// cleanly rather than oversubscribing the raid.
+        /// </summary>
+        public async Task<RaidRule> JoinRaidAsync(string requesterId, string raidId)
+        {
+            if (_raidService == null)
+                return RaidRule.BackendUnavailable;
+            RaidRule rule = await _raidService.JoinAsync(requesterId, raidId);
+            if (rule == RaidRule.Ok)
+                await SyncAsync();
+            return rule;
+        }
+
+        /// <summary>Leader-only: pulls the requester's whole party out of its raid.</summary>
+        public async Task<RaidRule> LeaveRaidAsync(string requesterId)
+        {
+            if (_raidService == null)
+                return RaidRule.BackendUnavailable;
+            RaidRule rule = await _raidService.LeaveAsync(requesterId);
+            if (rule == RaidRule.Ok)
+                await SyncAsync();
+            return rule;
+        }
+
+        /// <summary>Raid-leader-only: hands raid leadership to another member.</summary>
+        public async Task<RaidRule> PromoteRaidLeaderAsync(string requesterId, string targetId)
+        {
+            if (_raidService == null)
+                return RaidRule.BackendUnavailable;
+            RaidRule rule = await _raidService.PromoteLeaderAsync(requesterId, targetId);
+            if (rule == RaidRule.Ok)
+                await SyncAsync();
+            return rule;
         }
 
         /// <summary>Leader-only: completes the raid and tears its instance down.</summary>

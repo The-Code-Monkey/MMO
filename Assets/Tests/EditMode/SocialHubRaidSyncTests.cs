@@ -143,6 +143,42 @@ namespace MMO.Tests
         }
 
         [Test]
+        public async Task SyncAsync_PointerWithoutAMembershipEntry_IsClearedByReconcile()
+        {
+            SeedRaid("p1", "r1", "server-b", "a");
+            // The raid is now multi-party and no longer lists p1: the pointer is dangling.
+            _raids.Instances["r1"].MemberPartyIds.Add("pOther");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            _hub.RegisterLocal("a", "Alice");
+
+            bool raised = false;
+            _hub.RaidTransferRequested += (_, _) => raised = true;
+
+            await _hub.SyncAsync();
+
+            Assert.IsNull(_social.Parties["p1"].RaidInstanceId,
+                "Reconcile must clear a pointer with no matching membership entry.");
+            Assert.IsFalse(raised, "A stale pointer must not trigger a handoff.");
+        }
+
+        [Test]
+        public async Task SyncAsync_MultiPartyRoster_TransfersOnlyTheHostedPartysMembers()
+        {
+            SeedRaid("p1", "r1", "server-b", "a");
+            _raids.Instances["r1"].MemberPartyIds.Add("p1");
+            _raids.Instances["r1"].MemberPartyIds.Add("p2");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            _hub.RegisterLocal("a", "Alice");
+
+            string transferredTo = null;
+            _hub.RaidTransferRequested += (_, instance) => transferredTo = instance.InstanceId;
+
+            await _hub.SyncAsync();
+
+            Assert.AreEqual("r1", transferredTo, "A member party of a multi-party raid must still be handed off.");
+        }
+
+        [Test]
         public async Task MissedNotification_StillConvergesOnTheNextReconcile()
         {
             SeedRaid("p1", "r1", "server-b", "a");
