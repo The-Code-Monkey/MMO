@@ -15,6 +15,14 @@ namespace MMO.Persistence
     public struct ItemSaveData
     {
         public string ItemName;
+
+        /// <summary>
+        /// The server-assigned identity of the item instance. Older saves predate it and carry an
+        /// empty string; the mapper mints a fresh id on load so the dupe guard can track the item
+        /// from the moment it enters the world.
+        /// </summary>
+        public string InstanceId;
+
         public int GridX;
         public int GridY;
         public int Width;
