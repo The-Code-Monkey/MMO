@@ -95,6 +95,11 @@ namespace MMO.Net
             go.AddComponent<PlayerGathering>();
             go.AddComponent<MMO.Crafting.PlayerCrafting>();
 
+            // The death rules: subscribes to PlayerStats.Died and applies the zone-tier outcome.
+            // After the stats and inventory it reads, and it resolves the loot-bag prefab from the
+            // NetworkManager's spawnable collection rather than a per-prefab reference.
+            go.AddComponent<PlayerDeath>();
+
             // Wallet and auction house for player-driven trading.
             go.AddComponent<PlayerWallet>();
             go.AddComponent<PlayerAuctionHouse>();

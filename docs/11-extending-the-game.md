@@ -143,7 +143,7 @@ Follow the pure-core / networked-shell split ([01](01-architecture-overview.md#4
    - `[Server]` methods that run the pure logic and mutate SyncVars/SyncLists,
    - an event the UI can subscribe to.
 3. **Wire it.** If it needs a component on the player prefab, add it in
-   `PlayerPrefabFactory.Create` (`Assets/Scripts/Net/PlayerPrefabFactory.cs:71`) and re-run
+   `PlayerPrefabFactory.Create` (`Assets/Scripts/Net/PlayerPrefabFactory.cs:72`) and re-run
    `Tools > MMO > Create Player Prefab`.
 4. **Test.** EditMode for the core, PlayMode for the networked path.
 
@@ -178,7 +178,7 @@ public sealed class PlayerCooking : NetworkBehaviour
 
 1. Add the field to `PlayerSaveRecord` (`Assets/Scripts/Persistence/PlayerSaveRecord.cs`).
 2. Capture it in `PlayerSaveMapper.Capture` (`PlayerSaveMapper.cs:21`).
-3. Apply it in `PlayerSaveMapper.Apply` (`PlayerSaveMapper.cs:67`) and, if it belongs to a live
+3. Apply it in `PlayerSaveMapper.Apply` (`PlayerSaveMapper.cs:69`) and, if it belongs to a live
    component, in `PlayerSaveTrigger.OnStartNetwork` (`PlayerSaveTrigger.cs:51`).
 4. Bump `PlayerSaveRecord.CurrentSchemaVersion` if old saves need migrating.
 5. Add an EditMode round-trip test.

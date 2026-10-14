@@ -50,6 +50,7 @@ Each inventory entry is an `ItemSaveData` (`PlayerSaveRecord.cs:15`):
 | `ItemName` | Registry key both ends resolve locally; the definition itself never travels. |
 | `GridX`, `GridY` | Position in the bag grid. |
 | `Width`, `Height` | Footprint size. |
+| `Durability` | Remaining wear; restored clamped to the definition's `MaxDurability`. |
 | `EquipmentSlot` | `-1` means "in the bag"; otherwise the worn slot index. |
 
 The default values match the gameplay constants: `Level = PlayerStats.DefaultLevel` (1),
@@ -61,11 +62,12 @@ The default values match the gameplay constants: `Level = PlayerStats.DefaultLev
 converts between live gameplay components and the record, and it is pure, so it is unit tested.
 
 - `PlayerSaveMapper.Capture(...)` (`PlayerSaveMapper.cs:21`) takes plain values and lists — level,
-  health, mana, position, the bag list and the equipment list — and produces a `PlayerSaveRecord`.
-  It skips empty items and marks bag items with `EquipmentSlot = -1`.
-- `PlayerSaveMapper.Apply(...)` (`PlayerSaveMapper.cs:67`) reads a record back into two lists
-  (`out List<ItemInstance> bag`, `out List<ItemInstance> equipment`) and reports how many items were
-  **skipped**.
+  health, mana, gold, position, the bag list and the equipment list — and produces a
+  `PlayerSaveRecord`. It skips empty items and marks bag items with `EquipmentSlot = -1`.
+- `PlayerSaveMapper.Apply(...)` (`PlayerSaveMapper.cs:69`) reads a record back into two lists
+  (`out List<ItemInstance> bag`, `out List<ItemInstance> equipment`), reports how many items were
+  **skipped**, and returns the stored gold. Item durability is restored clamped to the definition's
+  current maximum (`:112`).
 
 A skipped item is one the local game cannot resolve — a saved item name with no matching
 `ItemDefinition`, or a worn slot index that no longer exists. Skipping rather than crashing means a

@@ -56,6 +56,7 @@ namespace MMO.Editor
                 // Already in the scene, so it has no prefab wiring of ours to inherit; give it one.
                 PlayerPrefabBaker.WirePlayerPrefab(existing);
                 TargetDummyBaker.WireTargetDummy(existing);
+                LootBagBaker.WireLootBag(existing);
                 return existing;
             }
 
@@ -63,9 +64,10 @@ namespace MMO.Editor
             // scene-local objects that would then be serialized into the scene.
             NetworkObject playerPrefab = PlayerPrefabBaker.EnsurePlayerPrefab();
             NetworkObject targetDummyPrefab = TargetDummyBaker.EnsureTargetDummyPrefab();
+            NetworkObject lootBagPrefab = LootBagBaker.EnsureLootBagPrefab();
 
             NetworkManager manager = NetworkManagerFactory.Create(
-                settings, out _, playerPrefab, targetDummyPrefab);
+                settings, out _, playerPrefab, targetDummyPrefab, lootBagPrefab: lootBagPrefab);
 
             // A freshly constructed GameObject already lands in the active scene, so only
             // move it when it genuinely ended up somewhere else.

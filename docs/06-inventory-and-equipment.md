@@ -27,14 +27,16 @@ Only the server mutates these lists. A client asks through `RequestEquip` / `Req
 | `ItemName` | The registry key. The definition itself never travels. | `:30` |
 | `GridX`, `GridY` | Position in the bag grid. | `:33`, `:36` |
 | `Width`, `Height` | Footprint size. | `:39`, `:42` |
+| `Durability` | Remaining wear, `0..MaxDurability`. `0` on an indestructible item. | `:52` |
 
 Why public fields? FishNet auto-generates serialisers for network payloads from **public** fields and
 ignores private `[SerializeField]` fields, so a wire type must expose them. This is the opposite of
 the data assets, which keep their fields private.
 
-Helpers: `IsEmpty` (`:45`) is true when `ItemName` is blank; `Empty` (`:48`) is the default value;
-`Create(ItemDefinition definition, int gridX, int gridY)` (`:55`) builds an instance from a
-definition, copying its footprint.
+Helpers: `IsEmpty` (`:55`) is true when `ItemName` is blank; `Empty` (`:58`) is the default value;
+`Create(ItemDefinition definition, int gridX, int gridY)` (`:65`) builds an instance from a
+definition, copying its footprint **and** seeding `Durability` from the definition's
+`MaxDurability`.
 
 ## 3. ItemDefinition — what an item is
 
@@ -49,14 +51,19 @@ with `Assets > Create > MMO > Item Definition`. Fields:
 | `GridWidth`, `GridHeight` | Footprint in the bag grid (default 1×1). | `:29`, `:30` |
 | `MaxHealthBonus` | Health cap bonus when equipped. | `:31` |
 | `MaxManaBonus` | Mana cap bonus when equipped. | `:32` |
+| `MaxDurability` | Wear ceiling; `0` (the default) means indestructible. | `:33` |
+
+The public `MaxDurability` accessor (`:73`) is a read-through (`Mathf.Max(0, _maxDurability)`) rather
+than the raw field, so a negative authoring value cannot leak out. It is what `ItemInstance.Create`
+seeds a fresh item with and what `PlayerSaveMapper` clamps a loaded durability against.
 
 Existing items live in `Assets/Resources/Items/` (e.g. `Iron Ore.asset`, `Iron Helm.asset`,
 `Broadsword.asset`).
 
 ### Self-registration
 
-`ItemDefinition.OnEnable` (`ItemDefinition.cs:67`) registers the definition in
-`ItemDefinitionRegistry` if it has a name, and `OnDisable` (`:73`) unregisters it. Assets loaded
+`ItemDefinition.OnEnable` (`ItemDefinition.cs:85`) registers the definition in
+`ItemDefinitionRegistry` if it has a name, and `OnDisable` (`:91`) unregisters it. Assets loaded
 from disk register on load; assets created in code register once named. This means you normally do
 not have to wire anything up — drop a named asset in `Resources/Items` and it is findable.
 
@@ -123,7 +130,7 @@ equipped" by `CanEquip`. The three server gates for an equip are: resolve the de
 `All` (`:32`) and `IsValid(slot)` (`:38`), which guards against casting garbage like
 `(EquipmentSlot)99`.
 
-`PlayerInventory.EnsureEquipmentSlots` (`PlayerInventory.cs:460`) pads the equipment list with empty
+`PlayerInventory.EnsureEquipmentSlots` (`PlayerInventory.cs:634`) pads the equipment list with empty
 entries until it is `EquipmentSlots.Count` long.
 
 ## 7. PlayerInventory — the server's rules
@@ -144,7 +151,7 @@ re-resolved server-side rather than acting on a copied item.
 
 ### TryEquip — the core
 
-`TryEquip(int gridX, int gridY)` (`:199`) runs all the gates before changing anything:
+`TryEquip(int gridX, int gridY)` (`:227`) runs all the gates before changing anything:
 
 1. Find the item index at the cell (`InventoryGrid.FindAt`); refuse if there is none.
 2. Resolve the definition via `ItemDefinitionRegistry.Resolve`; refuse if unknown.
@@ -158,32 +165,32 @@ re-resolved server-side rather than acting on a copied item.
 
 ### TryUnequip
 
-`TryUnequip(EquipmentSlot slot)` (`:269`) validates the slot, requires something worn there, finds
+`TryUnequip(EquipmentSlot slot)` (`:297`) validates the slot, requires something worn there, finds
 free bag space, then clears the slot and adds the item to the bag. A full bag refuses entirely.
 
 ### TryAddItem
 
-`TryAddItem(ItemDefinition definition)` (`:179`) is how the server grants an item (a gather, a craft
+`TryAddItem(ItemDefinition definition)` (`:207`) is how the server grants an item (a gather, a craft
 output, a drop). It finds free space and adds the instance. Acquisition deliberately does **not**
 check level — level is checked at equip time.
 
 ### Stat bonuses
 
-`RecalculateEquipmentStats` (`:299`) rebuilds the list of equipped definitions and calls
-`stats.ApplyEquipmentBonuses(...)` (`:320`). It **recalculates from scratch** rather than
+`RecalculateEquipmentStats` (`:473`) rebuilds the list of equipped definitions and calls
+`stats.ApplyEquipmentBonuses(...)` (`:494`). It **recalculates from scratch** rather than
 incrementing, so an item removed correctly subtracts its bonus. The sums come from two pure helpers:
-`ComputeMaxHealthBonus` (`:330`) and `ComputeMaxManaBonus` (`:346`).
+`ComputeMaxHealthBonus` (`:504`) and `ComputeMaxManaBonus` (`:520`).
 
 ### Restore (from a save)
 
-`Restore(IReadOnlyList<ItemInstance> bag, IReadOnlyList<ItemInstance> equipment)` (`:368`) rebuilds
+`Restore(IReadOnlyList<ItemInstance> bag, IReadOnlyList<ItemInstance> equipment)` (`:542`) rebuilds
 the containers from a loaded save. The bag is copied as-is; the equipment list is padded to the
 right length and extra entries are ignored. It then recalculates stats. This is called by
 `PlayerSaveTrigger` during the join (see [03](03-backend-and-persistence.md)).
 
 ### CountItem
 
-`CountItem(string itemName)` (`:455`) counts how many of an item are in the bag, delegating to
+`CountItem(string itemName)` (`:629`) counts how many of an item are in the bag, delegating to
 `CraftingValidator.Count` (`Assets/Scripts/Crafting/CraftingValidator.cs:40`).
 
 ## 8. The clickable views
@@ -203,7 +210,7 @@ the UI binds to: `GridWidth`, `GridHeight`, `GetItemAt`, `RequestEquip`, and the
 
 ## 9. The inventory half of crafting
 
-`PlayerInventory.TryCraft(RecipeData recipe)` (`:395`) is the container-level craft. It:
+`PlayerInventory.TryCraft(RecipeData recipe)` (`:569`) is the container-level craft. It:
 
 1. Works on a scratch copy of the bag,
 2. verifies every ingredient is present (consuming copies from the scratch copy),
@@ -212,7 +219,46 @@ the UI binds to: `GridWidth`, `GridHeight`, `GetItemAt`, `RequestEquip`, and the
 
 This is separate from `PlayerCrafting.TryCraft` (the station/proximity/XP half), which calls this one
 once all its own checks pass. See [07](07-crafting-and-gathering.md). Note the output placement is
-currently simple: multiple outputs are added at the same coordinates (`:435`).
+currently simple: multiple outputs are added at the same coordinates (`:613`).
+
+## 10. Death, loot and durability
+
+Item durability is the anti-inflation half of death, and it is persisted. `ItemSaveData.Durability`
+(`PlayerSaveRecord.cs:24`) round-trips the count; `PlayerSaveMapper.Apply` restores it clamped to the
+definition's current `MaxDurability` (`PlayerSaveMapper.cs:112`) and treats a zero from a
+pre-durability save as "fully repaired" rather than broken. A balance rollback that lowers a cap can
+therefore never leave a saved item above its own ceiling.
+
+`PlayerInventory` grows a small server-only surface for the death resolver:
+
+| Method | What it does | Line |
+|---|---|---|
+| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:384` |
+| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:414` |
+| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:426` |
+| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:439` |
+| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:363` |
+| `RequestLoot(LootBag bag)` / `RpcRequestLoot` | Owner intent → `[ServerRpc]` → owner + range check → `bag.Loot(this)`. | `:178`, `:187` |
+
+`LootBag` (`Assets/Scripts/Gameplay/LootBag.cs:22`) is the pile of dropped items. It is a
+**server-write** `SyncList<ItemInstance>` (`Fill` is `[Server]`) and is deliberately *unowned*:
+FishNet only lets an owner send a `[ServerRpc]` to an object, so a looter routes the intent through
+their own `PlayerInventory` instead, which re-checks range before calling `Loot`. A bag that empties
+despawns itself.
+
+The full-loot flow, owned by `PlayerDeath` (`Assets/Scripts/Gameplay/PlayerDeath.cs:32`):
+
+1. On `PlayerStats.Died`, read the tier under the corpse (`ZoneRiskConfig.ResolveTierAt`).
+2. For black (`DropInventory`), spawn the `LootBag` and **fill it first**, *then* `ClearAll()` and
+   push the wipe to the backend immediately. A crash between the two leaves the items in the bag
+   (recoverable) rather than destroyed.
+3. Wear the gear and charge the repair bill for safe/yellow.
+4. Always `Respawn()`.
+
+The prefab's drop target is resolved from the `NetworkManager`'s spawnable prefabs (the same
+registration that gives the loot bag its id), so no per-prefab reference needs baking. See
+[05, section 1a](05-gameplay-stats-combat-abilities.md#1a-death-and-the-risk-tiers) for the tier
+table.
 
 ## Common tasks
 
@@ -224,6 +270,9 @@ currently simple: multiple outputs are added at the same coordinates (`:435`).
 - **Give an item a new stat bonus.** Add a field to `ItemDefinition`, sum it in
   `ComputeMaxHealthBonus`/`ComputeMaxManaBonus` (or a new helper), and apply it in
   `RecalculateEquipmentStats`.
+- **Make an item destructible.** Set `MaxDurability` to a positive value on the definition (0, the
+  default, means indestructible). Fresh instances then start at that ceiling, a safe-zone death wears
+  them, and the count round-trips through `ItemSaveData.Durability`.
 - **Make an item stack.** This does not exist yet. You would add a count field to `ItemInstance`,
   teach `TryAddItem` to merge, and teach `PlayerSaveMapper` to round-trip the count.
 - **Test an equip rule.** Use `InventoryValidator.CanEquip` directly, or `TestItemDefinitions.Create`

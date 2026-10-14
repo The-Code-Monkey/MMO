@@ -97,11 +97,19 @@ namespace MMO.Persistence
 
                 // Resolve through the registry so the same no-definition-anywhere miss a client
                 // equip would hit is what drops the item here.
-                if (ItemDefinitionRegistry.Resolve(saved.ItemName) == null)
+                ItemDefinition definition = ItemDefinitionRegistry.Resolve(saved.ItemName);
+                if (definition == null)
                 {
                     skippedItems++;
                     continue;
                 }
+
+                // Durability is clamped to the definition's maximum so a balance-data rollback
+                // (a lower cap) can never leave an item over its own ceiling. A save written
+                // before durability existed carries zero for a destructible item; that reads as
+                // "fully repaired" rather than "broken".
+                int maxDurability = definition.MaxDurability;
+                int durability = saved.Durability <= 0 ? maxDurability : Mathf.Min(saved.Durability, maxDurability);
 
                 var instance = new ItemInstance
                 {
@@ -110,6 +118,7 @@ namespace MMO.Persistence
                     GridY = saved.GridY,
                     Width = saved.Width,
                     Height = saved.Height,
+                    Durability = durability,
                 };
 
                 if (saved.EquipmentSlot < 0)
@@ -141,6 +150,7 @@ namespace MMO.Persistence
                 GridY = item.GridY,
                 Width = item.Width,
                 Height = item.Height,
+                Durability = item.Durability,
                 EquipmentSlot = equipmentSlot,
             };
         }

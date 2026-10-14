@@ -255,12 +255,15 @@ namespace MMO.Tests
 
             var single = manager.SpawnablePrefabs as SinglePrefabObjects;
             Assert.IsNotNull(single);
-            Assert.AreEqual(2, single.Prefabs.Count,
-                "FishNet derives prefab ids from list order, so duplicates shift ids on one end only.");
+            Assert.AreEqual(4, single.Prefabs.Count,
+                "FishNet derives prefab ids from list order, so duplicates shift ids on one end only. " +
+                "The order is player (0), target dummy (1), crafting station (2), loot bag (3).");
             Assert.AreSame(PlayerPrefabBaker.LoadPlayerPrefab(), single.Prefabs[0],
                 "The player must keep id 0 so connecting clients spawn the object they expect.");
             Assert.AreSame(TargetDummyBaker.LoadTargetDummyPrefab(), single.Prefabs[1],
                 "The target dummy comes second: every end registers the player first, then the dummy.");
+            Assert.AreSame(LootBagBaker.LoadLootBagPrefab(), single.Prefabs[3],
+                "The loot bag is registered last so a full-loot death has a prefab id both ends agree on.");
         }
 
         [Test]
@@ -359,7 +362,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(1, manager.gameObject.GetComponents<PlayerSpawner>().Length);
             Assert.AreEqual(1, manager.gameObject.GetComponents<TargetDummySpawner>().Length);
-            Assert.AreEqual(2, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
+            Assert.AreEqual(4, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
         }
 
         [Test]

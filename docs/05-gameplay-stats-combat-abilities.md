@@ -27,35 +27,78 @@ public int EffectiveMaxMana   => MaxMana   + _maxManaBonus.Value;     // :63
 ```
 
 The public read-only properties are `Health`, `Mana`, `Level`, `MaxHealthBonus`, `MaxManaBonus`,
-`EffectiveMaxHealth`, `EffectiveMaxMana`. The component also raises two events:
+`EffectiveMaxHealth`, `EffectiveMaxMana`. The component also raises three events:
 
 - `VitalsChanged` (`:72`) — health or mana moved (raised on server and clients). The HUD listens.
 - `LevelChanged` (`:78`) — the level changed (server only). Persistence listens so a level-up saves
   immediately.
+- `Died` (`:87`) — health crossed from above zero to zero (server only). Raised once per death; the
+  risk-tier resolver ([section 1a](#1a-death-and-the-risk-tiers)) listens. The transition is guarded
+  by `_applyingSave`, so spawning from a save that happens to be at zero health does not read as a
+  death.
 
 ### Server mutators
 
 Every mutation is a `[Server]` method:
 
-- `TakeDamage(int)` (`:116`) and `Heal(int)` (`:122`),
-- `SpendMana(int)` (`:128`) and `RestoreMana(int)` (`:134`),
-- `SetLevel(int)` (`:145`),
-- `ApplySave(int health, int mana, int level)` (`:156`) — used when a save record is loaded. It
+- `TakeDamage(int)` (`:130`) and `Heal(int)` (`:136`),
+- `SpendMana(int)` (`:142`) and `RestoreMana(int)` (`:148`),
+- `SetLevel(int)` (`:159`),
+- `ApplySave(int health, int mana, int level)` (`:170`) — used when a save record is loaded. It
   clamps health and mana to the effective caps.
-- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:173`) — used when gear changes. If
-  a bonus shrinks, current values are pulled down with it (`:179-180`).
+- `Respawn()` (`:192`) — restores health and mana to the effective caps. Called by the death
+  resolver for **every** death, whatever the tier (see [section 1a](#1a-death-and-the-risk-tiers)).
+- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:208`) — used when gear changes. If
+  a bonus shrinks, current values are pulled down with it (`:213-214`).
 
 The arithmetic itself lives in pure static helpers so it can be tested directly:
-`ComputeNewHealth` (`:210`), `ComputeHealedHealth` (`:215`), `ComputeNewMana` (`:220`) and
-`ComputeRestoredMana` (`:225`). They all clamp the result, so a negative damage amount cannot heal
+`ComputeNewHealth` (`:244`), `ComputeHealedHealth` (`:249`), `ComputeNewMana` (`:254`) and
+`ComputeRestoredMana` (`:259`). They all clamp the result, so a negative damage amount cannot heal
 and a negative heal cannot damage.
 
 ### The client request path
 
-A client may ask to damage someone through `RequestDamage(int)` (`:187`), which returns unless the
-caller owns the player, then sends `RpcRequestDamage` (`:195`). The server handler re-checks that the
+A client may ask to damage someone through `RequestDamage(int)` (`:221`), which returns unless the
+caller owns the player, then sends `RpcRequestDamage` (`:230`). The server handler re-checks that the
 sender is the owner before calling `TakeDamage`. That double check (FishNet also enforces ownership)
 is the house style: never trust the client.
+
+### 1a. Death and the risk tiers
+
+A player reaching zero health does not simply sit at zero: the death is resolved into a
+*consequence* by zone risk tier. Three pieces cooperate, and only the first is pure:
+
+- `ZoneRiskConfig` (`Assets/Scripts/Gameplay/ZoneRiskConfig.cs:17`) — a scene marker declaring one
+  zone's `ZoneRiskTier`. `ResolveTierAt(Vector3)` scans the scene and returns the most dangerous
+  tier covering the point (a safe pocket inside a black zone is still black); an unknown value is
+  normalised to `Safe`.
+- `RiskRules` (`Assets/Scripts/Gameplay/RiskRules.cs:72`) — the pure table. `ResolveDeath(tier)`
+  returns a `DeathOutcome` describing what happens; `WearDurability`, `ClampRepair` and `Wear` are
+  the arithmetic. Nothing here touches the engine, so every branch is an EditMode test.
+- `PlayerDeath` (`Assets/Scripts/Gameplay/PlayerDeath.cs:32`) — the server-only shell added to the
+  player prefab by `PlayerPrefabFactory`. It subscribes to `PlayerStats.Died`, reads the tier under
+  the corpse, and executes the outcome.
+
+The tiers and their outcomes:
+
+| Tier | `IsPermanent` | Drops loot | Wears gear | Repair cost |
+|---|---|---|---|---|
+| `Safe` | no | no | 5 | 50 |
+| `Yellow` | no | no | 10 | 100 |
+| `Red` | yes | no | 20 | 0 |
+| `Black` | yes | **yes** | 0 | 0 |
+
+A **safe/yellow** death sinks gold and wears the equipped gear (`PlayerInventory.ApplyDurabilityDamage`).
+A **red** death marks the outcome permanent but drops nothing. A **black** death is full loot: the
+worn and carried items are instantiated as a networked `LootBag` *before* the containers are cleared,
+so a crash between the two leaves the items in the bag (recoverable) rather than destroyed; the wipe
+is then pushed to the backend immediately. Details live in
+[06](06-inventory-and-equipment.md#10-death-loot-and-durability).
+
+Crucially, **every** death resurrects (`PlayerStats.Respawn()`). A tier decides the cost, never
+whether the player stands back up — otherwise a safe-zone death would strand them at zero health.
+
+## 2. Basic weapon attacks
 
 ## 2. Basic weapon attacks
 

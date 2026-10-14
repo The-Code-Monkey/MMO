@@ -171,6 +171,34 @@ namespace MMO.Inventory
         }
 
         /// <summary>
+        /// Owner-side intent: pick up everything in <paramref name="bag"/>. The client supplies
+        /// only a reference to the bag it clicked; the server re-derives the distance and decides
+        /// whether the looter is close enough, so a client cannot vacuum a bag from across the map.
+        /// </summary>
+        public void RequestLoot(LootBag bag)
+        {
+            if (!IsOwner || bag == null || bag.NetworkObject == null)
+                return;
+
+            RpcRequestLoot(bag.NetworkObject);
+        }
+
+        [ServerRpc]
+        private void RpcRequestLoot(NetworkObject bagObject, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender) || bagObject == null)
+                return;
+
+            if (!bagObject.TryGetComponent(out LootBag bag))
+                return;
+
+            if (!LootBag.IsWithinRange(transform.position, bag.transform.position, bag.InteractRange))
+                return;
+
+            bag.Loot(this);
+        }
+
+        /// <summary>
         /// Server: place a newly granted item at the first free spot
         /// (<see cref="InventoryGrid.TryFindFreeSpace"/>), or refuse when the bag is full.
         /// Inventory acquisition never checks level — you may hold what you cannot yet wear.
@@ -323,6 +351,116 @@ namespace MMO.Inventory
             item.GridY = gridY;
             _items.Add(item);
             return true;
+        }
+
+        /// <summary>
+        /// Server: drop an existing item into the first free bag cell, preserving its durability
+        /// and stack count. The loot-bag pickup path: an item that must keep the wear it was
+        /// found with cannot go through <see cref="TryAddItem(ItemDefinition)"/>, which mints a
+        /// fresh instance. Returns false when the bag cannot hold the item.
+        /// </summary>
+        [Server]
+        public bool TryAddExistingItem(ItemInstance item)
+        {
+            if (item.IsEmpty)
+                return false;
+
+            if (!_grid.TryFindFreeSpace(_items, Math.Max(1, item.Width), Math.Max(1, item.Height), out int x, out int y))
+                return false;
+
+            item.GridX = x;
+            item.GridY = y;
+            _items.Add(item);
+            return true;
+        }
+
+        /// <summary>
+        /// Server: wear down every destructible item in the equipment list by
+        /// <paramref name="amount"/>, returning how many items actually changed. Applied on a
+        /// safe-zone death as the repair-bill half of the gold sink; indestructible items (a
+        /// definition whose <see cref="ItemDefinition.MaxDurability"/> is zero) are left alone.
+        /// </summary>
+        [Server]
+        public int ApplyDurabilityDamage(int amount)
+        {
+            if (amount <= 0)
+                return 0;
+
+            int damaged = 0;
+            for (int i = 0; i < _equipment.Count; i++)
+            {
+                ItemInstance worn = _equipment[i];
+                if (worn.IsEmpty)
+                    continue;
+
+                ItemInstance wornOut = RiskRules.Wear(worn, amount);
+                if (wornOut.Durability == worn.Durability)
+                    continue;
+
+                _equipment.Set(i, wornOut);
+                damaged++;
+            }
+
+            return damaged;
+        }
+
+        /// <summary>
+        /// Server: everything the player is carrying — bag and worn gear — as a flat list, the
+        /// snapshot a black-zone death instantiates as a loot bag. Empty cells and vacant slots
+        /// are omitted; the returned instances are copies, so filling a loot bag does not alias
+        /// the live containers.
+        /// </summary>
+        [Server]
+        public List<ItemInstance> LootableItems()
+        {
+            return CollectLootable(_items, _equipment);
+        }
+
+        /// <summary>
+        /// Server: empty the bag and every equipment slot, then re-derive the stat caps. The
+        /// "database profile is wiped of those items" half of a full-loot death; callers only
+        /// do this once the dropped items demonstrably exist in a loot bag, so nothing is lost
+        /// to a failed spawn.
+        /// </summary>
+        [Server]
+        public void ClearAll()
+        {
+            _items.Clear();
+            for (int i = 0; i < _equipment.Count; i++)
+                _equipment.Set(i, ItemInstance.Empty);
+
+            RecalculateEquipmentStats();
+        }
+
+        /// <summary>
+        /// The pure half of <see cref="LootableItems"/>: the non-empty entries of two containers
+        /// in order. Callable from an EditMode test with two plain lists and no server.
+        /// </summary>
+        public static List<ItemInstance> CollectLootable(
+            IReadOnlyList<ItemInstance> bag,
+            IReadOnlyList<ItemInstance> equipment)
+        {
+            var loot = new List<ItemInstance>();
+
+            if (bag != null)
+            {
+                for (int i = 0; i < bag.Count; i++)
+                {
+                    if (!bag[i].IsEmpty)
+                        loot.Add(bag[i]);
+                }
+            }
+
+            if (equipment != null)
+            {
+                for (int i = 0; i < equipment.Count; i++)
+                {
+                    if (!equipment[i].IsEmpty)
+                        loot.Add(equipment[i]);
+                }
+            }
+
+            return loot;
         }
 
         /// <summary>
