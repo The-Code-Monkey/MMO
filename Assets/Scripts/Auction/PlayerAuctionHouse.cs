@@ -234,6 +234,176 @@ namespace MMO.Auction
             _ = PurchaseHistoryAndRespondAsync(accountId, limit, sender);
         }
 
+        /// <summary>Owner-side intent: create a buy order.</summary>
+        public void RequestCreateBuyOrder(string itemName, int quantity, long pricePerUnit, int durationHours = AuctionService.DefaultListingDurationHours)
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+            {
+                Debug.LogWarning("[AuctionHouse] This zone does not have an auction house.");
+                return;
+            }
+
+            RpcRequestCreateBuyOrder(itemName, quantity, pricePerUnit, durationHours);
+        }
+
+        [ServerRpc]
+        private void RpcRequestCreateBuyOrder(string itemName, int quantity, long pricePerUnit, int durationHours, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null)
+                return;
+
+            if (!SocialHubService.Instance.HasAuctionHouse)
+                return;
+
+            string accountId = GetAccountId(sender);
+            if (string.IsNullOrEmpty(accountId))
+                return;
+
+            _ = SocialHubService.Instance.Auction.CreateBuyOrderAsync(accountId, itemName, quantity, pricePerUnit, durationHours);
+        }
+
+        /// <summary>Owner-side intent: fulfill a buy order.</summary>
+        public void RequestFulfillBuyOrder(string buyOrderId, int bagX, int bagY, int stackCount = -1)
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+            {
+                Debug.LogWarning("[AuctionHouse] This zone does not have an auction house.");
+                return;
+            }
+
+            RpcRequestFulfillBuyOrder(buyOrderId, bagX, bagY, stackCount);
+        }
+
+        [ServerRpc]
+        private void RpcRequestFulfillBuyOrder(string buyOrderId, int bagX, int bagY, int stackCount, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null)
+                return;
+
+            if (!SocialHubService.Instance.HasAuctionHouse)
+                return;
+
+            string accountId = GetAccountId(sender);
+            if (string.IsNullOrEmpty(accountId))
+                return;
+
+            _ = SocialHubService.Instance.Auction.FulfillBuyOrderAsync(accountId, buyOrderId, bagX, bagY, stackCount);
+        }
+
+        /// <summary>Owner-side intent: cancel a buy order.</summary>
+        public void RequestCancelBuyOrder(string buyOrderId)
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+            {
+                Debug.LogWarning("[AuctionHouse] This zone does not have an auction house.");
+                return;
+            }
+
+            RpcRequestCancelBuyOrder(buyOrderId);
+        }
+
+        [ServerRpc]
+        private void RpcRequestCancelBuyOrder(string buyOrderId, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null)
+                return;
+
+            if (!SocialHubService.Instance.HasAuctionHouse)
+                return;
+
+            string accountId = GetAccountId(sender);
+            if (string.IsNullOrEmpty(accountId))
+                return;
+
+            _ = SocialHubService.Instance.Auction.CancelBuyOrderAsync(accountId, buyOrderId);
+        }
+
+        /// <summary>Owner-side intent: get my active buy orders.</summary>
+        public void RequestMyBuyOrders()
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+            {
+                Debug.LogWarning("[AuctionHouse] This zone does not have an auction house.");
+                return;
+            }
+
+            RpcRequestMyBuyOrders();
+        }
+
+        [ServerRpc]
+        private void RpcRequestMyBuyOrders(NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null)
+                return;
+
+            if (!SocialHubService.Instance.HasAuctionHouse)
+                return;
+
+            string accountId = GetAccountId(sender);
+            if (string.IsNullOrEmpty(accountId))
+                return;
+
+            _ = MyBuyOrdersAndRespondAsync(accountId, sender);
+        }
+
+        /// <summary>Owner-side intent: search buy orders.</summary>
+        public void RequestSearchBuyOrders(string itemNameFilter = null, long minPrice = 0, int page = 0, int pageSize = 50)
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+            {
+                Debug.LogWarning("[AuctionHouse] This zone does not have an auction house.");
+                return;
+            }
+
+            RpcRequestSearchBuyOrders(itemNameFilter, minPrice, page, pageSize);
+        }
+
+        [ServerRpc]
+        private void RpcRequestSearchBuyOrders(string itemNameFilter, long minPrice, int page, int pageSize, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null)
+                return;
+
+            if (!SocialHubService.Instance.HasAuctionHouse)
+                return;
+
+            string accountId = GetAccountId(sender);
+            if (string.IsNullOrEmpty(accountId))
+                return;
+
+            _ = SearchBuyOrdersAndRespondAsync(accountId, itemNameFilter, minPrice, page, pageSize, sender);
+        }
+
         private async System.Threading.Tasks.Task SearchAndRespondAsync(string accountId, string itemNameFilter, long maxPrice, int page, int pageSize, NetworkConnection sender)
         {
             List<AuctionListingRecord> results = await SocialHubService.Instance.Auction.SearchAsync(itemNameFilter, maxPrice, page, pageSize);
@@ -253,6 +423,20 @@ namespace MMO.Auction
             List<AuctionTransactionRecord> results = await SocialHubService.Instance.Auction.GetPurchaseHistoryAsync(accountId, limit);
             string json = JsonUtility.ToJson(new AuctionTransactionHistory { transactions = results });
             TargetRpcPurchaseHistory(json, sender);
+        }
+
+        private async System.Threading.Tasks.Task SearchBuyOrdersAndRespondAsync(string accountId, string itemNameFilter, long minPrice, int page, int pageSize, NetworkConnection sender)
+        {
+            List<AuctionBuyOrderRecord> results = await SocialHubService.Instance.Auction.SearchBuyOrdersAsync(itemNameFilter, minPrice, page, pageSize);
+            string json = JsonUtility.ToJson(new AuctionBuyOrderSearchResults { buyOrders = results });
+            TargetRpcSearchBuyOrders(json, sender);
+        }
+
+        private async System.Threading.Tasks.Task MyBuyOrdersAndRespondAsync(string accountId, NetworkConnection sender)
+        {
+            List<AuctionBuyOrderRecord> results = await SocialHubService.Instance.Auction.GetMyBuyOrdersAsync(accountId);
+            string json = JsonUtility.ToJson(new AuctionBuyOrderSearchResults { buyOrders = results });
+            TargetRpcMyBuyOrders(json, sender);
         }
 
         [TargetRpc]
@@ -285,6 +469,26 @@ namespace MMO.Auction
             OnPurchaseHistoryReceived?.Invoke(history?.transactions ?? new List<AuctionTransactionRecord>());
         }
 
+        [TargetRpc]
+        private void TargetRpcSearchBuyOrders(string json, NetworkConnection target)
+        {
+            if (!IsOwner)
+                return;
+
+            AuctionBuyOrderSearchResults results = JsonUtility.FromJson<AuctionBuyOrderSearchResults>(json);
+            OnSearchBuyOrdersReceived?.Invoke(results?.buyOrders ?? new List<AuctionBuyOrderRecord>());
+        }
+
+        [TargetRpc]
+        private void TargetRpcMyBuyOrders(string json, NetworkConnection target)
+        {
+            if (!IsOwner)
+                return;
+
+            AuctionBuyOrderSearchResults results = JsonUtility.FromJson<AuctionBuyOrderSearchResults>(json);
+            OnMyBuyOrdersReceived?.Invoke(results?.buyOrders ?? new List<AuctionBuyOrderRecord>());
+        }
+
         private string GetAccountId(NetworkConnection sender)
         {
             // The account ID is stored in the PlayerPersistenceService or can be retrieved from the connection
@@ -297,12 +501,17 @@ namespace MMO.Auction
         public event Action<List<AuctionListingRecord>> OnSearchResultsReceived;
         public event Action<List<AuctionListingRecord>> OnMyListingsReceived;
         public event Action<List<AuctionTransactionRecord>> OnPurchaseHistoryReceived;
+        public event Action<List<AuctionBuyOrderRecord>> OnSearchBuyOrdersReceived;
+        public event Action<List<AuctionBuyOrderRecord>> OnMyBuyOrdersReceived;
 
         // Events from server (via SocialHubService)
         public event Action<AuctionListingRecord> OnListingCreated;
         public event Action<AuctionListingRecord, AuctionTransactionRecord> OnListingBought;
         public event Action<AuctionListingRecord> OnListingCancelled;
         public event Action<AuctionTransactionRecord> OnPurchaseCompleted;
+        public event Action<AuctionBuyOrderRecord> OnBuyOrderCreated;
+        public event Action<AuctionBuyOrderRecord, AuctionTransactionRecord> OnBuyOrderFulfilled;
+        public event Action<AuctionBuyOrderRecord> OnBuyOrderCancelled;
 
         private void OnEnable()
         {
@@ -312,6 +521,9 @@ namespace MMO.Auction
                 SocialHubService.Instance.AuctionListingSold += OnAuctionListingSold;
                 SocialHubService.Instance.AuctionListingCancelled += OnAuctionListingCancelled;
                 SocialHubService.Instance.AuctionPurchaseCompleted += OnAuctionPurchaseCompleted;
+                SocialHubService.Instance.AuctionBuyOrderCreated += OnAuctionBuyOrderCreated;
+                SocialHubService.Instance.AuctionBuyOrderFulfilled += OnAuctionBuyOrderFulfilled;
+                SocialHubService.Instance.AuctionBuyOrderCancelled += OnAuctionBuyOrderCancelled;
             }
         }
 
@@ -323,6 +535,9 @@ namespace MMO.Auction
                 SocialHubService.Instance.AuctionListingSold -= OnAuctionListingSold;
                 SocialHubService.Instance.AuctionListingCancelled -= OnAuctionListingCancelled;
                 SocialHubService.Instance.AuctionPurchaseCompleted -= OnAuctionPurchaseCompleted;
+                SocialHubService.Instance.AuctionBuyOrderCreated -= OnAuctionBuyOrderCreated;
+                SocialHubService.Instance.AuctionBuyOrderFulfilled -= OnAuctionBuyOrderFulfilled;
+                SocialHubService.Instance.AuctionBuyOrderCancelled -= OnAuctionBuyOrderCancelled;
             }
         }
 
@@ -351,6 +566,25 @@ namespace MMO.Auction
                 OnPurchaseCompleted?.Invoke(transaction);
         }
 
+        private void OnAuctionBuyOrderCreated(string accountId, AuctionBuyOrderRecord buyOrder)
+        {
+            if (IsOwner && GetAccountId(Owner) == accountId)
+                OnBuyOrderCreated?.Invoke(buyOrder);
+        }
+
+        private void OnAuctionBuyOrderFulfilled(string sellerAccountId, string buyerAccountId, AuctionBuyOrderRecord buyOrder, AuctionTransactionRecord transaction)
+        {
+            string myAccountId = GetAccountId(Owner);
+            if (IsOwner && (myAccountId == sellerAccountId || myAccountId == buyerAccountId))
+                OnBuyOrderFulfilled?.Invoke(buyOrder, transaction);
+        }
+
+        private void OnAuctionBuyOrderCancelled(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
+        {
+            if (IsOwner && GetAccountId(Owner) == buyerAccountId)
+                OnBuyOrderCancelled?.Invoke(buyOrder);
+        }
+
         [Serializable]
         private class AuctionSearchResults
         {
@@ -361,6 +595,12 @@ namespace MMO.Auction
         private class AuctionTransactionHistory
         {
             public List<AuctionTransactionRecord> transactions;
+        }
+
+        [Serializable]
+        private class AuctionBuyOrderSearchResults
+        {
+            public List<AuctionBuyOrderRecord> buyOrders;
         }
     }
 }

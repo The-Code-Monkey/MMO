@@ -8,17 +8,19 @@ using UnityEngine.UI;
 namespace MMO.UI
 {
     /// <summary>
-    /// Auction House UI panel. Displays search results, my listings, and purchase history.
+    /// Auction House UI panel. Displays search results, my listings, buy orders, and purchase history.
     /// Binds to <see cref="PlayerAuctionHouse"/> for data and intents.
     /// </summary>
     public sealed class AuctionHouseView : MonoBehaviour
     {
         [Header("Tabs")]
         [SerializeField] private Button _browseTabButton;
+        [SerializeField] private Button _buyOrdersTabButton;
         [SerializeField] private Button _myListingsTabButton;
+        [SerializeField] private Button _myBuyOrdersTabButton;
         [SerializeField] private Button _historyTabButton;
 
-        [Header("Browse Tab")]
+        [Header("Browse Listings Tab")]
         [SerializeField] private GameObject _browsePanel;
         [SerializeField] private InputField _searchInput;
         [SerializeField] private InputField _maxPriceInput;
@@ -29,11 +31,28 @@ namespace MMO.UI
         [SerializeField] private Transform _browseListContent;
         [SerializeField] private GameObject _listingItemPrefab;
 
+        [Header("Browse Buy Orders Tab")]
+        [SerializeField] private GameObject _buyOrdersPanel;
+        [SerializeField] private InputField _buyOrderSearchInput;
+        [SerializeField] private InputField _minPriceInput;
+        [SerializeField] private Button _buyOrderSearchButton;
+        [SerializeField] private Button _buyOrderPrevPageButton;
+        [SerializeField] private Button _buyOrderNextPageButton;
+        [SerializeField] private Text _buyOrderPageText;
+        [SerializeField] private Transform _buyOrdersListContent;
+        [SerializeField] private GameObject _buyOrderItemPrefab;
+
         [Header("My Listings Tab")]
         [SerializeField] private GameObject _myListingsPanel;
         [SerializeField] private Transform _myListingsContent;
         [SerializeField] private GameObject _myListingItemPrefab;
         [SerializeField] private Button _refreshMyListingsButton;
+
+        [Header("My Buy Orders Tab")]
+        [SerializeField] private GameObject _myBuyOrdersPanel;
+        [SerializeField] private Transform _myBuyOrdersContent;
+        [SerializeField] private GameObject _myBuyOrderItemPrefab;
+        [SerializeField] private Button _refreshMyBuyOrdersButton;
 
         [Header("History Tab")]
         [SerializeField] private GameObject _historyPanel;
@@ -51,10 +70,20 @@ namespace MMO.UI
         [SerializeField] private Text _createItemNameText;
         [SerializeField] private Text _createItemValueText;
 
+        [Header("Create Buy Order")]
+        [SerializeField] private GameObject _createBuyOrderPanel;
+        [SerializeField] private InputField _createBuyOrderItemNameInput;
+        [SerializeField] private InputField _createBuyOrderQuantityInput;
+        [SerializeField] private InputField _createBuyOrderPriceInput;
+        [SerializeField] private InputField _createBuyOrderDurationInput;
+        [SerializeField] private Button _createBuyOrderButton;
+        [SerializeField] private Button _cancelCreateBuyOrderButton;
+
         private PlayerAuctionHouse _auctionHouse;
         private PlayerInventory _inventory;
         private AuctionHouseTab _currentTab = AuctionHouseTab.Browse;
         private int _currentPage = 0;
+        private int _buyOrderPage = 0;
         private int _pendingBagX = -1;
         private int _pendingBagY = -1;
         private ItemInstance _pendingItem;
@@ -62,8 +91,10 @@ namespace MMO.UI
         public enum AuctionHouseTab
         {
             Browse = 0,
-            MyListings = 1,
-            History = 2,
+            BuyOrders = 1,
+            MyListings = 2,
+            MyBuyOrders = 3,
+            History = 4,
         }
 
         public void Initialize(PlayerAuctionHouse auctionHouse, PlayerInventory inventory)
@@ -72,29 +103,46 @@ namespace MMO.UI
             _inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
 
             _auctionHouse.OnSearchResultsReceived += OnSearchResultsReceived;
+            _auctionHouse.OnSearchBuyOrdersReceived += OnSearchBuyOrdersReceived;
             _auctionHouse.OnMyListingsReceived += OnMyListingsReceived;
+            _auctionHouse.OnMyBuyOrdersReceived += OnMyBuyOrdersReceived;
             _auctionHouse.OnPurchaseHistoryReceived += OnPurchaseHistoryReceived;
             _auctionHouse.OnListingCreated += OnListingCreated;
             _auctionHouse.OnListingBought += OnListingBought;
             _auctionHouse.OnListingCancelled += OnListingCancelled;
+            _auctionHouse.OnBuyOrderCreated += OnBuyOrderCreated;
+            _auctionHouse.OnBuyOrderFulfilled += OnBuyOrderFulfilled;
+            _auctionHouse.OnBuyOrderCancelled += OnBuyOrderCancelled;
             _auctionHouse.OnPurchaseCompleted += OnPurchaseCompleted;
 
             _browseTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.Browse));
+            _buyOrdersTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.BuyOrders));
             _myListingsTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.MyListings));
+            _myBuyOrdersTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.MyBuyOrders));
             _historyTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.History));
 
             _searchButton.onClick.AddListener(OnSearchClicked);
             _prevPageButton.onClick.AddListener(() => ChangePage(-1));
             _nextPageButton.onClick.AddListener(() => ChangePage(1));
+
+            _buyOrderSearchButton.onClick.AddListener(OnBuyOrderSearchClicked);
+            _buyOrderPrevPageButton.onClick.AddListener(() => ChangeBuyOrderPage(-1));
+            _buyOrderNextPageButton.onClick.AddListener(() => ChangeBuyOrderPage(1));
+
             _refreshMyListingsButton.onClick.AddListener(RequestMyListings);
+            _refreshMyBuyOrdersButton.onClick.AddListener(RequestMyBuyOrders);
             _refreshHistoryButton.onClick.AddListener(RequestHistory);
 
             _createListingButton.onClick.AddListener(OnCreateListingConfirmed);
             _cancelCreateButton.onClick.AddListener(HideCreateListingPanel);
 
+            _createBuyOrderButton.onClick.AddListener(OnCreateBuyOrderConfirmed);
+            _cancelCreateBuyOrderButton.onClick.AddListener(HideCreateBuyOrderPanel);
+
             SwitchTab(AuctionHouseTab.Browse);
             RequestSearch();
             RequestMyListings();
+            RequestMyBuyOrders();
             RequestHistory();
         }
 
@@ -103,11 +151,16 @@ namespace MMO.UI
             if (_auctionHouse != null)
             {
                 _auctionHouse.OnSearchResultsReceived -= OnSearchResultsReceived;
+                _auctionHouse.OnSearchBuyOrdersReceived -= OnSearchBuyOrdersReceived;
                 _auctionHouse.OnMyListingsReceived -= OnMyListingsReceived;
+                _auctionHouse.OnMyBuyOrdersReceived -= OnMyBuyOrdersReceived;
                 _auctionHouse.OnPurchaseHistoryReceived -= OnPurchaseHistoryReceived;
                 _auctionHouse.OnListingCreated -= OnListingCreated;
                 _auctionHouse.OnListingBought -= OnListingBought;
                 _auctionHouse.OnListingCancelled -= OnListingCancelled;
+                _auctionHouse.OnBuyOrderCreated -= OnBuyOrderCreated;
+                _auctionHouse.OnBuyOrderFulfilled -= OnBuyOrderFulfilled;
+                _auctionHouse.OnBuyOrderCancelled -= OnBuyOrderCancelled;
                 _auctionHouse.OnPurchaseCompleted -= OnPurchaseCompleted;
             }
         }
@@ -168,21 +221,65 @@ namespace MMO.UI
             HideCreateListingPanel();
         }
 
+        private void HideCreateBuyOrderPanel()
+        {
+            _createBuyOrderPanel.SetActive(false);
+        }
+
+        private void OnCreateBuyOrderConfirmed()
+        {
+            if (!long.TryParse(_createBuyOrderPriceInput.text, out long pricePerUnit) || pricePerUnit < 1)
+            {
+                Debug.LogWarning("[AuctionHouse] Invalid buy order price");
+                return;
+            }
+
+            if (!int.TryParse(_createBuyOrderQuantityInput.text, out int quantity) || quantity < 1)
+            {
+                Debug.LogWarning("[AuctionHouse] Invalid buy order quantity");
+                return;
+            }
+
+            if (!int.TryParse(_createBuyOrderDurationInput.text, out int durationHours) || durationHours < 1)
+            {
+                durationHours = AuctionService.DefaultListingDurationHours;
+            }
+
+            string itemName = _createBuyOrderItemNameInput.text.Trim();
+            if (string.IsNullOrEmpty(itemName))
+            {
+                Debug.LogWarning("[AuctionHouse] Invalid buy order item name");
+                return;
+            }
+
+            _auctionHouse.RequestCreateBuyOrder(itemName, quantity, pricePerUnit, durationHours);
+            HideCreateBuyOrderPanel();
+        }
+
         private void SwitchTab(AuctionHouseTab tab)
         {
             _currentTab = tab;
             _browsePanel.SetActive(tab == AuctionHouseTab.Browse);
+            _buyOrdersPanel.SetActive(tab == AuctionHouseTab.BuyOrders);
             _myListingsPanel.SetActive(tab == AuctionHouseTab.MyListings);
+            _myBuyOrdersPanel.SetActive(tab == AuctionHouseTab.MyBuyOrders);
             _historyPanel.SetActive(tab == AuctionHouseTab.History);
 
             _browseTabButton.interactable = tab != AuctionHouseTab.Browse;
+            _buyOrdersTabButton.interactable = tab != AuctionHouseTab.BuyOrders;
             _myListingsTabButton.interactable = tab != AuctionHouseTab.MyListings;
+            _myBuyOrdersTabButton.interactable = tab != AuctionHouseTab.MyBuyOrders;
             _historyTabButton.interactable = tab != AuctionHouseTab.History;
 
             if (tab == AuctionHouseTab.Browse)
             {
                 _currentPage = 0;
                 RequestSearch();
+            }
+            else if (tab == AuctionHouseTab.BuyOrders)
+            {
+                _buyOrderPage = 0;
+                RequestSearchBuyOrders();
             }
         }
 
@@ -208,9 +305,36 @@ namespace MMO.UI
             RequestSearch();
         }
 
+        private void RequestSearchBuyOrders()
+        {
+            string filter = _buyOrderSearchInput != null ? _buyOrderSearchInput.text : null;
+            long minPrice = 0;
+            if (_minPriceInput != null && long.TryParse(_minPriceInput.text, out long mp))
+                minPrice = mp;
+
+            _auctionHouse.RequestSearchBuyOrders(filter, minPrice, _buyOrderPage, 20);
+        }
+
+        private void OnBuyOrderSearchClicked()
+        {
+            _buyOrderPage = 0;
+            RequestSearchBuyOrders();
+        }
+
+        private void ChangeBuyOrderPage(int delta)
+        {
+            _buyOrderPage = Math.Max(0, _buyOrderPage + delta);
+            RequestSearchBuyOrders();
+        }
+
         private void RequestMyListings()
         {
             _auctionHouse.RequestMyListings();
+        }
+
+        private void RequestMyBuyOrders()
+        {
+            _auctionHouse.RequestMyBuyOrders();
         }
 
         private void RequestHistory()
@@ -230,6 +354,18 @@ namespace MMO.UI
             }
         }
 
+        private void OnSearchBuyOrdersReceived(List<AuctionBuyOrderRecord> buyOrders)
+        {
+            ClearList(_buyOrdersListContent);
+            _buyOrderPageText.text = $"Page {_buyOrderPage + 1}";
+
+            foreach (AuctionBuyOrderRecord buyOrder in buyOrders)
+            {
+                GameObject item = Instantiate(_buyOrderItemPrefab, _buyOrdersListContent);
+                SetupBrowseBuyOrderItem(item, buyOrder);
+            }
+        }
+
         private void OnMyListingsReceived(List<AuctionListingRecord> listings)
         {
             ClearList(_myListingsContent);
@@ -238,6 +374,17 @@ namespace MMO.UI
             {
                 GameObject item = Instantiate(_myListingItemPrefab, _myListingsContent);
                 SetupMyListingItem(item, listing);
+            }
+        }
+
+        private void OnMyBuyOrdersReceived(List<AuctionBuyOrderRecord> buyOrders)
+        {
+            ClearList(_myBuyOrdersContent);
+
+            foreach (AuctionBuyOrderRecord buyOrder in buyOrders)
+            {
+                GameObject item = Instantiate(_myBuyOrderItemPrefab, _myBuyOrdersContent);
+                SetupMyBuyOrderItem(item, buyOrder);
             }
         }
 
@@ -271,10 +418,28 @@ namespace MMO.UI
             RequestMyListings();
         }
 
+        private void OnBuyOrderCreated(AuctionBuyOrderRecord buyOrder)
+        {
+            RequestMyBuyOrders();
+        }
+
+        private void OnBuyOrderFulfilled(AuctionBuyOrderRecord buyOrder, AuctionTransactionRecord transaction)
+        {
+            RequestSearchBuyOrders();
+            RequestMyBuyOrders();
+            RequestHistory();
+        }
+
+        private void OnBuyOrderCancelled(AuctionBuyOrderRecord buyOrder)
+        {
+            RequestMyBuyOrders();
+        }
+
         private void OnPurchaseCompleted(AuctionTransactionRecord transaction)
         {
             RequestHistory();
             RequestSearch();
+            RequestSearchBuyOrders();
         }
 
         private void SetupBrowseListingItem(GameObject item, AuctionListingRecord listing)
@@ -373,6 +538,88 @@ namespace MMO.UI
             {
                 Destroy(content.GetChild(i).gameObject);
             }
+        }
+
+        private void SetupBrowseBuyOrderItem(GameObject item, AuctionBuyOrderRecord buyOrder)
+        {
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(buyOrder.ItemName);
+            string displayName = def != null ? def.ItemName : buyOrder.ItemName;
+
+            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
+            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
+            Text buyerText = item.transform.Find("BuyerText")?.GetComponent<Text>();
+            Text quantityText = item.transform.Find("QuantityText")?.GetComponent<Text>();
+            Button fulfillButton = item.transform.Find("FulfillButton")?.GetComponent<Button>();
+
+            if (nameText != null) nameText.text = displayName;
+            if (priceText != null) priceText.text = $"{buyOrder.PricePerUnit:N0} gold each (Total: {buyOrder.TotalValue:N0})";
+            if (buyerText != null) buyerText.text = $"Buyer: {buyOrder.BuyerPlayerName}";
+            if (quantityText != null) quantityText.text = $"{buyOrder.QuantityRemaining}/{buyOrder.QuantityTotal}";
+
+            if (fulfillButton != null)
+            {
+                fulfillButton.onClick.RemoveAllListeners();
+                fulfillButton.onClick.AddListener(() => OpenFulfillBuyOrder(buyOrder));
+            }
+        }
+
+        private void SetupMyBuyOrderItem(GameObject item, AuctionBuyOrderRecord buyOrder)
+        {
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(buyOrder.ItemName);
+            string displayName = def != null ? def.ItemName : buyOrder.ItemName;
+
+            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
+            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
+            Text quantityText = item.transform.Find("QuantityText")?.GetComponent<Text>();
+            Text statusText = item.transform.Find("StatusText")?.GetComponent<Text>();
+            Button cancelButton = item.transform.Find("CancelButton")?.GetComponent<Button>();
+
+            if (nameText != null) nameText.text = displayName;
+            if (priceText != null) priceText.text = $"{buyOrder.PricePerUnit:N0} gold each";
+            if (quantityText != null) quantityText.text = $"{buyOrder.QuantityRemaining}/{buyOrder.QuantityTotal}";
+
+            if (statusText != null)
+            {
+                switch (buyOrder.Status)
+                {
+                    case AuctionBuyOrderStatus.Active:
+                        statusText.text = "Active";
+                        statusText.color = Color.green;
+                        break;
+                    case AuctionBuyOrderStatus.PartiallyFilled:
+                        statusText.text = "Partially Filled";
+                        statusText.color = Color.yellow;
+                        break;
+                    case AuctionBuyOrderStatus.Filled:
+                        statusText.text = "Filled";
+                        statusText.color = Color.blue;
+                        break;
+                    case AuctionBuyOrderStatus.Cancelled:
+                        statusText.text = "Cancelled";
+                        statusText.color = Color.gray;
+                        break;
+                    case AuctionBuyOrderStatus.Expired:
+                        statusText.text = "Expired";
+                        statusText.color = Color.red;
+                        break;
+                }
+            }
+
+            if (cancelButton != null)
+            {
+                cancelButton.gameObject.SetActive(buyOrder.Status == AuctionBuyOrderStatus.Active || buyOrder.Status == AuctionBuyOrderStatus.PartiallyFilled);
+                cancelButton.onClick.RemoveAllListeners();
+                cancelButton.onClick.AddListener(() => _auctionHouse.RequestCancelBuyOrder(buyOrder.BuyOrderId));
+            }
+        }
+
+        private void OpenFulfillBuyOrder(AuctionBuyOrderRecord buyOrder)
+        {
+            // Open the create listing panel but pre-fill with buy order info
+            // The user needs to have the item in their bag to fulfill
+            // For now, we'll just log - the fulfillment requires a bag item selection
+            Debug.Log($"[AuctionHouse] Fulfill buy order {buyOrder.BuyOrderId} - select item in inventory with Shift+RightClick");
+            // Could open a fulfillment panel here
         }
     }
 }
