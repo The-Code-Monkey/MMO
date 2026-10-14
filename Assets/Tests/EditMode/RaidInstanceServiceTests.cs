@@ -180,6 +180,19 @@ namespace MMO.Tests
         }
 
         [Test]
+        public async Task AllocateAsync_CasExhausted_EmitsNothing()
+        {
+            SeedParty(_social, "a", 5);
+            _social.ConflictEveryPartySave = true;
+
+            var res = await _svc.AllocateAsync("a", "z1");
+
+            Assert.AreEqual(RaidRule.CasExhausted, res.Rule);
+            Assert.IsEmpty(_social.Notifications, "A never-winning CAS must never push.");
+            Assert.AreEqual(0, _raids.Instances.Count, "The orphan instance must be cleaned up.");
+        }
+
+        [Test]
         public async Task CompleteAsync_WinningCas_EmitsRaidCompletedNotification()
         {
             SeedParty(_social, "a", 5);
@@ -211,6 +224,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
             public readonly List<SocialNotification> Notifications = new List<SocialNotification>();
             public bool ConflictOnNextPartySave;
+            public bool ConflictEveryPartySave;
             public bool ThrowOnNotify;
             public int PartySaveCalls;
             private int _v;
@@ -228,6 +242,9 @@ namespace MMO.Tests
             public Task SavePartyAsync(PartyRecord record, CancellationToken ct = default)
             {
                 PartySaveCalls++;
+                if (ConflictEveryPartySave)
+                    return Task.FromException(new StorageVersionConflictException("x"));
+
                 if (ConflictOnNextPartySave)
                 {
                     ConflictOnNextPartySave = false;

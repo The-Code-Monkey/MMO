@@ -266,7 +266,9 @@ notification can at worst cause an early *correct* pass, never an incorrect acti
 `_syncInterval` tick converges regardless (the fail-open posture from #36). The push is best-effort
 by contract — `RaidInstanceService` swallows a `NotifySocialAsync` failure and the allocation still
 succeeds. `SocialNotificationTests`, `RaidInstanceServiceTests` and `SocialHubRaidSyncTests` pin the
-payload round trip, the "fires only after a winning CAS" rule and the dropped-notify convergence.
+payload round trip, the "fires only after a winning CAS" rule (including a CAS that never wins) and
+the dropped-notify convergence; `SocialNotifyRaidPlayModeTests` runs two hubs sharing one fake backend
+so zone B moves on the delivered push before its own tick, and converges on the poll when it is dropped.
 
 ### Common tasks
 
