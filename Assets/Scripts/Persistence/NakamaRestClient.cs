@@ -248,6 +248,43 @@ namespace MMO.Persistence
         }
 
         /// <summary>
+        /// Lists the owned objects in a collection under the shared owner (up to the gateway's
+        /// page size). Used by the zone registry, which is discovered by collection rather than by
+        /// a known set of keys. Callers match entries by <see cref="StorageObjectData.Key"/>.
+        /// </summary>
+        public async Task<List<StorageObjectData>> ListObjectsAsync(
+            string collection, CancellationToken ct)
+        {
+            RequireSession();
+            await GetFreshTokenAsync(ct);
+
+            var result = new List<StorageObjectData>();
+            if (string.IsNullOrEmpty(collection))
+                return result;
+
+            string path = "/v2/storage/" + Uri.EscapeDataString(collection)
+                + "?user_id=" + Uri.EscapeDataString(_userId ?? string.Empty)
+                + "&limit=100";
+
+            StorageObjectListResponse response = await GetAsync<StorageObjectListResponse>(path, ct);
+            if (response?.objects == null)
+                return result;
+
+            foreach (StorageObject obj in response.objects)
+            {
+                result.Add(new StorageObjectData
+                {
+                    Collection = obj.collection,
+                    Key = obj.key,
+                    Value = obj.value,
+                    Version = obj.version,
+                });
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Writes one owned object and returns its new version. An empty <paramref name="version"/>
         /// means "no object yet" and becomes Nakama's "*" create-if-not-exists; any other value is an
         /// optimistic if-match. A 409 surfaces as <see cref="StorageVersionConflictException"/>.
@@ -446,6 +483,13 @@ namespace MMO.Persistence
         private class StorageObjectsResponse
         {
             public List<StorageObject> objects;
+        }
+
+        [Serializable]
+        private class StorageObjectListResponse
+        {
+            public List<StorageObject> objects;
+            public string cursor;
         }
 
         [Serializable]

@@ -13,6 +13,7 @@ namespace MMO.Tests
     {
         private FakeSocialRepository _social;
         private FakeRaidRepo _raids;
+        private FakeZoneRegistryRepository _zones;
         private RaidInstanceService _svc;
 
         [SetUp]
@@ -20,7 +21,27 @@ namespace MMO.Tests
         {
             _social = new FakeSocialRepository();
             _raids = new FakeRaidRepo();
-            _svc = new RaidInstanceService(_social, _raids, casRetries: 5);
+            _zones = new FakeZoneRegistryRepository();
+            SeedZone(_zones, "z1", "10.0.0.4", 7770);
+            _svc = new RaidInstanceService(_social, _raids, _zones, casRetries: 5);
+        }
+
+        private static void SeedZone(
+            FakeZoneRegistryRepository repo, string serverId, string host = "10.0.0.1", ushort port = 7000,
+            int maxInstances = 10, int activeInstances = 0, bool fresh = true)
+        {
+            repo.Zones[serverId] = new ZoneRegistryRecord
+            {
+                ServerId = serverId,
+                Host = host,
+                Port = port,
+                ZoneTemplateId = "raid",
+                MaxInstances = maxInstances,
+                ActiveInstances = activeInstances,
+                HeartbeatAtTicks = fresh
+                    ? DateTimeOffset.UtcNow.UtcDateTime.Ticks
+                    : DateTimeOffset.UtcNow.AddHours(-1).UtcDateTime.Ticks,
+            };
         }
 
         private static void SeedParty(FakeSocialRepository repo, string leader, int count)
@@ -37,7 +58,7 @@ namespace MMO.Tests
         {
             SeedParty(_social, "a", 5);
             _social.Indexes["b"] = new SocialIndexRecord { AccountId = "b", PartyId = "p1" };
-            var res = await _svc.AllocateAsync("b", "z1");
+            var res = await _svc.AllocateAsync("b");
             Assert.AreEqual(RaidRule.NotLeader, res.Rule);
         }
 
@@ -45,7 +66,7 @@ namespace MMO.Tests
         public async Task AllocateAsync_TooSmall_ReturnsPartyTooSmall()
         {
             SeedParty(_social, "a", 4);
-            var res = await _svc.AllocateAsync("a", "z1");
+            var res = await _svc.AllocateAsync("a");
             Assert.AreEqual(RaidRule.PartyTooSmall, res.Rule);
         }
 
@@ -53,7 +74,7 @@ namespace MMO.Tests
         public async Task AllocateAsync_Ok_CreatesInstanceAndSetsPointer()
         {
             SeedParty(_social, "a", 5);
-            var res = await _svc.AllocateAsync("a", "z1", "10.0.0.4", 7770);
+            var res = await _svc.AllocateAsync("a");
             Assert.AreEqual(RaidRule.Ok, res.Rule);
             Assert.IsNotNull(res.Instance);
             Assert.AreEqual("z1", res.Instance.HostZoneId);
@@ -64,12 +85,57 @@ namespace MMO.Tests
         }
 
         [Test]
+        public async Task AllocateAsync_NoHealthyHost_ReturnsNoHostAvailableAndWritesNothing()
+        {
+            SeedParty(_social, "a", 5);
+            _zones.Zones.Clear();
+            SeedZone(_zones, "stale", fresh: false);
+            SeedZone(_zones, "full", maxInstances: 3, activeInstances: 3);
+
+            var res = await _svc.AllocateAsync("a");
+
+            Assert.AreEqual(RaidRule.NoHostAvailable, res.Rule);
+            Assert.IsNull(res.Instance);
+            Assert.IsEmpty(_raids.Instances, "Selection runs before any write, so nothing is written.");
+            Assert.IsEmpty(_social.Notifications, "A missing host must never push.");
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p1"].RaidInstanceId));
+        }
+
+        [Test]
+        public async Task AllocateAsync_PicksTheLowestLoadHostAndBumpsItsLoad()
+        {
+            SeedParty(_social, "a", 5);
+            SeedZone(_zones, "busy", activeInstances: 4);
+            SeedZone(_zones, "idle", activeInstances: 0);
+
+            var res = await _svc.AllocateAsync("a");
+
+            Assert.AreEqual(RaidRule.Ok, res.Rule);
+            Assert.AreEqual("idle", res.Instance.HostZoneId);
+            Assert.AreEqual(1, _zones.Zones["idle"].ActiveInstances);
+            Assert.AreEqual(4, _zones.Zones["busy"].ActiveInstances, "The unselected zone must not move.");
+        }
+
+        [Test]
+        public async Task CompleteAsync_ReleasesTheHostLoad()
+        {
+            SeedParty(_social, "a", 5);
+            await _svc.AllocateAsync("a");
+            Assert.AreEqual(1, _zones.Zones["z1"].ActiveInstances);
+
+            RaidRule rule = await _svc.CompleteAsync("a");
+
+            Assert.AreEqual(RaidRule.Ok, rule);
+            Assert.AreEqual(0, _zones.Zones["z1"].ActiveInstances, "Teardown must return the host's slot.");
+        }
+
+        [Test]
         public async Task AllocateAsync_RetriesAfterAVersionConflict()
         {
             SeedParty(_social, "a", 5);
             _social.ConflictOnNextPartySave = true;
 
-            var res = await _svc.AllocateAsync("a", "z1");
+            var res = await _svc.AllocateAsync("a");
 
             Assert.AreEqual(RaidRule.Ok, res.Rule);
             Assert.GreaterOrEqual(_social.PartySaveCalls, 2, "The lost CAS hint must be retried.");
@@ -80,7 +146,7 @@ namespace MMO.Tests
         public async Task CompleteAsync_ClearsPointerAndDeletesInstance()
         {
             SeedParty(_social, "a", 5);
-            var alloc = await _svc.AllocateAsync("a", "z1");
+            var alloc = await _svc.AllocateAsync("a");
             string instanceId = alloc.Instance.InstanceId;
 
             RaidRule rule = await _svc.CompleteAsync("a");
@@ -104,7 +170,7 @@ namespace MMO.Tests
         public async Task CompleteAsync_NonLeader_ReturnsNotLeader()
         {
             SeedParty(_social, "a", 5);
-            await _svc.AllocateAsync("a", "z1");
+            await _svc.AllocateAsync("a");
             _social.Indexes["b"] = new SocialIndexRecord { AccountId = "b", PartyId = "p1" };
 
             RaidRule rule = await _svc.CompleteAsync("b");
@@ -116,7 +182,7 @@ namespace MMO.Tests
         public async Task DisbandAndClearRaidAsync_DeletesTheInstance()
         {
             SeedParty(_social, "a", 5);
-            var alloc = await _svc.AllocateAsync("a", "z1");
+            var alloc = await _svc.AllocateAsync("a");
 
             await _svc.DisbandAndClearRaidAsync("p1");
 
@@ -129,7 +195,7 @@ namespace MMO.Tests
         {
             SeedParty(_social, "a", 5);
 
-            var res = await _svc.AllocateAsync("a", "z1", "10.0.0.4", 7770);
+            var res = await _svc.AllocateAsync("a");
 
             Assert.AreEqual(RaidRule.Ok, res.Rule);
             Assert.AreEqual(1, _social.Notifications.Count);
@@ -146,7 +212,7 @@ namespace MMO.Tests
         {
             SeedParty(_social, "a", 4);
 
-            var res = await _svc.AllocateAsync("a", "z1");
+            var res = await _svc.AllocateAsync("a");
 
             Assert.AreEqual(RaidRule.PartyTooSmall, res.Rule);
             Assert.IsEmpty(_social.Notifications, "A rule failure must never reach the push.");
@@ -158,7 +224,7 @@ namespace MMO.Tests
             SeedParty(_social, "a", 5);
             _social.ConflictOnNextPartySave = true;
 
-            var res = await _svc.AllocateAsync("a", "z1");
+            var res = await _svc.AllocateAsync("a");
 
             Assert.AreEqual(RaidRule.Ok, res.Rule);
             Assert.AreEqual(
@@ -173,7 +239,7 @@ namespace MMO.Tests
             SeedParty(_social, "a", 5);
             _social.ThrowOnNotify = true;
 
-            var res = await _svc.AllocateAsync("a", "z1");
+            var res = await _svc.AllocateAsync("a");
 
             Assert.AreEqual(RaidRule.Ok, res.Rule);
             Assert.AreEqual(1, _raids.Instances.Count);
@@ -185,7 +251,7 @@ namespace MMO.Tests
             SeedParty(_social, "a", 5);
             _social.ConflictEveryPartySave = true;
 
-            var res = await _svc.AllocateAsync("a", "z1");
+            var res = await _svc.AllocateAsync("a");
 
             Assert.AreEqual(RaidRule.CasExhausted, res.Rule);
             Assert.IsEmpty(_social.Notifications, "A never-winning CAS must never push.");
@@ -196,7 +262,7 @@ namespace MMO.Tests
         public async Task CompleteAsync_WinningCas_EmitsRaidCompletedNotification()
         {
             SeedParty(_social, "a", 5);
-            var alloc = await _svc.AllocateAsync("a", "z1");
+            var alloc = await _svc.AllocateAsync("a");
             _social.Notifications.Clear();
 
             RaidRule rule = await _svc.CompleteAsync("a");
@@ -304,6 +370,32 @@ namespace MMO.Tests
                 return Task.CompletedTask;
             }
             public Task DeleteRaidInstanceAsync(string instanceId, CancellationToken ct = default) { Instances.Remove(instanceId); return Task.CompletedTask; }
+        }
+
+        private sealed class FakeZoneRegistryRepository : IZoneRegistryRepository
+        {
+            public readonly Dictionary<string, ZoneRegistryRecord> Zones = new Dictionary<string, ZoneRegistryRecord>();
+            private int _v;
+
+            public Task<List<ZoneRegistryRecord>> LoadZonesAsync(CancellationToken ct = default)
+            {
+                var list = new List<ZoneRegistryRecord>(Zones.Count);
+                foreach (ZoneRegistryRecord z in Zones.Values)
+                {
+                    var clone = JsonUtility.FromJson<ZoneRegistryRecord>(JsonUtility.ToJson(z));
+                    clone.StorageVersion = z.StorageVersion;
+                    list.Add(clone);
+                }
+                return Task.FromResult(list);
+            }
+
+            public Task SaveZoneAsync(ZoneRegistryRecord record, CancellationToken ct = default)
+            {
+                var clone = JsonUtility.FromJson<ZoneRegistryRecord>(JsonUtility.ToJson(record));
+                clone.StorageVersion = (_v++).ToString();
+                Zones[record.ServerId] = clone;
+                return Task.CompletedTask;
+            }
         }
     }
 }

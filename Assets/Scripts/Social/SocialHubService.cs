@@ -48,6 +48,12 @@ namespace MMO.Social
         /// <summary>Port the zone advertises as its raid instance host when it allocates one.</summary>
         [SerializeField] private ushort _instanceHostPort;
 
+        /// <summary>Scene/build this zone serves; recorded on the raid instances it hosts (#57).</summary>
+        [SerializeField] private string _zoneTemplateId = "default";
+
+        /// <summary>Raid instances this zone is willing to host before it stops being a candidate.</summary>
+        [SerializeField, Min(1)] private int _maxInstances = 100;
+
         private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
@@ -68,6 +74,7 @@ namespace MMO.Social
 
         private ISocialRepository _repository;
         private IRaidInstanceRepository _raidRepository;
+        private IZoneRegistryRepository _zoneRepository;
         private NakamaRestClient _rest;
         private ISocialBus _socketBus;
         private ChatService _chat;
@@ -80,6 +87,7 @@ namespace MMO.Social
         private float _nextPresenceTime;
         private float _nextFriendRefreshTime;
         private float _nextConnectAttemptTime;
+        private float _nextZoneHeartbeatTime;
 
         /// <summary>Raised on the main thread for every inbound bus envelope (chat or notify).</summary>
         public event Action<SocialBusEnvelope> EnvelopeReceived;
@@ -143,7 +151,10 @@ namespace MMO.Social
             {
                 _rest = new NakamaRestClient(new BackendSettings());
                 NakamaSocialRepository nakamaRepo = new NakamaSocialRepository(_rest);
-                Configure(nakamaRepo, new NakamaRaidInstanceRepository(_rest));
+                Configure(
+                    nakamaRepo,
+                    new NakamaRaidInstanceRepository(_rest),
+                    new NakamaZoneRegistryRepository(_rest));
             }
         }
 
@@ -160,10 +171,14 @@ namespace MMO.Social
         /// Points the service at a repository. Production reaches the Nakama-backed default in
         /// <see cref="Awake"/>; tests inject an in-memory fake here, which needs no connection.
         /// </summary>
-        public void Configure(ISocialRepository repository, IRaidInstanceRepository raidRepository = null)
+        public void Configure(
+            ISocialRepository repository,
+            IRaidInstanceRepository raidRepository = null,
+            IZoneRegistryRepository zoneRepository = null)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _raidRepository = raidRepository;
+            _zoneRepository = zoneRepository;
 
             if (repository is NakamaSocialRepository nakama)
             {
@@ -179,10 +194,19 @@ namespace MMO.Social
             if (_raidRepository == null && _rest != null)
                 _raidRepository = new NakamaRaidInstanceRepository(_rest);
 
+            if (_zoneRepository == null && _rest != null)
+                _zoneRepository = new NakamaZoneRegistryRepository(_rest);
+
+            // A deployment with no zone registry (a local single-zone demo, or a pure social fake
+            // test) falls back to registering this zone alone, so allocation behaves as #51 did.
+            if (_zoneRepository == null && _raidRepository != null)
+                _zoneRepository = new SingleZoneRegistryRepository(
+                    _zoneId, _instanceHostAddress, _instanceHostPort, _zoneTemplateId, _maxInstances);
+
             // With neither a raid repository nor a REST client (a pure social fake) raids are off;
             // the hub surfaces BackendUnavailable rather than throwing on a null endpoint.
-            _raidService = _raidRepository != null
-                ? new RaidInstanceService(_repository, _raidRepository, _casRetries)
+            _raidService = _raidRepository != null && _zoneRepository != null
+                ? new RaidInstanceService(_repository, _raidRepository, _zoneRepository, _casRetries)
                 : null;
         }
 
@@ -347,6 +371,9 @@ namespace MMO.Social
             _nextSyncTime = Time.time + _syncInterval;
             _nextPresenceTime = Time.time + _presenceInterval;
             _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
+            // Register with the zone registry on the first connected tick, not one interval later,
+            // so peers can select this zone as soon as it is up (#57).
+            _nextZoneHeartbeatTime = 0f;
         }
 
         /// <summary>
@@ -395,6 +422,14 @@ namespace MMO.Social
             // not hot-loop a reconnect every frame.
             if (_repository == null || _manager == null || !_manager.IsServerStarted || !_connected)
                 return;
+
+            // Advertise this zone to the registry even before any player joins, so a dedicated
+            // instance host with no residents can still be selected (#57).
+            if (_zoneRepository != null && Time.time >= _nextZoneHeartbeatTime)
+            {
+                _nextZoneHeartbeatTime = Time.time + _presenceInterval;
+                _ = HeartbeatZoneAsync();
+            }
 
             if (_local.Count == 0)
                 return;
@@ -1866,7 +1901,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await BackoffAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -1970,7 +2005,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await BackoffAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -2005,6 +2040,57 @@ namespace MMO.Social
         {
             foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
                 await SavePresenceAsync(local);
+        }
+
+        /// <summary>
+        /// Refreshes this zone's <see cref="ZoneRegistryRecord"/> so it stays a fresh host candidate
+        /// and publishes its advertised address, template and capacity (#57). The existing load is
+        /// preserved; the version is reused so a racing write from another process wins cleanly.
+        /// </summary>
+        private async Task HeartbeatZoneAsync()
+        {
+            if (_zoneRepository == null)
+                return;
+
+            try
+            {
+                List<ZoneRegistryRecord> zones = await _zoneRepository.LoadZonesAsync(CancellationToken.None);
+                ZoneRegistryRecord existing = FindZone(zones, _zoneId);
+
+                ZoneRegistryRecord record = ZoneRegistryRecord.Create(
+                    _zoneId,
+                    _instanceHostAddress,
+                    _instanceHostPort,
+                    _zoneTemplateId,
+                    _maxInstances,
+                    DateTimeOffset.UtcNow,
+                    existing?.ActiveInstances ?? 0,
+                    existing?.StorageVersion);
+
+                await _zoneRepository.SaveZoneAsync(record, CancellationToken.None);
+            }
+            catch (StorageVersionConflictException)
+            {
+                // A racing heartbeat from another write wins; the next tick refreshes ours.
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Social] Failed to write zone registry heartbeat for '{_zoneId}': {e.Message}");
+            }
+        }
+
+        private static ZoneRegistryRecord FindZone(IReadOnlyList<ZoneRegistryRecord> zones, string serverId)
+        {
+            if (zones == null)
+                return null;
+
+            for (int i = 0; i < zones.Count; i++)
+            {
+                if (zones[i] != null && zones[i].ServerId == serverId)
+                    return zones[i];
+            }
+
+            return null;
         }
 
         private async Task SavePresenceAsync(LocalPlayerHandle local)
@@ -2119,7 +2205,7 @@ namespace MMO.Social
         {
             if (_raidService == null)
                 return (RaidRule.BackendUnavailable, null);
-            var result = await _raidService.AllocateAsync(requesterId, _zoneId, _instanceHostAddress, _instanceHostPort);
+            var result = await _raidService.AllocateAsync(requesterId);
             if (result.Rule == RaidRule.Ok)
                 await SyncAsync();
             return result;
