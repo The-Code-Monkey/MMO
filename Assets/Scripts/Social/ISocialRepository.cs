@@ -61,5 +61,13 @@ namespace MMO.Social
         /// <summary>Batch presence read for the friend-list online flags (100 ids per call).</summary>
         Task<List<PresenceRecord>> LoadPresencesAsync(
             IReadOnlyList<string> accountIds, CancellationToken ct = default);
+
+        /// <summary>
+        /// Best-effort cross-zone push fired after a winning CAS so peer zones can react before the
+        /// next reconcile tick. The body is ids-only; a receiving zone re-reads authoritative state
+        /// through the same rules as the poll path. A failure must never fail the caller's write —
+        /// the reconcile pass is the fallback — so callers swallow it.
+        /// </summary>
+        Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default);
     }
 }

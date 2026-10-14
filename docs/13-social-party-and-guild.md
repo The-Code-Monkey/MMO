@@ -97,7 +97,8 @@ match, and a losing race throws `Persistence.StorageVersionConflictException` so
 Methods cover parties (`LoadPartyAsync`, `SavePartyAsync`, `DeletePartyAsync`), the index
 (`LoadIndexAsync`, `LoadIndexesAsync`, `SaveIndexAsync` — the batch form is used because Nakama
 reads up to 100 ids per call), presence, the name index (`ResolveNameAsync`, `SaveNameAsync`) and
-guilds. The production implementation is `NakamaSocialRepository`
+guilds. `NotifySocialAsync` is the one non-storage method: a best-effort cross-zone push (see
+[§8](#8-raids-dynamic-instance-handoff)). The production implementation is `NakamaSocialRepository`
 (`Assets/Scripts/Persistence/NakamaSocialRepository.cs:17`), which translates records to and from
 `NakamaRestClient` primitives under the shared service account.
 
@@ -248,10 +249,31 @@ instance id). `PlayerRaid` answers that by running the existing `ZoneTransferHan
 (flush → token → `ZoneTransferBroadcast`), so a raid member arrives at the instance host through the
 same tested pipeline as a normal zone transition.
 
+### Early wake-up (`social_notify` push)
+
+The reconcile pass is the source of truth, but it only ticks every 2 s. After the winning CAS in
+`RaidInstanceService.AllocateAsync` (and after complete/teardown) the service fires
+`ISocialRepository.NotifySocialAsync` with a `SocialNotification` (ids only: `RaidId`, `PartyId`,
+`HostZoneId`, member `AccountIds`). `NakamaSocialRepository` projects it onto the flat `raid` bus
+envelope via `SocialNotification.ToEnvelope` and calls the Lua `social_notify` RPC through
+`NakamaRestClient.CallRpcAsync`; the module relays it to every zone's socket in <100 ms.
+
+A receiving zone does **not** act on the payload. `SocialHubService.OnEnvelope` routes `t == "raid"`
+into `OnSocialNotification`, which funnels straight back into `SyncAsync` — the same path that
+re-reads the record, re-runs the `RaidRules` and repository validation, and only then starts a
+transfer. The push is therefore a pure accelerator: a missed, failed, duplicated, stale or tampered
+notification can at worst cause an early *correct* pass, never an incorrect action, because the next
+`_syncInterval` tick converges regardless (the fail-open posture from #36). The push is best-effort
+by contract — `RaidInstanceService` swallows a `NotifySocialAsync` failure and the allocation still
+succeeds. `SocialNotificationTests`, `RaidInstanceServiceTests` and `SocialHubRaidSyncTests` pin the
+payload round trip, the "fires only after a winning CAS" rule and the dropped-notify convergence.
+
 ### Common tasks
 
 - **Change the raid size.** Edit `RaidRules.MinRaidSize` / `MaxRaidSize`; tests pin the boundary.
 - **Advertise the host address.** Edit `_instanceHostAddress` / `_instanceHostPort` on the
   `SocialHubService` component.
-- **Test raid logic offline.** `RaidRulesTests`, `RaidInstanceServiceTests` and
-  `SocialHubRaidSyncTests` use in-memory fakes and an EditMode hub.
+- **Disable the early wake-up.** Do not load `nakama/modules/social_notify.lua`; the push then
+  fails-open and every zone still converges on its own `_syncInterval` tick.
+- **Test raid logic offline.** `RaidRulesTests`, `RaidInstanceServiceTests`,
+  `SocialNotificationTests` and `SocialHubRaidSyncTests` use in-memory fakes and an EditMode hub.

@@ -220,6 +220,18 @@ namespace MMO.Persistence
                 GuildBankLedgerCollection, record.GuildId, JsonUtility.ToJson(record), record.StorageVersion, ct);
         }
 
+        public async Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
+        {
+            if (notification == null)
+                return;
+
+            // The Lua social_notify module relays a flat bus envelope to every zone's socket; only
+            // ids ride the wire, and the stream is best-effort (a dropped frame is repaired by the
+            // 2 s reconcile pass), so a module that is not loaded yet is not an error here.
+            SocialBusEnvelope envelope = SocialNotification.ToEnvelope(notification);
+            await _rest.CallRpcAsync<NotifyResponse>("social_notify", JsonUtility.ToJson(envelope), ct);
+        }
+
         private static T Deserialize<T>(StorageObjectData obj) where T : class
         {
             if (obj == null || string.IsNullOrEmpty(obj.Value))

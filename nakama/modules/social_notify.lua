@@ -29,7 +29,7 @@ local function social_notify(context, payload)
     -- not an error, so it is swallowed rather than failing the RPC.
     local ok = pcall(function()
         nk.channel_message_send(channel, {
-            t = args.t,               -- "friend" | "party" | "guild" | "presence"
+            t = args.t,               -- "friend" | "party" | "guild" | "presence" | "raid"
             target = args.target,     -- optional party/guild id
             accounts = args.accounts, -- affected account ids; zones filter on these
         })

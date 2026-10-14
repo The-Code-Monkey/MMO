@@ -277,6 +277,12 @@ namespace MMO.Social
                             _ = PushFriendsAsync(accountId);
                     }
                     break;
+
+                // A peer zone allocated or completed a raid: re-run the reconcile pass early so a
+                // hosted member begins (or stops) its transfer before the next 2 s tick.
+                case SocialNotification.WireType:
+                    _ = OnSocialNotification(SocialNotification.FromEnvelope(envelope));
+                    break;
             }
         }
 
@@ -1630,6 +1636,25 @@ namespace MMO.Social
             // member reacts, and only once per instance id.
             if (_raidRepository != null)
                 await SyncRaidTransfersAsync(partyIds);
+        }
+
+        /// <summary>
+        /// A peer zone pushed a social change hint. The body is never trusted beyond ids: we funnel
+        /// the notification straight back into <see cref="SyncAsync"/>, which re-reads the record,
+        /// re-runs the same <c>RaidRules</c> and repository validation as the poll path, and only
+        /// then acts. A stale, duplicate or tampered push can at worst cause an early correct pass,
+        /// never an incorrect action. Public so tests can drive one push without a socket.
+        /// </summary>
+        public Task OnSocialNotification(SocialNotification notification)
+        {
+            if (notification == null)
+                return Task.CompletedTask;
+
+            if (notification.Kind != SocialNotificationKind.RaidAllocated &&
+                notification.Kind != SocialNotificationKind.RaidCompleted)
+                return Task.CompletedTask;
+
+            return SyncAsync();
         }
 
         /// <summary>Deletes a disbanding party's raid instance record, if it had one.</summary>

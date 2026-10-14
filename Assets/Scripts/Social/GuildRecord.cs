@@ -9,6 +9,9 @@ namespace MMO.Social
     /// </summary>
     public enum GuildRank
     {
+        /// <summary>Not a rank: a system deposit that spends no member's quota.</summary>
+        None = -1,
+
         Member = 0,
         Officer = 1,
         Leader = 2,
