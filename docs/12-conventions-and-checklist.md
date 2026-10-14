@@ -25,7 +25,7 @@ private void RpcDoThing(SomeArg arg, NetworkConnection sender = null)
 ```
 
 This double check is deliberate even though FishNet also enforces ownership — see
-`PlayerStats.RpcRequestDamage` (`Assets/Scripts/Gameplay/PlayerStats.cs:195`) and
+`PlayerStats.RpcRequestDamage` (`Assets/Scripts/Gameplay/PlayerStats.cs:230`) and
 `PlayerAbilities.RpcRequestCast` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:151`) for the pattern.
 
 ## 2. The pure-core / networked-shell split

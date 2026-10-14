@@ -128,7 +128,7 @@ namespace MMO.Auction
                 index.ActiveListingIds.Add(listingId);
                 await _repository.SaveIndexAsync(index, ct);
 
-                return AuctionResult.Ok(listingId, listing);
+                return AuctionResult.Ok(listingId: listingId, listing: listing);
             }, ct);
 
             if (result.Rule == AuctionRule.Ok)
@@ -198,7 +198,7 @@ namespace MMO.Auction
                 if (buyResponse == null || !buyResponse.success)
                 {
                     // Map error code to rule
-                    return MapErrorToRule(buyResponse?.errorCode);
+                    return AuctionResult.Fail(MapErrorToRule(buyResponse?.errorCode));
                 }
 
                 // Purchase successful - notify both parties
@@ -225,7 +225,7 @@ namespace MMO.Auction
                 _socialHub.NotifyAuctionListingSold(buyerAccountId, listing.SellerAccountId, updatedListing, transaction);
                 _socialHub.NotifyAuctionPurchaseCompleted(buyerAccountId, transaction);
 
-                return AuctionResult.Ok(listingId, updatedListing);
+                return AuctionResult.Ok(listingId: listingId, listing: updatedListing);
             }
             catch (Exception e)
             {
@@ -277,7 +277,7 @@ namespace MMO.Auction
                     await _repository.SaveIndexAsync(index, ct);
                 }
 
-                return AuctionResult.Ok(listingId, listing);
+                return AuctionResult.Ok(listingId: listingId, listing: listing);
             }, ct);
 
             if (result.Rule == AuctionRule.Ok)
@@ -299,7 +299,7 @@ namespace MMO.Auction
                             {
                                 item.GridX = x;
                                 item.GridY = y;
-                                bag.Add(item);
+                                bag.TryAddExistingItem(item, x, y);
                             }
                             else
                             {
@@ -521,7 +521,7 @@ namespace MMO.Auction
                 FulfillBuyOrderResponse fulfillResponse = JsonUtility.FromJson<FulfillBuyOrderResponse>(response);
                 if (fulfillResponse == null || !fulfillResponse.success)
                 {
-                    return MapErrorToRule(fulfillResponse?.errorCode);
+                    return AuctionResult.Fail(MapErrorToRule(fulfillResponse?.errorCode));
                 }
 
                 // Update seller's bag
@@ -702,7 +702,7 @@ namespace MMO.Auction
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Task.Delay(50 * (1 << attempt), ct);
+                    await Task.Delay(50 * (1 << i), ct);
                 }
                 catch (OperationCanceledException)
                 {

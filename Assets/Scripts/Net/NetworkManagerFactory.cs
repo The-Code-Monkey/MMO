@@ -43,7 +43,8 @@ namespace MMO.Net
             out MMOConnectionGate gate,
             NetworkObject playerPrefab = null,
             NetworkObject targetDummyPrefab = null,
-            NetworkObject craftingStationPrefab = null)
+            NetworkObject craftingStationPrefab = null,
+            NetworkObject lootBagPrefab = null)
         {
             settings ??= new MMOConnectionSettings();
 
@@ -57,6 +58,7 @@ namespace MMO.Net
             NetworkObject builtPlayerPrefab = null;
             NetworkObject builtTargetDummyPrefab = null;
             NetworkObject builtCraftingStationPrefab = null;
+            NetworkObject builtLootBagPrefab = null;
 
             try
             {
@@ -95,12 +97,21 @@ namespace MMO.Net
                     craftingStationPrefab.gameObject.SetActive(false);
                 }
 
+                if (lootBagPrefab == null)
+                {
+                    builtLootBagPrefab = LootBagPrefabFactory.Create();
+                    lootBagPrefab = builtLootBagPrefab;
+                    lootBagPrefab.gameObject.SetActive(false);
+                }
+
                 // Before activation, so the prefabs are in the collection when Awake hands out
                 // prefab ids from the list order. Both ends build through this same factory, so
-                // the player is always id 0 and the target dummy id 1 and crafting station id 2.
+                // the player is always id 0, the target dummy id 1, the crafting station id 2 and
+                // the loot bag id 3.
                 PlayerPrefabFactory.Register(prefabs, playerPrefab);
                 TargetDummyPrefabFactory.Register(prefabs, targetDummyPrefab);
                 CraftingStationPrefabFactory.Register(prefabs, craftingStationPrefab);
+                LootBagPrefabFactory.Register(prefabs, lootBagPrefab);
 
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
@@ -173,6 +184,9 @@ namespace MMO.Net
 
                 if (builtCraftingStationPrefab != null)
                     Object.DestroyImmediate(builtCraftingStationPrefab.gameObject);
+
+                if (builtLootBagPrefab != null)
+                    Object.DestroyImmediate(builtLootBagPrefab.gameObject);
 
                 Object.DestroyImmediate(go);
                 throw;

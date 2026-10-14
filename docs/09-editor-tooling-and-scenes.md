@@ -24,6 +24,7 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Create Target Dummy Prefab` | `TargetDummyBaker` | Builds the training-dummy prefab and wires its spawner. |
 | `Tools > MMO > Create Crafting Station Prefab` | `CraftingStationBaker` | Builds the crafting-station prefab and wires its spawner. |
 | `Tools > MMO > Create Resource Node Prefab` | `ResourceNodeBaker` | Builds the resource-node prefab (placed into levels by hand). |
+| `Tools > MMO > Create Loot Bag Prefab` | `LootBagBaker` | Builds the loot-bag prefab a black-zone death drops. |
 | `Tools > MMO > Create Local Camera` | `LocalCameraBaker` | Adds the Cinemachine-based local camera rig to the scene. |
 | `Tools > MMO > Create NetworkManager In Scene` | `NetworkManagerSceneBaker` | Drops a fully wired `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Main Menu Scene` | `MainMenuSceneBaker` | Rebuilds `Assets/Scenes/MainMenu.unity` with a token-auth manager and the bootstrap. |
@@ -58,15 +59,24 @@ server-side on startup.
 `Assets/Editor/ResourceNodeBaker.cs:19`. Builds via `ResourceNodePrefabFactory.Create()`. It has no
 `Wire...` method — resource nodes are placed into levels by hand and registered elsewhere.
 
+### LootBagBaker
+
+`Assets/Editor/LootBagBaker.cs:19`. Builds via `LootBagPrefabFactory.Create()` and saves to
+`Assets/Prefabs/LootBag.prefab`. `EnsureLootBagPrefab` (`:52`) is idempotent (reuses the saved asset),
+`WireLootBag` (`:94`) registers the prefab in the `NetworkManager`'s spawnable collection so a
+black-zone death can resolve it, and `DeleteLootBagPrefab` (`:119`) is the cleanup path. The same
+registration is what `PlayerDeath` scans for, so the bag needs no per-prefab reference.
+
 ## 4. The scene bakers
 
 ### NetworkManagerSceneBaker
 
 `Assets/Editor/NetworkManagerSceneBaker.cs:18`. `CreateInActiveScene(settings)` (`:47`) reuses an
-existing named `NetworkManager` if there is one (wiring the player and dummy prefabs), otherwise
-bakes the player and dummy prefabs and calls `NetworkManagerFactory.Create(settings, out _, ...)` to
-build the whole object graph. `TryFind` (`:83`) looks for a root object named
-`NetworkManagerFactory.GameObjectName`. `Validate` (`:103`) returns human-readable errors used by the
+existing named `NetworkManager` if there is one (wiring the player, dummy and loot-bag prefabs),
+otherwise bakes the player, dummy and loot-bag prefabs and calls
+`NetworkManagerFactory.Create(settings, out _, ...)` to build the whole object graph. The loot-bag
+prefab is produced by `LootBagBaker` (see below). `TryFind` (`:85`) looks for a root object named
+`NetworkManagerFactory.GameObjectName`. `Validate` (`:105`) returns human-readable errors used by the
 build guard.
 
 ### MainMenuSceneBaker

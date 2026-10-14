@@ -163,6 +163,13 @@ namespace MMO.Tests
             var stats = player.GetComponent<PlayerStats>();
             Assert.IsNotNull(stats, "The prefab's networked stats have to travel with it.");
 
+            // These tests observe the raw vitals; a lethal hit also wakes the death rules, which
+            // resurrect on zero health. Disabling the death component keeps this suite about the
+            // clamp itself — the death cycle is covered by PlayerDeathPlayModeTests.
+            var death = player.GetComponent<PlayerDeath>();
+            if (death != null)
+                death.enabled = false;
+
             assertions(stats);
         }
 

@@ -77,6 +77,19 @@ namespace MMO.Gameplay
         /// </summary>
         public event Action LevelChanged;
 
+        /// <summary>
+        /// Raised on the server the moment health first reaches zero — the transition, not a
+        /// repeated zero, so a death runs exactly once. <see cref="PlayerDeath"/> is the
+        /// subscriber that turns this event into a zone-tier consequence. A health of zero
+        /// arriving through <see cref="ApplySave"/> does not fire it: loading a dead-but-saved
+        /// player is a restore, not a death.
+        /// </summary>
+        public event Action Died;
+
+        // Set while ApplySave writes the loaded value, so a restored zero health cannot be
+        // mistaken for a fresh death and run the death rules on spawn.
+        private bool _applyingSave;
+
         public override void OnStartNetwork()
         {
             if (IsServer)
@@ -156,9 +169,30 @@ namespace MMO.Gameplay
         [Server]
         public void ApplySave(int health, int mana, int level)
         {
-            _level.Value = Mathf.Max(0, level);
-            _health.Value = Mathf.Clamp(health, 0, EffectiveMaxHealth);
-            _mana.Value = Mathf.Clamp(mana, 0, EffectiveMaxMana);
+            _applyingSave = true;
+            try
+            {
+                _level.Value = Mathf.Max(0, level);
+                _health.Value = Mathf.Clamp(health, 0, EffectiveMaxHealth);
+                _mana.Value = Mathf.Clamp(mana, 0, EffectiveMaxMana);
+            }
+            finally
+            {
+                _applyingSave = false;
+            }
+        }
+
+        /// <summary>
+        /// Server: return the player to full health and mana. The minimal respawn the death
+        /// rules ask for — no position reset and no spawn-point selection yet, because no
+        /// movement or spawn-point system exists to consult. A later respawn system can replace
+        /// this call without touching the death rules.
+        /// </summary>
+        [Server]
+        public void Respawn()
+        {
+            _health.Value = EffectiveMaxHealth;
+            _mana.Value = EffectiveMaxMana;
         }
 
         /// <summary>
@@ -231,6 +265,11 @@ namespace MMO.Gameplay
         {
             Debug.Log($"[ClientId {OwnerId}] health {previous} -> {current}");
             VitalsChanged?.Invoke();
+
+            // Only the server resolves death, and only on the crossing into zero: a restore that
+            // starts at zero, or a further hit on an already-dead player, must not re-run it.
+            if (asServer && !_applyingSave && previous > 0 && current == 0)
+                Died?.Invoke();
         }
 
         private void OnManaChanged(int previous, int current, bool asServer)

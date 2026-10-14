@@ -1,3 +1,4 @@
+using System;
 using MMO.Gameplay;
 using NUnit.Framework;
 

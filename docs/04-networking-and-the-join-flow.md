@@ -190,9 +190,9 @@ baker *and* by tests:
 1. Create the `NetworkManager` GameObject and disable it so nothing runs until fully wired.
 2. Add the `Tugboat` transport, set the port and max clients.
 3. Create a `SinglePrefabObjects` collection named `MMOSpawnablePrefabs`.
-4. Build any missing prefabs (player, target dummy, crafting station) via their factories.
+4. Build any missing prefabs (player, target dummy, crafting station, loot bag) via their factories.
 5. Register them in a fixed order so network object ids are deterministic: player = 0, dummy = 1,
-   crafting station = 2.
+   crafting station = 2, loot bag = 3.
 6. Add the `MMOConnectionGate`, call `SetSettings`, add `JoinRequestClient`, add
    `TokenAuthBootstrap` (which wires the validator from `UseTokenAuth`), add
    `PlayerPersistenceService`, add `SocialHubService`, add `ZoneTransferTokenService` and
@@ -201,11 +201,12 @@ baker *and* by tests:
    `persistence.AttachTo(gate)` to give the gate its loader, and
    `gate.TransferTokenStore = tokenService.Store`.
 
-`PlayerPrefabFactory.Create` (`Assets/Scripts/Net/PlayerPrefabFactory.cs:71`) builds the player
+`PlayerPrefabFactory.Create` (`Assets/Scripts/Net/PlayerPrefabFactory.cs:72`) builds the player
 capsule and adds its components in a deliberate order: `NetworkObject`, then `PlayerStats`,
 `PlayerCombat`, `PlayerInventory`, `PlayerAbilities`, `PlayerGathering`, `PlayerCrafting`,
+`PlayerDeath` (the risk-tier resolver — it must come after the stats and inventory it reads),
 `PlayerSaveTrigger`, `PlayerParty`, `PlayerGuild`, and finally `LocalPlayerCamera`.
-`PlayerPrefabFactory.Attach` (`:165`) installs a FishNet `PlayerSpawner`, which is what actually
+`PlayerPrefabFactory.Attach` (`:181`) installs a FishNet `PlayerSpawner`, which is what actually
 instantiates the player when the gate admits a connection.
 
 ## 5. Zone transfers

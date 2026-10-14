@@ -43,6 +43,14 @@ namespace MMO.Inventory
 
         public int StackCount;
 
+        /// <summary>
+        /// Remaining durability of this instance. Zero for an empty instance and for an
+        /// indestructible item (its definition reports <see cref="ItemDefinition.MaxDurability"/> 0);
+        /// otherwise it starts at the definition's maximum and is worn down by
+        /// <see cref="MMO.Gameplay.RiskRules.WearDurability"/>.
+        /// </summary>
+        public int Durability;
+
         /// <summary>True when this instance stands for an empty cell or an empty equipment slot.</summary>
         public bool IsEmpty => string.IsNullOrEmpty(ItemName);
 
@@ -67,6 +75,7 @@ namespace MMO.Inventory
                 Width = definition.GridWidth,
                 Height = definition.GridHeight,
                 StackCount = definition.IsStackable ? 1 : 1,
+                Durability = definition.MaxDurability,
             };
         }
 
@@ -87,6 +96,7 @@ namespace MMO.Inventory
                 Width = definition.GridWidth,
                 Height = definition.GridHeight,
                 StackCount = count,
+                Durability = definition.MaxDurability,
             };
         }
 

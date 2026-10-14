@@ -111,7 +111,7 @@ namespace MMO.Tests
             var service = new RaidOrchestrationService(
                 client, zoneRegistry,
                 async (party, ct) => { fallbackCalled = true; return (RaidRule.Ok, new RaidInstanceRecord { InstanceId = "fallback-instance" }); },
-                timeoutSeconds: 0); // instant timeout
+                healthTimeoutSeconds: 0); // instant timeout
 
             var result = await service.EnterRaidAsync(MakeParty(), CancellationToken.None);
 

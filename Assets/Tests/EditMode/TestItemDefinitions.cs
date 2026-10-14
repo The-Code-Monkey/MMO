@@ -26,6 +26,7 @@ namespace MMO.Tests
             int requiredLevel = 0,
             int maxHealthBonus = 0,
             int maxManaBonus = 0,
+            int maxDurability = 0,
             bool register = true)
         {
             var inspector = new SerializedObject(definition);
@@ -36,6 +37,7 @@ namespace MMO.Tests
             inspector.FindProperty("_gridHeight").intValue = height;
             inspector.FindProperty("_maxHealthBonus").intValue = maxHealthBonus;
             inspector.FindProperty("_maxManaBonus").intValue = maxManaBonus;
+            inspector.FindProperty("_maxDurability").intValue = maxDurability;
             inspector.ApplyModifiedPropertiesWithoutUndo();
 
             if (register)
@@ -52,7 +54,8 @@ namespace MMO.Tests
             EquipmentSlot equipSlot = EquipmentSlot.MainHand,
             int requiredLevel = 0,
             int maxHealthBonus = 0,
-            int maxManaBonus = 0)
+            int maxManaBonus = 0,
+            int maxDurability = 0)
         {
             return Write(
                 ScriptableObject.CreateInstance<ItemDefinition>(),
@@ -62,7 +65,8 @@ namespace MMO.Tests
                 equipSlot,
                 requiredLevel,
                 maxHealthBonus,
-                maxManaBonus);
+                maxManaBonus,
+                maxDurability);
         }
     }
 }

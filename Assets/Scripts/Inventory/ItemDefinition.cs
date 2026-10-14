@@ -30,6 +30,7 @@ namespace MMO.Inventory
         [SerializeField, Min(1)] private int _gridHeight = 1;
         [SerializeField, Min(0)] private int _maxHealthBonus;
         [SerializeField, Min(0)] private int _maxManaBonus;
+        [SerializeField, Min(0)] private int _maxDurability;
         [SerializeField] private bool _isStackable;
         [SerializeField, Min(1)] private int _maxStackSize = 1;
         [SerializeField, Min(0)] private long _value;
@@ -63,6 +64,13 @@ namespace MMO.Inventory
 
         /// <summary>Maximum mana granted while this item is equipped.</summary>
         public int MaxManaBonus => _maxManaBonus;
+
+        /// <summary>
+        /// Durability a fresh instance of this item starts with, and the ceiling a damaged one is
+        /// clamped against. Zero means the item is indestructible: it never takes wear and is
+        /// never dropped by a safe-zone death.
+        /// </summary>
+        public int MaxDurability => Mathf.Max(0, _maxDurability);
 
         public bool IsStackable => _isStackable;
 

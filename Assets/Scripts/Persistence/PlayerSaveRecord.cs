@@ -20,6 +20,9 @@ namespace MMO.Persistence
         public int Width;
         public int Height;
 
+        /// <summary>Remaining durability at save time; zero for an indestructible item.</summary>
+        public int Durability;
+
         /// <summary>-1 = bag item, otherwise the <see cref="Inventory.EquipmentSlot"/> it was worn in.</summary>
         public int EquipmentSlot;
     }
