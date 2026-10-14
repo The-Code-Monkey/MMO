@@ -19,6 +19,7 @@ namespace MMO.Tests
     {
         private FakeSocialRepository _social;
         private FakeRaidRepo _raids;
+        private FakeZoneRegistryRepository _zones;
         private RaidInstanceService _svc;
 
         [SetUp]
@@ -26,7 +27,18 @@ namespace MMO.Tests
         {
             _social = new FakeSocialRepository();
             _raids = new FakeRaidRepo();
-            _svc = new RaidInstanceService(_social, _raids, casRetries: 5);
+            _zones = new FakeZoneRegistryRepository();
+            _zones.Zones["z1"] = new ZoneRegistryRecord
+            {
+                ServerId = "z1",
+                Host = "10.0.0.1",
+                Port = 7770,
+                ZoneTemplateId = "raid",
+                MaxInstances = 10,
+                ActiveInstances = 0,
+                HeartbeatAtTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks,
+            };
+            _svc = new RaidInstanceService(_social, _raids, _zones, casRetries: 5);
         }
 
         #region Helpers
@@ -57,7 +69,7 @@ namespace MMO.Tests
         private async Task<RaidInstanceRecord> SeedRaid()
         {
             SeedParty(MemberParty("p1", "a0", Accounts("a", 20)));
-            var (rule, instance) = await _svc.AllocateAsync("a0", "z1");
+            var (rule, instance) = await _svc.AllocateAsync("a0");
             Assert.AreEqual(RaidRule.Ok, rule);
             return instance;
         }
@@ -391,6 +403,32 @@ namespace MMO.Tests
             public Task DeleteRaidInstanceAsync(string instanceId, CancellationToken ct = default)
             {
                 Instances.Remove(instanceId);
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class FakeZoneRegistryRepository : IZoneRegistryRepository
+        {
+            public readonly Dictionary<string, ZoneRegistryRecord> Zones = new Dictionary<string, ZoneRegistryRecord>();
+            private int _v;
+
+            public Task<List<ZoneRegistryRecord>> LoadZonesAsync(CancellationToken ct = default)
+            {
+                var list = new List<ZoneRegistryRecord>(Zones.Count);
+                foreach (ZoneRegistryRecord z in Zones.Values)
+                {
+                    var clone = JsonUtility.FromJson<ZoneRegistryRecord>(JsonUtility.ToJson(z));
+                    clone.StorageVersion = z.StorageVersion;
+                    list.Add(clone);
+                }
+                return Task.FromResult(list);
+            }
+
+            public Task SaveZoneAsync(ZoneRegistryRecord record, CancellationToken ct = default)
+            {
+                var clone = JsonUtility.FromJson<ZoneRegistryRecord>(JsonUtility.ToJson(record));
+                clone.StorageVersion = (_v++).ToString();
+                Zones[record.ServerId] = clone;
                 return Task.CompletedTask;
             }
         }

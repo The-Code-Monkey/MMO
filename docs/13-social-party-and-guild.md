@@ -240,18 +240,48 @@ CAS-guarded, exactly like every other social write.
 
 `RaidInstanceRecord` (`Assets/Scripts/Social/RaidInstanceRecord.cs`) holds the `InstanceId`, the seed
 `PartyId`, the `SeedPartyId`, the authoritative `MemberPartyIds` list, the `LeaderId`, the host
-`HostZoneId`/`HostAddress`/`HostPort`, the derived flat `Members` snapshot and its `StorageVersion`.
-Legacy #51 records that carry only `PartyId` are treated as a one-party raid
-(`RaidRules.IncludesParty`). `IRaidInstanceRepository` is the storage boundary; the production
-implementation is `NakamaRaidInstanceRepository` (collection `raid_instances`), and
+`HostZoneId`/`HostAddress`/`HostPort`, the host's `ZoneTemplateId`, the derived flat `Members`
+snapshot and its `StorageVersion`. Legacy #51 records that carry only `PartyId` are treated as a
+one-party raid (`RaidRules.IncludesParty`). `IRaidInstanceRepository` is the storage boundary; the
+production implementation is `NakamaRaidInstanceRepository` (collection `raid_instances`), and
 `SocialHubService.Configure` takes it as an optional second argument (tests inject a fake).
+
+### Host selection and the zone registry (#57)
+
+Since #57 the allocating zone no longer assumes it is the host. Every zone advertises itself in the
+`zone_registry` collection, and allocation picks a host from the healthy candidates:
+
+- `ZoneRegistryRecord` (`Assets/Scripts/Social/ZoneRegistryRecord.cs`) is the mirror of
+  `PresenceRecord` for servers: `ServerId`, the advertised `Host`/`Port`, its `ZoneTemplateId`, the
+  `MaxInstances`/`ActiveInstances` capacity pair, a heartbeat and `StorageVersion`. A zone whose
+  heartbeat is older than `ZoneRegistryRecord.HeartbeatTtl` (90 s) drops out of selection, so a
+  crashed zone goes stale instead of looking healthy forever. `Headroom` is the spare capacity.
+- `RaidHostSelection.Choose(zones, now, out chosen)` (`Assets/Scripts/Social/RaidHostSelection.cs`)
+  is a pure, EditMode-tested function. It ignores zones that are stale or over capacity and picks the
+  lowest `ActiveInstances`, breaking ties on ordinal `ServerId` so the choice is deterministic.
+- When no healthy candidate exists the allocation fails cleanly with `RaidRule.NoHostAvailable` and
+  **writes nothing** (selection runs before the first CAS), surfaced to the requester like
+  `CasExhausted` — never a silent fall back to the local zone.
+- `IZoneRegistryRepository` is the storage boundary (`NakamaZoneRegistryRepository`, collection
+  `zone_registry`, discovered by `NakamaRestClient.ListObjectsAsync`). A single-zone deployment
+  injects `SingleZoneRegistryRepository`, which registers the local zone alone, so allocation behaves
+  exactly as the #51 default.
+
+`SocialHubService` self-registers its own `ZoneRegistryRecord` on the presence tick (using
+`_zoneId`/`_instanceHostAddress`/`_instanceHostPort`/`_zoneTemplateId`/`_maxInstances`), and
+`RaidInstanceService` moves the chosen host's `ActiveInstances` up on allocation and down on teardown
+(best-effort, CAS'd). The chosen host is recorded on the instance's `HostZoneId`/`HostAddress`/
+`HostPort`/`ZoneTemplateId`, so every downstream handoff and return anchor is unchanged. A dropped
+load write only leaves the signal slightly stale — capacity accounting is advisory, not a
+correctness gate, and a periodic recount is deliberately left as follow-up work.
 
 ### Allocation, join, leave and teardown
 
 `RaidInstanceService` (`Assets/Scripts/Social/RaidInstanceService.cs`) runs the bounded CAS loop:
 
-- **Allocate (seed promotion)** — load the party, `RaidRules.CanAllocate`, write the instance record
-  seeded with `MemberPartyIds = [party]`, then CAS `PartyRecord.RaidInstanceId`. A conflict retries.
+- **Allocate (seed promotion)** — choose the host (`RaidHostSelection`), load the party,
+  `RaidRules.CanAllocate`, write the instance record seeded with `MemberPartyIds = [party]` on the
+  chosen host, then CAS `PartyRecord.RaidInstanceId`. A conflict retries on the same host.
 - **Join** — a member party's leader appends to `MemberPartyIds` and CAS's the raid record *first*,
   then CAS's the joining party's pointer. A conflict re-reads and re-runs `CanJoin`, so two parties
   racing the last seat cannot both win; a membership entry whose pointer never landed is re-pushed.
@@ -300,10 +330,15 @@ so zone B moves on the delivered push before its own tick, and converges on the 
 
 - **Change the raid size.** Edit `RaidRules.MinRaidSize` (party floor to seed a raid) /
   `MaxRaidSize` (the multi-party account ceiling); tests pin both boundaries.
-- **Advertise the host address.** Edit `_instanceHostAddress` / `_instanceHostPort` on the
-  `SocialHubService` component.
+- **Advertise a zone as a raid host.** Every server must set `_instanceHostAddress` /
+  `_instanceHostPort` on its `SocialHubService`, plus `_zoneTemplateId` (the scene/build it serves)
+  and `_maxInstances` (how many raid instances it will host before dropping out of selection, #57).
+  A deployment shares the `zone_registry` collection; a single-zone demo needs none of it and falls
+  back to registering the local zone alone.
+- **Change the host-selection policy.** Edit `RaidHostSelection.Choose` — the load-aware,
+  deterministic tie-break is the only policy shipped; geo/latency scoring is a clean seam for later.
 - **Disable the early wake-up.** Do not load `nakama/modules/social_notify.lua`; the push then
   fails-open and every zone still converges on its own `_syncInterval` tick.
-- **Test raid logic offline.** `RaidRulesTests`, `RaidInstanceServiceTests`,
+- **Test raid logic offline.** `RaidRulesTests`, `RaidHostSelectionTests`, `RaidInstanceServiceTests`,
   `MultiPartyRaidServiceTests`, `SocialNotificationTests` and `SocialHubRaidSyncTests` use in-memory
   fakes and an EditMode hub.

@@ -60,6 +60,9 @@ namespace MMO.Social
         public string HostAddress;
         public ushort HostPort;
 
+        /// <summary>The template/scene the chosen host zone serves (recorded at allocation, #57).</summary>
+        public string ZoneTemplateId;
+
         /// <summary>Per-member return anchors recorded at hand-out time (source zone CAS-appends).</summary>
         public List<RaidReturnAnchor> ReturnAnchors = new List<RaidReturnAnchor>();
 

@@ -126,6 +126,12 @@ server-driven handoff, never a client choice:
 All servers in a deployment must share the token signing secret (`ZoneTransferTokenService`
 `secretKey`), exactly as they share `BackendSettings.ServerDeviceId`.
 
+Raid instances are placed by a scheduler rather than hosted on the allocating zone: every server
+registers itself in the shared `zone_registry` collection and a new instance is allocated on the
+least-loaded healthy zone with spare capacity (`RaidHostSelection`). A real deployment must therefore
+set each server's `SocialHubService` `_instanceHostAddress`/`_instanceHostPort`, `_zoneTemplateId`
+and `_maxInstances`; a single-zone demo needs none of it and falls back to the local zone.
+
 ## Testing
 
 - EditMode tests cover the pure mapping, DTO round-trip, the save queue/flush and the join gate's

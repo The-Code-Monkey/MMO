@@ -24,22 +24,45 @@ namespace MMO.Social
     {
         private readonly ISocialRepository _social;
         private readonly IRaidInstanceRepository _raids;
+        private readonly IZoneRegistryRepository _zones;
         private readonly int _casRetries;
 
-        public RaidInstanceService(ISocialRepository social, IRaidInstanceRepository raids, int casRetries = 5)
+        public RaidInstanceService(
+            ISocialRepository social, IRaidInstanceRepository raids, IZoneRegistryRepository zones,
+            int casRetries = 5)
         {
             _social = social ?? throw new ArgumentNullException(nameof(social));
             _raids = raids ?? throw new ArgumentNullException(nameof(raids));
+            _zones = zones ?? throw new ArgumentNullException(nameof(zones));
             _casRetries = casRetries;
         }
 
         /// <summary>
-        /// Leader-only: promotes the requester's full party to a raid seed. Creates the raid record
-        /// with the party as its first (seed) member party, then CAS's the party's pointer.
+        /// Leader-only: promotes the requester's full party to a raid seed. The host is chosen from
+        /// the healthy zone registry (#57) before any write; with no candidate the allocation fails
+        /// cleanly with <see cref="RaidRule.NoHostAvailable"/> and nothing is written. On success it
+        /// creates the raid record with the party as its first (seed) member party and the chosen
+        /// host recorded, then CAS's the party's pointer.
         /// </summary>
-        public async Task<(RaidRule Rule, RaidInstanceRecord Instance)> AllocateAsync(
-            string requesterId, string hostZoneId, string hostAddress = null, ushort hostPort = 0)
+        public async Task<(RaidRule Rule, RaidInstanceRecord Instance)> AllocateAsync(string requesterId)
         {
+            // Select the host up front, outside the CAS loop, so a retry overwrites the same record
+            // on the same host instead of leaking an orphan instance per attempt.
+            ZoneRegistryRecord host;
+            List<ZoneRegistryRecord> zones;
+            try
+            {
+                zones = await _zones.LoadZonesAsync();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Raid] Host selection failed: {e.Message}");
+                return (RaidRule.BackendUnavailable, null);
+            }
+
+            if (RaidHostSelection.Choose(zones, DateTimeOffset.UtcNow, out host) != RaidHostChoice.Ok)
+                return (RaidRule.NoHostAvailable, null);
+
             // The id is minted once, outside the loop, so a CAS retry overwrites the same record
             // instead of leaking an orphan instance per attempt.
             string instanceId = Guid.NewGuid().ToString("N");
@@ -69,9 +92,10 @@ namespace MMO.Social
                         PartyId = party.PartyId,
                         SeedPartyId = party.PartyId,
                         LeaderId = party.LeaderId,
-                        HostZoneId = hostZoneId ?? "local",
-                        HostAddress = hostAddress,
-                        HostPort = hostPort,
+                        HostZoneId = host.ServerId,
+                        HostAddress = host.Host,
+                        HostPort = host.Port,
+                        ZoneTemplateId = host.ZoneTemplateId,
                     };
                     instance.MemberPartyIds.Add(party.PartyId);
                     RefreshMembers(instance, new[] { party });
@@ -81,6 +105,11 @@ namespace MMO.Social
 
                     party.RaidInstanceId = instance.InstanceId;
                     await _social.SavePartyAsync(party);
+
+                    // Best-effort capacity accounting on the chosen host so the next selection sees
+                    // this instance. A missed write only costs a slightly stale load signal (the
+                    // heartbeat preserves it); recency is a follow-up, not a correctness requirement.
+                    await AdjustHostInstancesAsync(host.ServerId, +1);
 
                     // Only after the winning CAS: peers start the handoff before the next reconcile
                     // tick. A lost CAS or a rule failure never reaches this line.
@@ -220,6 +249,7 @@ namespace MMO.Social
                         await _raids.DeleteRaidInstanceAsync(raidId);
                         foreach (string pid in originalMemberIds)
                             await ClearRaidPointerAsync(pid);
+                        await AdjustHostInstancesAsync(raid.HostZoneId, -1);
                         await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidCompleted, raid));
                         return RaidRule.Ok;
                     }
@@ -324,6 +354,7 @@ namespace MMO.Social
                     {
                         await _raids.DeleteRaidInstanceAsync(raid.InstanceId);
                         await ClearRaidPointerAsync(partyId);
+                        await AdjustHostInstancesAsync(raid.HostZoneId, -1);
                         await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidCompleted, raid));
                         return;
                     }
@@ -386,6 +417,8 @@ namespace MMO.Social
                         PartyRaidNotification(SocialNotificationKind.RaidCompleted, instanceId, party));
                     if (!string.IsNullOrEmpty(instanceId))
                         await _raids.DeleteRaidInstanceAsync(instanceId);
+                    if (raid != null)
+                        await AdjustHostInstancesAsync(raid.HostZoneId, -1);
                     return RaidRule.Ok;
                 }
                 catch (StorageVersionConflictException)
@@ -517,6 +550,56 @@ namespace MMO.Social
             {
                 Debug.LogWarning($"[Raid] Failed to clean up orphan instance '{instanceId}': {e.Message}");
             }
+        }
+
+        /// <summary>
+        /// Best-effort CAS bump of a zone's <see cref="ZoneRegistryRecord.ActiveInstances"/> so the
+        /// next selection sees the new load. A missed write only leaves the load signal slightly
+        /// stale (the zone's own heartbeat preserves the last stored value) and never fails the
+        /// allocation, so a failure is logged and never thrown to the caller.
+        /// </summary>
+        private async Task AdjustHostInstancesAsync(string serverId, int delta)
+        {
+            if (string.IsNullOrEmpty(serverId))
+                return;
+
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    List<ZoneRegistryRecord> zones = await _zones.LoadZonesAsync();
+                    ZoneRegistryRecord zone = FindZone(zones, serverId);
+                    if (zone == null)
+                        return;
+
+                    zone.ActiveInstances = Math.Max(0, zone.ActiveInstances + delta);
+                    await _zones.SaveZoneAsync(zone);
+                    return;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Raid] Failed to adjust host instance count for '{serverId}': {e.Message}");
+                    return;
+                }
+            }
+        }
+
+        private static ZoneRegistryRecord FindZone(IReadOnlyList<ZoneRegistryRecord> zones, string serverId)
+        {
+            if (zones == null)
+                return null;
+
+            for (int i = 0; i < zones.Count; i++)
+            {
+                if (zones[i] != null && zones[i].ServerId == serverId)
+                    return zones[i];
+            }
+
+            return null;
         }
 
         private static SocialNotification RaidNotification(

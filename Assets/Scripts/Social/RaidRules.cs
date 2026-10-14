@@ -24,6 +24,9 @@ namespace MMO.Social
 
         /// <summary>The target is not on the raid roster.</summary>
         NotInRaid,
+
+        /// <summary>No healthy, ready zone with spare capacity was available to host the instance.</summary>
+        NoHostAvailable,
     }
 
     /// <summary>
