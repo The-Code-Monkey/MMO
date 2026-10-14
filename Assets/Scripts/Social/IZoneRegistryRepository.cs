@@ -23,5 +23,8 @@ namespace MMO.Social
 
         /// <summary>Creates when <c>record.StorageVersion</c> is empty, otherwise if-matches it.</summary>
         Task SaveZoneAsync(ZoneRegistryRecord record, CancellationToken ct = default);
+
+        /// <summary>Deletes a zone record by server id. Missing records are a no-op.</summary>
+        Task DeleteZoneAsync(string serverId, CancellationToken ct = default);
     }
 }

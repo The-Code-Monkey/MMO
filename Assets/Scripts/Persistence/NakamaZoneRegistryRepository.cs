@@ -52,6 +52,21 @@ namespace MMO.Persistence
                 ZoneRegistryCollection, record.ServerId, JsonUtility.ToJson(record), record.StorageVersion, ct);
         }
 
+        public async Task DeleteZoneAsync(string serverId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(serverId))
+                return;
+
+            try
+            {
+                await _rest.DeleteObjectAsync(ZoneRegistryCollection, serverId, ct);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[NakamaZoneRegistry] DeleteZoneAsync failed for '{serverId}': {e.Message}");
+            }
+        }
+
         private static ZoneRegistryRecord Deserialize(StorageObjectData obj)
         {
             if (obj == null || string.IsNullOrEmpty(obj.Value))

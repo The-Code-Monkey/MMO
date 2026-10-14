@@ -38,5 +38,8 @@ namespace MMO.Social
 
         public Task SaveZoneAsync(ZoneRegistryRecord record, CancellationToken ct = default)
             => Task.CompletedTask;
+
+        public Task DeleteZoneAsync(string serverId, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }
