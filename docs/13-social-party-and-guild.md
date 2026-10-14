@@ -117,6 +117,8 @@ Events it raises for the shells to relay:
 | `GuildChanged(GuildRecord)` | A guild changed (or disbanded). |
 | `PartyInviteReceived(accountId, invite)` | A pending party invite appeared for a player. |
 | `GuildInviteReceived(accountId, invite)` | A pending guild invite appeared. |
+| `RaidChanged(RaidInstanceRecord)` | A raid a hosted party belongs to changed (see [§8](#8-raids-dynamic-instance-handoff)). |
+| `RaidTransferRequested(accountId, instance)` | A local member must move to the instance host. |
 
 Lifecycle:
 
@@ -207,8 +209,10 @@ PLAYER B (zone 2)
 
 ## 8. Raids (dynamic instance handoff)
 
-A party of at least `RaidRules.MinRaidSize` (5) may be promoted to a raid by its leader. The
-allocation is leader-only and CAS-guarded, exactly like every other social write.
+A party of at least `RaidRules.MinRaidSize` (5) may be promoted to a raid by its leader. Since #54 a
+raid is **not** 1:1 with a party: it is a set of *member parties* all pointing at one shared
+`RaidInstanceRecord`, up to `RaidRules.MaxRaidSize` (25) accounts. The allocation is leader-only and
+CAS-guarded, exactly like every other social write.
 
 ### The rules
 
@@ -219,35 +223,57 @@ allocation is leader-only and CAS-guarded, exactly like every other social write
   (`PartyTooSmall`).
 - `CanComplete(party, requesterId)` — a raid is allocated (`RaidMissing`) and the requester is the
   leader (`NotLeader`).
+- `Roster(raid, memberParties)` — the flat, de-duplicated account list across every member party.
+  Computed on demand; it is never the stored source of truth, so it cannot drift.
+- `CanJoin(raid, party, currentMembers)` — the party is not already in a raid (`AlreadyInRaid`), and
+  adding it stays within `MaxRaidSize` (`RaidFull`).
+- `CanPromote(raid, memberParties, actorId, targetId)` — only the current raid leader (`NotLeader`)
+  may hand leadership to a member (`NotInRaid`).
+- `RemoveParty(raid, partyId)` — drops a member party; returns `null` when the last party leaves
+  (disband). If the seed left, the seed rolls to the next member and the orphaned leader is cleared.
+- `ResolveLeader(raid, memberParties)` — the recorded leader while they remain on the roster,
+  otherwise the seed party's leader, otherwise the first member party's leader.
 - `NeedsTransfer(instanceId, localServerId, hostServerId)` — true when an instance exists and some
   other server is the host, so the host zone moves nobody.
 
 ### The records and repository
 
-`RaidInstanceRecord` (`Assets/Scripts/Social/RaidInstanceRecord.cs`) holds the `InstanceId`, the
-`PartyId`, the host `HostZoneId`/`HostAddress`/`HostPort`, the member snapshot and its
-`StorageVersion`. `IRaidInstanceRepository` is the storage boundary; the production implementation is
-`NakamaRaidInstanceRepository` (collection `raid_instances`), and `SocialHubService.Configure` takes
-it as an optional second argument (tests inject a fake).
+`RaidInstanceRecord` (`Assets/Scripts/Social/RaidInstanceRecord.cs`) holds the `InstanceId`, the seed
+`PartyId`, the `SeedPartyId`, the authoritative `MemberPartyIds` list, the `LeaderId`, the host
+`HostZoneId`/`HostAddress`/`HostPort`, the derived flat `Members` snapshot and its `StorageVersion`.
+Legacy #51 records that carry only `PartyId` are treated as a one-party raid
+(`RaidRules.IncludesParty`). `IRaidInstanceRepository` is the storage boundary; the production
+implementation is `NakamaRaidInstanceRepository` (collection `raid_instances`), and
+`SocialHubService.Configure` takes it as an optional second argument (tests inject a fake).
 
-### Allocation, handoff and teardown
+### Allocation, join, leave and teardown
 
 `RaidInstanceService` (`Assets/Scripts/Social/RaidInstanceService.cs`) runs the bounded CAS loop:
 
-- **Allocate** — load the party, `RaidRules.CanAllocate`, write the instance record, then CAS
-  `PartyRecord.RaidInstanceId`. A conflict retries; the instance record is written first so a lost
-  pointer write cannot orphan a used instance id.
-- **Complete** — `RaidRules.CanComplete`, clear `RaidInstanceId`, delete the instance record.
-- **Disband** — `SocialHubService` calls `TeardownRaidAsync` before deleting a party whose last
-  member left or was kicked, so the instance record never outlives its party.
+- **Allocate (seed promotion)** — load the party, `RaidRules.CanAllocate`, write the instance record
+  seeded with `MemberPartyIds = [party]`, then CAS `PartyRecord.RaidInstanceId`. A conflict retries.
+- **Join** — a member party's leader appends to `MemberPartyIds` and CAS's the raid record *first*,
+  then CAS's the joining party's pointer. A conflict re-reads and re-runs `CanJoin`, so two parties
+  racing the last seat cannot both win; a membership entry whose pointer never landed is re-pushed.
+- **Leave / partial teardown** — `RaidRules.RemoveParty` drops the party; siblings keep the raid
+  alive (the seed and leader are reseeded if needed). When the last party leaves the instance is
+  deleted and every member party's pointer cleared. When a member party disbands on its own,
+  `SocialHubService.TeardownRaidAsync` delegates to the same partial teardown.
+- **Promote** — `CanPromote` then CAS `LeaderId`.
+- **Complete** — only the raid leader may complete; every member party's pointer is cleared and the
+  instance deleted.
+- **Reconcile repair** — `SyncRaidTransfersAsync` clears any party pointer whose raid is gone or no
+  longer lists that party, so a half-finished cross-object write converges.
 
-The `PlayerRaid` shell exposes `RequestAllocateRaid`/`RequestCompleteRaid` → `[ServerRpc]` →
-`SocialHubService.AllocateRaidAsync`/`CompleteRaidAsync`. On every reconcile pass
-`SyncRaidTransfersAsync` loads each hosted party's instance and raises
-`RaidTransferRequested(accountId, instance)` for a local member whose host is another zone (once per
-instance id). `PlayerRaid` answers that by running the existing `ZoneTransferHandoff`
-(flush → token → `ZoneTransferBroadcast`), so a raid member arrives at the instance host through the
-same tested pipeline as a normal zone transition.
+The `PlayerRaid` shell exposes `RequestAllocateRaid`/`RequestJoinRaid`/`RequestLeaveRaid`/
+`RequestPromoteLeader`/`RequestCompleteRaid` → `[ServerRpc]` →
+`SocialHubService.AllocateRaidAsync`/`JoinRaidAsync`/`LeaveRaidAsync`/`PromoteRaidLeaderAsync`/
+`CompleteRaidAsync`, and replicates the derived raid roster as one JSON `SyncVar` (repainted through
+`SocialHubService.RaidChanged`). On every reconcile pass `SyncRaidTransfersAsync` loads each hosted
+party's instance and raises `RaidTransferRequested(accountId, instance)` for a local member whose host
+is another zone (once per instance id). `PlayerRaid` answers that by running the existing
+`ZoneTransferHandoff` (flush → token → `ZoneTransferBroadcast`), so a raid member arrives at the
+instance host through the same tested pipeline as a normal zone transition.
 
 ### Early wake-up (`social_notify` push)
 
@@ -272,10 +298,12 @@ so zone B moves on the delivered push before its own tick, and converges on the 
 
 ### Common tasks
 
-- **Change the raid size.** Edit `RaidRules.MinRaidSize` / `MaxRaidSize`; tests pin the boundary.
+- **Change the raid size.** Edit `RaidRules.MinRaidSize` (party floor to seed a raid) /
+  `MaxRaidSize` (the multi-party account ceiling); tests pin both boundaries.
 - **Advertise the host address.** Edit `_instanceHostAddress` / `_instanceHostPort` on the
   `SocialHubService` component.
 - **Disable the early wake-up.** Do not load `nakama/modules/social_notify.lua`; the push then
   fails-open and every zone still converges on its own `_syncInterval` tick.
 - **Test raid logic offline.** `RaidRulesTests`, `RaidInstanceServiceTests`,
-  `SocialNotificationTests` and `SocialHubRaidSyncTests` use in-memory fakes and an EditMode hub.
+  `MultiPartyRaidServiceTests`, `SocialNotificationTests` and `SocialHubRaidSyncTests` use in-memory
+  fakes and an EditMode hub.

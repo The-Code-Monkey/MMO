@@ -1,10 +1,25 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using MMO.Persistence;
 using UnityEngine;
 
 namespace MMO.Social
 {
+    /// <summary>
+    /// The zone server's raid orchestrator. #51 gave it single-party allocation; #54 widens it to a
+    /// set of member parties sharing one <see cref="RaidInstanceRecord"/>. Every mutation is a
+    /// read-modify-write inside a bounded CAS retry loop: the raid record is authoritative, each
+    /// member party's <see cref="PartyRecord.RaidInstanceId"/> is a derived pointer, and a pointer
+    /// whose companion write failed is repaired by the reconcile pass.
+    ///
+    /// <para>
+    /// Cross-object writes follow a defined order — append membership to the raid record first, then
+    /// set the party pointer — so a crash between the two leaves a repairable state: a membership
+    /// entry whose pointer never landed is re-pushed on the next call, and a pointer without a
+    /// membership entry is cleared by <c>SocialHubService</c>'s reconcile pass.
+    /// </para>
+    /// </summary>
     public sealed class RaidInstanceService
     {
         private readonly ISocialRepository _social;
@@ -18,6 +33,10 @@ namespace MMO.Social
             _casRetries = casRetries;
         }
 
+        /// <summary>
+        /// Leader-only: promotes the requester's full party to a raid seed. Creates the raid record
+        /// with the party as its first (seed) member party, then CAS's the party's pointer.
+        /// </summary>
         public async Task<(RaidRule Rule, RaidInstanceRecord Instance)> AllocateAsync(
             string requesterId, string hostZoneId, string hostAddress = null, ushort hostPort = 0)
         {
@@ -48,12 +67,14 @@ namespace MMO.Social
                     {
                         InstanceId = instanceId,
                         PartyId = party.PartyId,
+                        SeedPartyId = party.PartyId,
+                        LeaderId = party.LeaderId,
                         HostZoneId = hostZoneId ?? "local",
                         HostAddress = hostAddress,
                         HostPort = hostPort,
                     };
-                    foreach (var m in party.Members)
-                        instance.Members.Add(new RaidInstanceMember { AccountId = m.AccountId, PlayerName = m.PlayerName });
+                    instance.MemberPartyIds.Add(party.PartyId);
+                    RefreshMembers(instance, new[] { party });
 
                     await _raids.SaveRaidInstanceAsync(instance);
                     instanceWritten = true;
@@ -84,18 +105,252 @@ namespace MMO.Social
             return (RaidRule.CasExhausted, null);
         }
 
-        private async Task SafeDeleteAsync(string instanceId)
+        /// <summary>
+        /// Leader-only: joins the requester's party into an existing raid. Capacity is checked against
+        /// the live roster; the membership append is CAS'd first, then the party pointer, so two
+        /// parties racing the last seat cannot both win (the loser re-reads and reports
+        /// <see cref="RaidRule.RaidFull"/>).
+        /// </summary>
+        public async Task<RaidRule> JoinAsync(string requesterId, string raidId)
         {
-            try
+            if (string.IsNullOrEmpty(raidId))
+                return RaidRule.NoRaid;
+
+            for (int i = 0; i < _casRetries; i++)
             {
-                await _raids.DeleteRaidInstanceAsync(instanceId);
+                try
+                {
+                    SocialIndexRecord index = await _social.LoadIndexAsync(requesterId);
+                    if (index == null || string.IsNullOrEmpty(index.PartyId))
+                        return RaidRule.NoParty;
+
+                    PartyRecord party = await _social.LoadPartyAsync(index.PartyId);
+                    if (party == null)
+                        return RaidRule.NoParty;
+                    if (party.LeaderId != requesterId)
+                        return RaidRule.NotLeader;
+
+                    // A retry after the pointer write lost its CAS: membership already landed, so
+                    // just re-push the pointer.
+                    if (party.RaidInstanceId == raidId)
+                        return RaidRule.Ok;
+
+                    RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(raidId);
+                    if (raid == null)
+                        return RaidRule.NoRaid;
+
+                    EnsureMemberList(raid);
+                    if (raid.MemberPartyIds.Contains(party.PartyId))
+                    {
+                        party.RaidInstanceId = raidId;
+                        await _social.SavePartyAsync(party);
+                        return RaidRule.Ok;
+                    }
+
+                    List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
+                    RaidRule rule = RaidRules.CanJoin(raid, party, memberParties);
+                    if (rule != RaidRule.Ok)
+                        return rule;
+
+                    raid.MemberPartyIds.Add(party.PartyId);
+                    memberParties.Add(party);
+                    RefreshMembers(raid, memberParties);
+                    await _raids.SaveRaidInstanceAsync(raid);
+
+                    party.RaidInstanceId = raidId;
+                    await _social.SavePartyAsync(party);
+
+                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, raid));
+                    return RaidRule.Ok;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Raid] Join failed: {e.Message}");
+                    return RaidRule.CasExhausted;
+                }
             }
-            catch (Exception e)
+
+            return RaidRule.CasExhausted;
+        }
+
+        /// <summary>
+        /// Leader-only: pulls the requester's whole party out of its raid. Partial teardown when
+        /// other member parties remain; full teardown (delete + clear every pointer) when it was the
+        /// last party.
+        /// </summary>
+        public async Task<RaidRule> LeaveAsync(string requesterId)
+        {
+            for (int i = 0; i < _casRetries; i++)
             {
-                Debug.LogWarning($"[Raid] Failed to clean up orphan instance '{instanceId}': {e.Message}");
+                try
+                {
+                    SocialIndexRecord index = await _social.LoadIndexAsync(requesterId);
+                    if (index == null || string.IsNullOrEmpty(index.PartyId))
+                        return RaidRule.NoParty;
+
+                    PartyRecord party = await _social.LoadPartyAsync(index.PartyId);
+                    if (party == null)
+                        return RaidRule.NoParty;
+                    if (string.IsNullOrEmpty(party.RaidInstanceId))
+                        return RaidRule.RaidMissing;
+                    if (party.LeaderId != requesterId)
+                        return RaidRule.NotLeader;
+
+                    RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(party.RaidInstanceId);
+                    if (raid == null)
+                    {
+                        // The record vanished underneath us; just repair the dangling pointer.
+                        await ClearRaidPointerAsync(party.PartyId);
+                        return RaidRule.Ok;
+                    }
+
+                    EnsureMemberList(raid);
+                    string raidId = raid.InstanceId;
+                    List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
+                    var originalMemberIds = new List<string>(raid.MemberPartyIds ?? new List<string>());
+                    RaidInstanceRecord remaining = RaidRules.RemoveParty(raid, party.PartyId);
+
+                    if (remaining == null)
+                    {
+                        // Last party left: full teardown. The snapshot still names every account.
+                        await _raids.DeleteRaidInstanceAsync(raidId);
+                        foreach (string pid in originalMemberIds)
+                            await ClearRaidPointerAsync(pid);
+                        await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidCompleted, raid));
+                        return RaidRule.Ok;
+                    }
+
+                    remaining.LeaderId = RaidRules.ResolveLeader(remaining, memberParties);
+                    RefreshMembers(remaining, memberParties);
+                    await _raids.SaveRaidInstanceAsync(remaining);
+
+                    party.RaidInstanceId = null;
+                    await _social.SavePartyAsync(party);
+
+                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, remaining));
+                    return RaidRule.Ok;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Raid] Leave failed: {e.Message}");
+                    return RaidRule.CasExhausted;
+                }
+            }
+
+            return RaidRule.CasExhausted;
+        }
+
+        /// <summary>Raid-leader-only: hands raid leadership to another member party's account.</summary>
+        public async Task<RaidRule> PromoteLeaderAsync(string requesterId, string targetId)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    SocialIndexRecord index = await _social.LoadIndexAsync(requesterId);
+                    if (index == null || string.IsNullOrEmpty(index.PartyId))
+                        return RaidRule.NoParty;
+
+                    PartyRecord party = await _social.LoadPartyAsync(index.PartyId);
+                    if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+                        return RaidRule.RaidMissing;
+
+                    RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(party.RaidInstanceId);
+                    if (raid == null)
+                        return RaidRule.NoRaid;
+
+                    EnsureMemberList(raid);
+                    List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
+                    RaidRule rule = RaidRules.CanPromote(raid, memberParties, requesterId, targetId);
+                    if (rule != RaidRule.Ok)
+                        return rule;
+
+                    raid.LeaderId = targetId;
+                    await _raids.SaveRaidInstanceAsync(raid);
+                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, raid));
+                    return RaidRule.Ok;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Raid] Promote failed: {e.Message}");
+                    return RaidRule.CasExhausted;
+                }
+            }
+
+            return RaidRule.CasExhausted;
+        }
+
+        /// <summary>
+        /// Removes a member party from its raid when the party itself disbands (its last member left).
+        /// Partial teardown when siblings remain; the whole raid is deleted only when it was alone.
+        /// Called from the party-disband path, so the party record still exists.
+        /// </summary>
+        public async Task RemovePartyFromRaidAsync(string partyId)
+        {
+            if (string.IsNullOrEmpty(partyId))
+                return;
+
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    PartyRecord party = await _social.LoadPartyAsync(partyId);
+                    if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+                        return;
+
+                    RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(party.RaidInstanceId);
+                    if (raid == null)
+                    {
+                        await ClearRaidPointerAsync(partyId);
+                        return;
+                    }
+
+                    EnsureMemberList(raid);
+                    List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
+                    RaidInstanceRecord remaining = RaidRules.RemoveParty(raid, partyId);
+                    if (remaining == null)
+                    {
+                        await _raids.DeleteRaidInstanceAsync(raid.InstanceId);
+                        await ClearRaidPointerAsync(partyId);
+                        await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidCompleted, raid));
+                        return;
+                    }
+
+                    remaining.LeaderId = RaidRules.ResolveLeader(remaining, memberParties);
+                    RefreshMembers(remaining, memberParties);
+                    await _raids.SaveRaidInstanceAsync(remaining);
+                    await ClearRaidPointerAsync(partyId);
+                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, remaining));
+                    return;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Raid] Partial teardown for party '{partyId}' failed: {e.Message}");
+                    return;
+                }
             }
         }
 
+        /// <summary>
+        /// Leader-only: completes the raid. Clears every member party's pointer and deletes the
+        /// instance; a partial failure is repaired by the reconcile pass.
+        /// </summary>
         public async Task<RaidRule> CompleteAsync(string requesterId)
         {
             for (int i = 0; i < _casRetries; i++)
@@ -112,8 +367,18 @@ namespace MMO.Social
                         return rule;
 
                     string instanceId = party.RaidInstanceId;
-                    party.RaidInstanceId = null;
-                    await _social.SavePartyAsync(party);
+                    RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(instanceId);
+                    if (raid != null)
+                        EnsureMemberList(raid);
+
+                    // Multi-party: only the raid leader may complete, even if another party's leader
+                    // asked. Transferred leadership is honoured; the seed alone is not special here.
+                    if (raid != null && !string.IsNullOrEmpty(raid.LeaderId) && raid.LeaderId != requesterId)
+                        return RaidRule.NotLeader;
+
+                    var memberPartyIds = raid?.MemberPartyIds ?? new List<string> { party.PartyId };
+                    foreach (string pid in new List<string>(memberPartyIds))
+                        await ClearRaidPointerAsync(pid);
 
                     // Only after the winning CAS: peers clear their local raid handoff before the
                     // next reconcile tick (feeds the return pass in #55).
@@ -136,31 +401,121 @@ namespace MMO.Social
             return RaidRule.CasExhausted;
         }
 
-        public async Task DisbandAndClearRaidAsync(string partyId)
+        /// <summary>
+        /// Clears a disbanding party's raid membership. Kept for the #51 call site and used by the
+        /// reconcile path: it now performs the same partial teardown as a party leaving the raid.
+        /// </summary>
+        public Task DisbandAndClearRaidAsync(string partyId)
+            => RemovePartyFromRaidAsync(partyId);
+
+        /// <summary>
+        /// Normalizes a legacy #51 record, which carried only a single <see cref="RaidInstanceRecord.PartyId"/>,
+        /// into the multi-party shape before it is mutated. Idempotent.
+        /// </summary>
+        private static void EnsureMemberList(RaidInstanceRecord raid)
         {
-            if (string.IsNullOrEmpty(partyId))
-                return;
-            try
+            if (raid.MemberPartyIds == null)
+                raid.MemberPartyIds = new List<string>();
+            if (raid.MemberPartyIds.Count == 0 && !string.IsNullOrEmpty(raid.PartyId))
+                raid.MemberPartyIds.Add(raid.PartyId);
+            if (string.IsNullOrEmpty(raid.SeedPartyId))
+                raid.SeedPartyId = raid.PartyId;
+        }
+
+        private async Task<List<PartyRecord>> LoadMemberPartiesAsync(RaidInstanceRecord raid)
+        {
+            var parties = new List<PartyRecord>();
+            if (raid?.MemberPartyIds == null)
+                return parties;
+
+            foreach (string partyId in raid.MemberPartyIds)
             {
                 PartyRecord party = await _social.LoadPartyAsync(partyId);
-                if (party == null)
-                    return;
-                string instanceId = party.RaidInstanceId;
-                if (!string.IsNullOrEmpty(instanceId))
+                if (party != null)
+                    parties.Add(party);
+            }
+
+            return parties;
+        }
+
+        /// <summary>Refreshes the derived flat <see cref="RaidInstanceRecord.Members"/> snapshot.</summary>
+        private static void RefreshMembers(RaidInstanceRecord raid, IReadOnlyList<PartyRecord> memberParties)
+        {
+            if (raid.Members == null)
+                raid.Members = new List<RaidInstanceMember>();
+            raid.Members.Clear();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            if (raid.MemberPartyIds == null || memberParties == null)
+                return;
+
+            foreach (string partyId in raid.MemberPartyIds)
+            {
+                PartyRecord party = FindParty(memberParties, partyId);
+                if (party?.Members == null)
+                    continue;
+
+                foreach (PartyMemberRecord member in party.Members)
                 {
-                    party.RaidInstanceId = null;
-                    await _social.SavePartyAsync(party);
-                    await SafeNotifyAsync(
-                        PartyRaidNotification(SocialNotificationKind.RaidCompleted, instanceId, party));
-                    await _raids.DeleteRaidInstanceAsync(instanceId);
+                    if (!string.IsNullOrEmpty(member.AccountId) && seen.Add(member.AccountId))
+                        raid.Members.Add(new RaidInstanceMember
+                        {
+                            AccountId = member.AccountId,
+                            PlayerName = member.PlayerName,
+                        });
                 }
             }
-            catch (StorageVersionConflictException)
+        }
+
+        private static PartyRecord FindParty(IReadOnlyList<PartyRecord> parties, string partyId)
+        {
+            for (int i = 0; i < parties.Count; i++)
             {
+                if (parties[i] != null && parties[i].PartyId == partyId)
+                    return parties[i];
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Clears one party's raid pointer, retrying on a version conflict. Best-effort: the reconcile
+        /// pass is the backstop, so a failure is logged and never thrown to the caller.
+        /// </summary>
+        private async Task ClearRaidPointerAsync(string partyId)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    PartyRecord party = await _social.LoadPartyAsync(partyId);
+                    if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
+                        return;
+
+                    party.RaidInstanceId = null;
+                    await _social.SavePartyAsync(party);
+                    return;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Backoff(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Raid] Failed to clear raid pointer for party '{partyId}': {e.Message}");
+                    return;
+                }
+            }
+        }
+
+        private async Task SafeDeleteAsync(string instanceId)
+        {
+            try
+            {
+                await _raids.DeleteRaidInstanceAsync(instanceId);
             }
             catch (Exception e)
             {
-                Debug.LogError($"[Raid] Disband clear failed: {e.Message}");
+                Debug.LogWarning($"[Raid] Failed to clean up orphan instance '{instanceId}': {e.Message}");
             }
         }
 
@@ -175,8 +530,11 @@ namespace MMO.Social
                 HostZoneId = instance.HostZoneId,
             };
 
-            foreach (RaidInstanceMember member in instance.Members)
-                notification.AccountIds.Add(member.AccountId);
+            if (instance.Members != null)
+            {
+                foreach (RaidInstanceMember member in instance.Members)
+                    notification.AccountIds.Add(member.AccountId);
+            }
 
             return notification;
         }

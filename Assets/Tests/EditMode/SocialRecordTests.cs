@@ -31,6 +31,34 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void RaidInstanceRecord_RoundTripsMultiPartyComposition()
+        {
+            var raid = new RaidInstanceRecord
+            {
+                InstanceId = "r1",
+                PartyId = "p1",
+                SeedPartyId = "p1",
+                LeaderId = "a",
+                HostZoneId = "z1",
+                HostAddress = "10.0.0.1",
+                HostPort = 7770,
+            };
+            raid.MemberPartyIds.Add("p1");
+            raid.MemberPartyIds.Add("p2");
+            raid.Members.Add(new RaidInstanceMember { AccountId = "a", PlayerName = "Alice" });
+            raid.Members.Add(new RaidInstanceMember { AccountId = "b", PlayerName = "Bob" });
+
+            RaidInstanceRecord copy = JsonUtility.FromJson<RaidInstanceRecord>(JsonUtility.ToJson(raid));
+
+            Assert.AreEqual("r1", copy.InstanceId);
+            Assert.AreEqual("p1", copy.SeedPartyId);
+            Assert.AreEqual("a", copy.LeaderId);
+            CollectionAssert.AreEqual(new[] { "p1", "p2" }, copy.MemberPartyIds);
+            Assert.AreEqual(2, copy.Members.Count);
+            Assert.AreEqual("Bob", copy.Members[1].PlayerName);
+        }
+
+        [Test]
         public void SocialIndexRecord_RoundTripsBothPendingInvites()
         {
             var index = new SocialIndexRecord
