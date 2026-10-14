@@ -31,6 +31,17 @@ git pull origin main
 git checkout -b feature/your-feature-name
 ```
 
+### GitHub Operations
+**Always use the GitHub CLI (`gh`) for all GitHub-related tasks.** This includes creating PRs, managing issues, checking workflow runs, and any other GitHub API interactions. Do not use the GitHub web UI or raw API calls when `gh` can accomplish the task.
+
+```bash
+# Examples
+gh pr create --title "Feature: ..." --body "..."
+gh issue list --state open
+gh run list --workflow unity-tests.yml
+gh api repos/owner/repo/actions/runs --jq '.workflow_runs[].conclusion'
+```
+
 ---
 
 ## 3. Testing & Quality Requirements (STRICT)
