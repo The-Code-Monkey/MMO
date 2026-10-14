@@ -9,8 +9,10 @@ namespace MMO.Gameplay
     /// <summary>
     /// A player's attack pipeline. The client never decides a hit landed: clicking a target dummy
     /// sends an intent (<see cref="RequestAttack"/>), and the server re-checks ownership before it
-    /// runs <see cref="Attack"/>, which validates the target, the equipped weapon and the distance
-    /// against the <see cref="WeaponData"/> the player actually holds.
+    /// runs <see cref="Attack"/>, which validates the target, the equipped weapon, the distance
+    /// against the <see cref="WeaponData"/> the player actually holds, the facing cone, and a
+    /// clear line of sight (see <see cref="SightRules"/> / <see cref="IServerSight"/>), so a shot
+    /// cannot pass through a wall.
     ///
     /// <see cref="Attack"/> for now only understands <see cref="TargetDummy"/> as a target — the
     /// first damageable this project owns — so the check that "this is a real, live target" reads
@@ -23,6 +25,25 @@ namespace MMO.Gameplay
         // the server reads the same asset in every case. Clients may inspect it for UI and receive
         // what is actually equipped; only the server ever assigns it (Equip is [Server]).
         [SerializeField] private WeaponData _equippedWeapon;
+
+        // Where the server casts its line-of-sight ray from, above the capsule's pivot, and how
+        // wide the cone in front of the player that a target must be inside is. Serialized so a
+        // designer can tune reach without a code change; the values are read only on the server.
+        [SerializeField] private float _eyeHeight = PhysicsSight.DefaultEyeHeight;
+        [SerializeField] private float _attackHalfAngleDegrees = 60f;
+
+        private IServerSight _sight;
+
+        /// <summary>
+        /// The line-of-sight check the server consults before a hit lands. Defaults to a real
+        /// raycast; a test can replace it to force a clear or blocked line without a scene. Only
+        /// ever read from the server's side of a validated request, so a client cannot influence it.
+        /// </summary>
+        public IServerSight Sight
+        {
+            get => _sight ??= new PhysicsSight();
+            set => _sight = value;
+        }
 
         /// <summary>The weapon this player is holding, or null when they spawn unarmed.</summary>
         public WeaponData EquippedWeapon => _equippedWeapon;
@@ -74,8 +95,9 @@ namespace MMO.Gameplay
         /// <summary>
         /// The server-side decision. Validates everything here, never on the client:
         /// the instigator must actually hold a weapon, the target must be a live damageable object,
-        /// and it must be within the weapon's <see cref="WeaponData.AttackRange">attack range</see>.
-        /// Only then does damage land.
+        /// it must be within the weapon's <see cref="WeaponData.AttackRange">attack range</see>, in
+        /// front of the attacker's facing cone, and have a clear line of sight to it (no wall in
+        /// between). Only then does damage land.
         /// </summary>
         [Server]
         public void Attack(NetworkObject target)
@@ -90,10 +112,35 @@ namespace MMO.Gameplay
             if (!target.TryGetComponent(out TargetDummy dummy))
                 return;
 
-            if (!IsWithinAttackRange(transform.position, dummy.transform.position, weapon.AttackRange))
+            Vector3 eye = transform.position + Vector3.up * _eyeHeight;
+            bool raycastClear = Sight.HasLineOfSight(eye, dummy.transform.position, dummy.gameObject);
+
+            if (!IsVisibleToAttack(eye, transform.forward, dummy.transform.position,
+                    weapon.AttackRange, _attackHalfAngleDegrees, raycastClear))
+            {
                 return;
+            }
 
             dummy.TakeDamage(weapon.AutoAttackDamage);
+        }
+
+        /// <summary>
+        /// The whole visibility verdict in one pure function: in range, inside the facing cone and
+        /// with a clear line. The raycast verdict is a boolean so the geometry can be pinned in an
+        /// EditMode test without a physics scene, exactly like the other rule surfaces.
+        /// </summary>
+        public static bool IsVisibleToAttack(
+            Vector3 eyePosition,
+            Vector3 forward,
+            Vector3 targetPosition,
+            float attackRange,
+            float halfAngleDegrees,
+            bool raycastClear)
+        {
+            return SightRules.CanSee(
+                IsWithinAttackRange(eyePosition, targetPosition, attackRange),
+                SightRules.WithinCone(eyePosition, forward, targetPosition, halfAngleDegrees),
+                raycastClear);
         }
 
         /// <summary>

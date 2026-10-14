@@ -199,6 +199,81 @@ namespace MMO.Tests
         }
         #endregion
 
+        #region Line of sight.
+        [Test]
+        public void IsVisibleToAttack_InRangeInConeWithAClearLine_IsVisible()
+        {
+            Assert.IsTrue(PlayerCombat.IsVisibleToAttack(
+                eyePosition: Vector3.zero,
+                forward: Vector3.forward,
+                targetPosition: new Vector3(0f, 0f, 5f),
+                attackRange: 10f,
+                halfAngleDegrees: 60f,
+                raycastClear: true));
+        }
+
+        [Test]
+        public void IsVisibleToAttack_AWallOnTheLine_IsNotVisible()
+        {
+            Assert.IsFalse(PlayerCombat.IsVisibleToAttack(
+                Vector3.zero, Vector3.forward, new Vector3(0f, 0f, 5f), 10f, 60f, raycastClear: false),
+                "A clear shot past every other check still needs a clear line.");
+        }
+
+        [Test]
+        public void IsVisibleToAttack_BehindTheCone_IsNotVisible()
+        {
+            Assert.IsFalse(PlayerCombat.IsVisibleToAttack(
+                Vector3.zero, Vector3.forward, new Vector3(0f, 0f, -5f), 10f, 60f, raycastClear: true),
+                "A target behind the player is outside the attack cone.");
+        }
+
+        [Test]
+        public void IsVisibleToAttack_OutOfRange_IsNotVisible()
+        {
+            Assert.IsFalse(PlayerCombat.IsVisibleToAttack(
+                Vector3.zero, Vector3.forward, new Vector3(0f, 0f, 50f), 10f, 180f, raycastClear: true));
+        }
+
+        [Test]
+        public void EyeHeight_IsSerializedSoADesignerCanTuneIt()
+        {
+            FieldInfo field = typeof(PlayerCombat).GetField("_eyeHeight", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(field, "The eye height must be a serialized field.");
+            Assert.AreEqual(typeof(float), field.FieldType);
+            Assert.IsNotNull(field.GetCustomAttribute<SerializeField>());
+        }
+
+        [Test]
+        public void AttackHalfAngle_IsSerializedSoADesignerCanTuneIt()
+        {
+            FieldInfo field = typeof(PlayerCombat).GetField("_attackHalfAngleDegrees", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(field, "The attack cone half-angle must be a serialized field.");
+            Assert.AreEqual(typeof(float), field.FieldType);
+            Assert.IsNotNull(field.GetCustomAttribute<SerializeField>());
+        }
+
+        [Test]
+        public void Sight_DefaultsToARealRaycast()
+        {
+            PlayerCombat combat = AttachCombat();
+
+            Assert.IsInstanceOf<PhysicsSight>(combat.Sight,
+                "A player built without an injected sight must still see walls.");
+        }
+
+        [Test]
+        public void Sight_CanBeReplacedForTesting()
+        {
+            PlayerCombat combat = AttachCombat();
+            var sight = new FakeSight(clear: false);
+
+            combat.Sight = sight;
+
+            Assert.AreSame(sight, combat.Sight);
+        }
+        #endregion
+
         private PlayerCombat AttachCombat()
         {
             GameObject go = Track(new GameObject("PlayerCombatUnderTest"));

@@ -128,6 +128,33 @@ namespace MMO.Tests
         }
 
         [UnityTest]
+        public IEnumerator ClickingBehindCover_IsRefusedByTheServer()
+        {
+            yield return StartHostWithDummyAt(InRangeDistance, equipWeapon: true);
+
+            // The server's line of sight is the last word: even a click in range lands nothing
+            // while the sight reports cover. This is the wall the issue is about, scripted.
+            _combat.Sight = new FakeSight(clear: false);
+            _dummy.RequestAttackFromLocalPlayer();
+
+            // Give the RPC time to travel and be refused.
+            yield return WaitUntil(() => _dummy.Health != TargetDummy.MaxHealth, 60);
+
+            Assert.AreEqual(TargetDummy.MaxHealth, _dummy.Health,
+                "A clear line is required for a hit; a wall between must refuse it.");
+
+            // Prove the pipeline is alive and it was the sight that refused: clear the line and the
+            // very same click lands. A silently dead pipeline would stay at full health.
+            _combat.Sight = new FakeSight(clear: true);
+            _dummy.RequestAttackFromLocalPlayer();
+
+            yield return WaitUntil(() => _dummy.Health == TargetDummy.MaxHealth - ArmedDamage, 300);
+
+            Assert.AreEqual(TargetDummy.MaxHealth - ArmedDamage, _dummy.Health,
+                "With the line cleared, the same attack must reach the dummy.");
+        }
+
+        [UnityTest]
         public IEnumerator ClickingWithNoWeapon_IsRefusedByTheServer()
         {
             yield return StartHostWithDummyAt(InRangeDistance, equipWeapon: false);

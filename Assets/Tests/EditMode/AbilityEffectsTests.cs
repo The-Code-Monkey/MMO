@@ -177,6 +177,71 @@ namespace MMO.Tests
             Assert.AreEqual(new[] { first, second }, victims);
         }
 
+        [Test]
+        public void SelectVisibleVictims_KeepsEveryoneOnAClearLine()
+        {
+            PlayerStats near = SpawnStats("Near", new Vector3(1f, 0f, 0f));
+            PlayerStats far = SpawnStats("Far", new Vector3(2f, 0f, 0f));
+
+            List<PlayerStats> visible = AbilityEffects.SelectVisibleVictims(
+                Caster, new[] { near, far }, new FakeSight(clear: true));
+
+            Assert.AreEqual(new[] { near, far }, visible);
+        }
+
+        [Test]
+        public void SelectVisibleVictims_DropsEveryoneBehindCover()
+        {
+            // A fireball centred just past a wall must reach nobody the wall is hiding.
+            PlayerStats hidden = SpawnStats("Hidden", new Vector3(10f, 0f, 0f));
+
+            List<PlayerStats> visible = AbilityEffects.SelectVisibleVictims(
+                Caster, new[] { hidden }, new FakeSight(clear: false));
+
+            Assert.IsEmpty(visible);
+        }
+
+        [Test]
+        public void SelectVisibleVictims_ASightAsksAboutEveryVictim()
+        {
+            PlayerStats first = SpawnStats("First", new Vector3(1f, 0f, 0f));
+            PlayerStats second = SpawnStats("Second", new Vector3(2f, 0f, 0f));
+            var sight = new FakeSight(clear: true);
+
+            AbilityEffects.SelectVisibleVictims(Caster, new[] { first, second }, sight);
+
+            Assert.AreEqual(2, sight.Calls, "The filter must not skip a victim and silently spare them.");
+        }
+
+        [Test]
+        public void SelectVisibleVictims_IgnoresNullVictims()
+        {
+            PlayerStats survivor = SpawnStats("Survivor", new Vector3(1f, 0f, 0f));
+
+            List<PlayerStats> visible = AbilityEffects.SelectVisibleVictims(
+                Caster, new PlayerStats[] { null, survivor, null }, new FakeSight(clear: true));
+
+            Assert.AreEqual(new[] { survivor }, visible);
+        }
+
+        [Test]
+        public void SelectVisibleVictims_WithNoSight_KeepsEveryone()
+        {
+            // A caller wired without a sight must fail open (old behaviour), not silently hit nobody.
+            PlayerStats victim = SpawnStats("Victim", new Vector3(1f, 0f, 0f));
+
+            List<PlayerStats> visible = AbilityEffects.SelectVisibleVictims(
+                Caster, new[] { victim }, null);
+
+            Assert.AreEqual(new[] { victim }, visible);
+        }
+
+        [Test]
+        public void SelectVisibleVictims_ReturnsNobodyForMissingVictims()
+        {
+            Assert.IsEmpty(AbilityEffects.SelectVisibleVictims(Caster, null, new FakeSight(clear: true)));
+        }
+
         private PlayerStats SpawnStats(string name, Vector3 position)
         {
             var go = new GameObject(name);
