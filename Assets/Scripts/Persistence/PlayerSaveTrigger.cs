@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using FishNet.Object;
+using MMO.Auction;
 using MMO.Gameplay;
 using MMO.Inventory;
 using UnityEngine;
@@ -28,6 +29,7 @@ namespace MMO.Persistence
     {
         private PlayerStats _stats;
         private PlayerInventory _inventory;
+        private PlayerWallet _wallet;
         private string _accountId;
         private bool _subscribed;
 
@@ -55,6 +57,7 @@ namespace MMO.Persistence
 
             _stats = GetComponent<PlayerStats>();
             _inventory = GetComponent<PlayerInventory>();
+            _wallet = GetComponent<PlayerWallet>();
             if (_stats == null || _inventory == null)
             {
                 Debug.LogError($"{nameof(PlayerSaveTrigger)}: the player prefab is missing PlayerStats or PlayerInventory.", this);
@@ -68,7 +71,7 @@ namespace MMO.Persistence
 
             // Apply the loaded save in one shot. Subscribing afterwards keeps the apply itself from
             // re-triggering the same events it is creating.
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skippedItems);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skippedItems, out long gold);
             if (skippedItems > 0)
             {
                 Debug.LogWarning($"{nameof(PlayerSaveTrigger)}: dropped {skippedItems} item(s) from '{_accountId}' that no longer have a definition.");
@@ -80,10 +83,12 @@ namespace MMO.Persistence
             }
 
             _inventory.Restore(bag, equipment);
+            _wallet?.InitializeFromSave(record);
 
             service.RegisterLivePlayer(_accountId, Capture);
             _stats.LevelChanged += OnLevelChanged;
             _inventory.ContainersChanged += OnInventoryChanged;
+            _wallet?.OnGoldChanged += OnGoldChanged;
             _subscribed = true;
         }
 
@@ -96,6 +101,8 @@ namespace MMO.Persistence
                 {
                     _stats.LevelChanged -= OnLevelChanged;
                     _inventory.ContainersChanged -= OnInventoryChanged;
+                    if (_wallet != null)
+                        _wallet.OnGoldChanged -= OnGoldChanged;
                     _subscribed = false;
 
                     // The state is still live during this callback, so snapshot it now: the async
@@ -107,6 +114,7 @@ namespace MMO.Persistence
                             _stats.Level,
                             _stats.Health,
                             _stats.Mana,
+                            _wallet != null ? _wallet.Gold : 0,
                             transform.position,
                             _inventory.Items,
                             _inventory.Equipment));
@@ -131,6 +139,12 @@ namespace MMO.Persistence
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
         }
 
+        private void OnGoldChanged(long newGold)
+        {
+            if (_subscribed && !string.IsNullOrEmpty(_accountId))
+                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
+        }
+
         private PlayerSaveRecord Capture()
         {
             return PlayerSaveMapper.Capture(
@@ -138,6 +152,7 @@ namespace MMO.Persistence
                 _stats.Level,
                 _stats.Health,
                 _stats.Mana,
+                _wallet != null ? _wallet.Gold : 0,
                 transform.position,
                 _inventory.Items,
                 _inventory.Equipment);

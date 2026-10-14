@@ -23,6 +23,7 @@ namespace MMO.Persistence
             int level,
             int health,
             int mana,
+            long gold,
             Vector3 position,
             IReadOnlyList<ItemInstance> bag,
             IReadOnlyList<ItemInstance> equipment)
@@ -33,6 +34,7 @@ namespace MMO.Persistence
                 Level = level,
                 Health = health,
                 Mana = mana,
+                Gold = gold,
                 Position = position,
             };
 
@@ -68,13 +70,20 @@ namespace MMO.Persistence
             PlayerSaveRecord record,
             out List<ItemInstance> bag,
             out List<ItemInstance> equipment,
-            out int skippedItems)
+            out int skippedItems,
+            out long gold)
         {
             bag = new List<ItemInstance>();
             equipment = new List<ItemInstance>();
             skippedItems = 0;
+            gold = 0;
 
-            if (record == null || record.Items == null)
+            if (record == null)
+                return;
+
+            gold = record.Gold;
+
+            if (record.Items == null)
                 return;
 
             for (int i = 0; i < record.Items.Count; i++)

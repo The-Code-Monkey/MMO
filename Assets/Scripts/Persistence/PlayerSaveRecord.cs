@@ -60,9 +60,12 @@ namespace MMO.Persistence
         /// <summary>Reserved. No movement save exists yet, so it round-trips but is not applied.</summary>
         public Vector3 Position;
 
-        /// <summary>The backend's revision hash for optimistic concurrency; not player data.</summary>
+/// <summary>The backend's revision hash for optimistic concurrency; not player data.</summary>
         public string StorageVersion;
 
+        /// <summary>Player's gold currency.</summary>
+        public long Gold = 0;
+
         public List<ItemSaveData> Items = new List<ItemSaveData>();
-    }
+}
 }

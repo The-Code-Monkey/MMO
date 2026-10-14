@@ -1,3 +1,5 @@
+using MMO.Auction;
+using MMO.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -54,7 +56,15 @@ namespace MMO.Inventory
             if (eventData == null || eventData.button != PointerEventData.InputButton.Right)
                 return;
 
-            HandleRightClick();
+            bool shiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            if (shiftHeld)
+            {
+                HandleAuctionListing();
+            }
+            else
+            {
+                HandleRightClick();
+            }
         }
 
         /// <summary>
@@ -71,6 +81,21 @@ namespace MMO.Inventory
                 return;
 
             _inventory.RequestEquip(_gridX, _gridY);
+        }
+
+        /// <summary>
+        /// Opens the auction house create listing panel for this cell (Shift+RightClick).
+        /// </summary>
+        public virtual void HandleAuctionListing()
+        {
+            if (_inventory == null || (_inventory is UnityEngine.Object unityObject && unityObject == null))
+                return;
+
+            AuctionHouseOpener opener = FindObjectOfType<AuctionHouseOpener>();
+            if (opener != null)
+            {
+                opener.OpenCreateListing(_gridX, _gridY);
+            }
         }
     }
 }

@@ -4,6 +4,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Auction;
 using MMO.Client;
 using MMO.Crafting;
 using MMO.Gameplay;
@@ -93,6 +94,10 @@ namespace MMO.Net
             go.AddComponent<PlayerAbilities>();
             go.AddComponent<PlayerGathering>();
             go.AddComponent<MMO.Crafting.PlayerCrafting>();
+
+            // Wallet and auction house for player-driven trading.
+            go.AddComponent<PlayerWallet>();
+            go.AddComponent<PlayerAuctionHouse>();
 
             // Added last so its OnStartNetwork runs after the stats/inventory it applies a loaded
             // save through: it consumes the record the join gate fetched and subscribes the save

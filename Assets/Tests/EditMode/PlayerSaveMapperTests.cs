@@ -51,7 +51,7 @@ namespace MMO.Tests
             Assert.AreEqual(2, record.Items[0].Width);
             Assert.AreEqual(1, record.Items[0].Height);
 
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped, out long gold);
 
             Assert.AreEqual(0, skipped);
             Assert.AreEqual(1, bag.Count);
@@ -97,21 +97,23 @@ namespace MMO.Tests
         [Test]
         public void Apply_NullRecord_ProducesTwoEmptyContainers()
         {
-            PlayerSaveMapper.Apply(null, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped);
+            PlayerSaveMapper.Apply(null, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped, out long gold);
 
             Assert.AreEqual(0, skipped);
+            Assert.AreEqual(0, gold);
             Assert.IsEmpty(bag);
             Assert.IsEmpty(equipment);
         }
 
-        [Test]
+[Test]
         public void Apply_DropsAnItemWhoseDefinitionNoLongerResolves()
         {
             var record = new PlayerSaveRecord { Items = { Saved(SwordName) } };
 
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped, out long gold);
 
             Assert.AreEqual(1, skipped, "A droppable definition is data to discard, not a ghost to spawn.");
+            Assert.AreEqual(0, gold);
             Assert.IsEmpty(bag);
             Assert.IsEmpty(equipment);
         }
@@ -121,13 +123,14 @@ namespace MMO.Tests
         {
             var record = new PlayerSaveRecord { Items = { Saved(null) } };
 
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out _, out int skipped);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out _, out int skipped, out long gold);
 
             Assert.AreEqual(1, skipped);
+            Assert.AreEqual(0, gold);
             Assert.IsEmpty(bag);
         }
 
-        [Test]
+[Test]
         public void Apply_DropsEquipmentFromASlotPastTheSlotCount()
         {
             TestItemDefinitions.Create(HelmName, equipSlot: EquipmentSlot.Head);
@@ -136,14 +139,15 @@ namespace MMO.Tests
                 Items = { Saved(HelmName, EquipmentSlots.Count) },
             };
 
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped, out long gold);
 
             Assert.AreEqual(1, skipped, "A slot past the container must be pruned, not grown into.");
+            Assert.AreEqual(0, gold);
             Assert.IsEmpty(bag);
             Assert.IsEmpty(equipment);
         }
 
-        [Test]
+[Test]
         public void Apply_PreservesBothContainersInOneRecord()
         {
             TestItemDefinitions.Create(SwordName);
@@ -155,9 +159,10 @@ namespace MMO.Tests
                 bag: new[] { sword },
                 equipment: EquipmentList((int)EquipmentSlot.Head, helm));
 
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped);
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skipped, out long gold);
 
             Assert.AreEqual(0, skipped);
+            Assert.AreEqual(0, gold);
             Assert.AreEqual(1, bag.Count);
             Assert.AreEqual(SwordName, bag[0].ItemName);
             Assert.AreEqual(1, bag[0].GridX);
@@ -169,10 +174,11 @@ namespace MMO.Tests
             int level = 1,
             int health = PlayerStats.MaxHealth,
             int mana = PlayerStats.MaxMana,
+            long gold = 0,
             IReadOnlyList<ItemInstance> bag = null,
             IReadOnlyList<ItemInstance> equipment = null)
         {
-            return PlayerSaveMapper.Capture("u-1", level, health, mana, new Vector3(1f, 2f, 3f), bag, equipment);
+            return PlayerSaveMapper.Capture("u-1", level, health, mana, gold, new Vector3(1f, 2f, 3f), bag, equipment);
         }
 
         private static ItemSaveData Saved(string name, int equipmentSlot = -1, int gridX = 0, int gridY = 0)

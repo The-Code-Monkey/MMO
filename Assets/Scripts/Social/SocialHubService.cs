@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FishNet.Managing;
+using MMO.Auction;
 using MMO.Inventory;
 using MMO.Persistence;
 using UnityEngine;
@@ -54,6 +55,9 @@ namespace MMO.Social
         /// <summary>Raid instances this zone is willing to host before it stops being a candidate.</summary>
         [SerializeField, Min(1)] private int _maxInstances = 100;
 
+        /// <summary>Configuration for which zones have auction houses (central trading hubs).</summary>
+        [SerializeField] private AuctionHouseZoneConfig _auctionHouseZoneConfig;
+
         private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
@@ -79,6 +83,7 @@ namespace MMO.Social
         private ISocialBus _socketBus;
         private ChatService _chat;
         private RaidInstanceService _raidService;
+        private AuctionService _auctionService;
         private NetworkManager _manager;
         private bool _connected;
         private bool _subscribed;
@@ -97,6 +102,9 @@ namespace MMO.Social
 
         /// <summary>The shared REST client the socket and the notify hook use, or null in tests.</summary>
         public NakamaRestClient Rest => _rest;
+
+        /// <summary>The auction service for player-driven trading.</summary>
+        public AuctionService Auction => _auctionService;
 
         bool ISocialBus.IsConnected => _socketBus != null && _socketBus.IsConnected;
 
@@ -133,6 +141,18 @@ namespace MMO.Social
         /// <summary>Raised for the one invited account's guild invite.</summary>
         public event Action<string, PendingGuildInvite> GuildInviteReceived;
 
+        /// <summary>Raised when a new auction listing is created by a local player.</summary>
+        public event Action<string, AuctionListingRecord> AuctionListingCreated;
+
+        /// <summary>Raised when an auction listing is sold (buyer and seller notified).</summary>
+        public event Action<string, string, AuctionListingRecord, AuctionTransactionRecord> AuctionListingSold;
+
+        /// <summary>Raised when an auction listing is cancelled by the seller.</summary>
+        public event Action<string, AuctionListingRecord> AuctionListingCancelled;
+
+        /// <summary>Raised when a purchase is completed and the buyer receives the item.</summary>
+        public event Action<string, AuctionTransactionRecord> AuctionPurchaseCompleted;
+
         /// <summary>The zone label stamped into presence so a member's host zone can be resolved.</summary>
         public string ZoneId
         {
@@ -142,6 +162,9 @@ namespace MMO.Social
 
         /// <summary>Whether the backend is currently reachable (fakes are considered always up).</summary>
         public bool IsConnected => _connected;
+
+        /// <summary>Whether this zone has an auction house (is a central trading hub).</summary>
+        public bool HasAuctionHouse => _auctionHouseZoneConfig != null && _auctionHouseZoneConfig.HasAuctionHouse(_zoneId);
 
         private void Awake()
         {
@@ -207,6 +230,15 @@ namespace MMO.Social
             // the hub surfaces BackendUnavailable rather than throwing on a null endpoint.
             _raidService = _raidRepository != null && _zoneRepository != null
                 ? new RaidInstanceService(_repository, _raidRepository, _zoneRepository, _casRetries)
+                : null;
+
+            // Auction service: requires REST client for RPC calls and repository for storage.
+            _auctionService = _rest != null
+                ? new AuctionService(
+                    new NakamaAuctionRepository(_rest),
+                    _rest,
+                    this,
+                    _casRetries)
                 : null;
         }
 
@@ -292,6 +324,28 @@ namespace MMO.Social
         {
             if (!string.IsNullOrEmpty(accountId))
                 _localGuilds.Remove(accountId);
+        }
+
+        private readonly Dictionary<string, PlayerWallet> _localWallets = new Dictionary<string, PlayerWallet>();
+
+        /// <summary>Called by <see cref="PlayerWallet"/> (server): registers the local wallet for auction access.</summary>
+        public void AttachWalletView(string accountId, PlayerWallet wallet)
+        {
+            if (!string.IsNullOrEmpty(accountId) && wallet != null)
+                _localWallets[accountId] = wallet;
+        }
+
+        /// <summary>Called by <see cref="PlayerWallet"/> (server) when the object despawns.</summary>
+        public void DetachWalletView(string accountId)
+        {
+            if (!string.IsNullOrEmpty(accountId))
+                _localWallets.Remove(accountId);
+        }
+
+        /// <summary>Gets the wallet for a local player (for gold checks).</summary>
+        public bool TryGetWallet(string accountId, out PlayerWallet wallet)
+        {
+            return _localWallets.TryGetValue(accountId, out wallet);
         }
 
         private void OnEnvelope(SocialBusEnvelope envelope)
@@ -2148,6 +2202,44 @@ namespace MMO.Social
             };
 
         private static string Normalize(string name) => (name ?? string.Empty).Trim().ToLowerInvariant();
+
+        /// <summary>Gets the player's display name for auction listings.</summary>
+        public string GetPlayerName(string accountId)
+        {
+            if (_local.TryGetValue(accountId, out LocalPlayerHandle local))
+                return local.PlayerName;
+            return accountId;
+        }
+
+        /// <summary>Checks if a local player exists and gets their PlayerGuild (for bag access).</summary>
+        public bool TryGetLocalPlayer(string accountId, out PlayerGuild player)
+        {
+            return _localGuilds.TryGetValue(accountId, out player);
+        }
+
+        /// <summary>Notifies the seller's client that their listing was created.</summary>
+        internal void NotifyAuctionListingCreated(string sellerAccountId, AuctionListingRecord listing)
+        {
+            AuctionListingCreated?.Invoke(sellerAccountId, listing);
+        }
+
+        /// <summary>Notifies both buyer and seller that a listing was sold.</summary>
+        internal void NotifyAuctionListingSold(string buyerAccountId, string sellerAccountId, AuctionListingRecord listing, AuctionTransactionRecord transaction)
+        {
+            AuctionListingSold?.Invoke(buyerAccountId, sellerAccountId, listing, transaction);
+        }
+
+        /// <summary>Notifies the seller that their listing was cancelled.</summary>
+        internal void NotifyAuctionListingCancelled(string sellerAccountId, AuctionListingRecord listing)
+        {
+            AuctionListingCancelled?.Invoke(sellerAccountId, listing);
+        }
+
+        /// <summary>Notifies the buyer that their purchase completed and item was delivered.</summary>
+        internal void NotifyAuctionPurchaseCompleted(string buyerAccountId, AuctionTransactionRecord transaction)
+        {
+            AuctionPurchaseCompleted?.Invoke(buyerAccountId, transaction);
+        }
 
         private async Task<PartyRule> RetryPartyAsync(Func<Task<PartyRule>> attempt)
         {
