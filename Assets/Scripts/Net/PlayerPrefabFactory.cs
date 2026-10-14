@@ -61,7 +61,8 @@ namespace MMO.Net
         /// <see cref="PlayerAbilities"/> that carries this player's ability slots, its
         /// <see cref="PlayerGathering"/> that runs the server-side gathering loop this player
         /// started, and the <see cref="LocalPlayerCamera"/> that gives the owning client
-        /// something to look through.
+        /// something to look through. The <see cref="PlayerMover"/> is the server-authoritative
+        /// writer of this player's position.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -124,6 +125,11 @@ namespace MMO.Net
             // look through. It decides whether it may drive the camera by asking IsOwner, which is
             // why it is safe for every client's copy of this prefab to carry it.
             go.AddComponent<LocalPlayerCamera>();
+
+            // The server-authoritative mover: the only thing allowed to write this player's
+            // position. Appended last so every behaviour added before it keeps the NetworkBehaviour
+            // and RPC index it was assigned (and the baked prefab's existing indices stay valid).
+            go.AddComponent<PlayerMover>();
 
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.
