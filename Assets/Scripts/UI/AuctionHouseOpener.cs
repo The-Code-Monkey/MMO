@@ -2,6 +2,7 @@ using MMO.Auction;
 using MMO.Inventory;
 using MMO.Social;
 using UnityEngine;
+using UInput = UnityEngine.Input;
 
 namespace MMO.UI
 {
@@ -32,7 +33,7 @@ namespace MMO.UI
 
         private void Update()
         {
-            if (Input.GetKeyDown(_openKey))
+            if (UInput.GetKeyDown(_openKey))
             {
                 ToggleAuctionHouse();
             }

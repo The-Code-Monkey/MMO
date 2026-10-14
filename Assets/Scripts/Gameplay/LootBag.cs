@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Inventory;
+using MMO.Social;
 using UnityEngine;
 
 namespace MMO.Gameplay
@@ -25,6 +26,12 @@ namespace MMO.Gameplay
         private float _interactRange = 3f;
 
         private readonly SyncList<ItemInstance> _contents = new();
+
+        /// <summary>Unique holder ID for this loot bag instance (used for ownership registry).</summary>
+        public string HolderId => "lootbag_" + (NetworkObject != null ? NetworkObject.ObjectId.ToString() : "unknown_" + System.Guid.NewGuid().ToString("N"));
+
+        /// <summary>Gets the ownership registry from the social hub.</summary>
+        private ItemOwnershipRegistry Registry => IsServer && SocialHubService.Instance != null ? SocialHubService.Instance.OwnershipRegistry : null;
 
         /// <summary>Replicated contents (read-only view; mutation is server-only).</summary>
         public IReadOnlyList<ItemInstance> Contents => _contents;
@@ -51,10 +58,17 @@ namespace MMO.Gameplay
             if (items == null)
                 return;
 
+            var registry = Registry;
+            var holder = HolderId;
+
             for (int i = 0; i < items.Count; i++)
             {
                 if (!items[i].IsEmpty)
+                {
                     _contents.Add(items[i]);
+                    if (registry != null && !string.IsNullOrEmpty(items[i].InstanceId))
+                        registry.Grant(items[i].InstanceId, holder);
+                }
             }
         }
 
@@ -70,12 +84,19 @@ namespace MMO.Gameplay
             if (inventory == null || _contents.Count == 0)
                 return false;
 
+            var registry = Registry;
+            var bagHolder = HolderId;
+            var playerHolder = inventory.HolderId;
+
             bool moved = false;
             for (int i = _contents.Count - 1; i >= 0; i--)
             {
                 ItemInstance item = _contents[i];
                 if (!inventory.TryAddExistingItem(item))
                     continue;
+
+                if (registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                    registry.Transfer(item.InstanceId, bagHolder, playerHolder);
 
                 _contents.RemoveAt(i);
                 moved = true;

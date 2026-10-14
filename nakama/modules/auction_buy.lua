@@ -110,34 +110,44 @@ local function auction_buy(context, payload)
     local seller_wallet = get_wallet(listing.SellerAccountId)
     local seller_gold = seller_wallet.gold or 0
 
-    -- Perform transfers
-    buyer_wallet.gold = buyer_gold - total_price
-    seller_wallet.gold = seller_gold + total_price
-
-    -- Write buyer wallet
-    local buyer_version = update_wallet(buyer_id, buyer_wallet, buyer_wallet.version)
-    if not buyer_version then
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
-    end
-
-    -- Write seller wallet
-    local seller_version = update_wallet(listing.SellerAccountId, seller_wallet, seller_wallet.version)
-    if not seller_version then
-        -- Rollback buyer wallet (best effort)
-        buyer_wallet.gold = buyer_gold
-        update_wallet(buyer_id, buyer_wallet, buyer_version)
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
-    end
-
-    -- Mark listing as sold
+    -- 1. CLAIM THE LISTING FIRST (version-guarded) - this is the exclusivity point.
+    -- If this fails, no money has moved and we return CONFLICT cleanly.
     listing.Status = 1 -- Sold = 1
     listing.BuyerAccountId = buyer_id
     local listing_version = write_object(LISTING_COLLECTION, listing_id, listing, listing_obj.version, "", 1, 1)
     if not listing_version then
         return nk.json_encode({ success = false, errorCode = "CONFLICT" })
     end
+    listing.StorageVersion = listing_version
 
-    -- Create transaction record
+    -- 2. MOVE MONEY (only the winner reaches here)
+    buyer_wallet.gold = buyer_gold - total_price
+    seller_wallet.gold = seller_gold + total_price
+
+    -- Write buyer wallet
+    local buyer_version = update_wallet(buyer_id, buyer_wallet, buyer_wallet.version)
+    if not buyer_version then
+        -- Rollback listing to Active
+        listing.Status = 0 -- Active
+        listing.BuyerAccountId = nil
+        write_object(LISTING_COLLECTION, listing_id, listing, listing_version, "", 1, 1)
+        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+    end
+
+    -- Write seller wallet
+    local seller_version = update_wallet(listing.SellerAccountId, seller_wallet, seller_wallet.version)
+    if not seller_version then
+        -- Rollback buyer wallet
+        buyer_wallet.gold = buyer_gold
+        update_wallet(buyer_id, buyer_wallet, buyer_version)
+        -- Rollback listing to Active
+        listing.Status = 0 -- Active
+        listing.BuyerAccountId = nil
+        write_object(LISTING_COLLECTION, listing_id, listing, listing_version, "", 1, 1)
+        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+    end
+
+    -- 3. Create transaction record
     local transaction_id = nk.uuid_v4()
     local transaction = {
         TransactionId = transaction_id,
@@ -156,7 +166,7 @@ local function auction_buy(context, payload)
     end
     transaction.StorageVersion = tx_version
 
-    -- Update buyer's index (add to purchase history)
+    -- 4. Update buyer's index (add to purchase history)
     local buyer_index_obj = read_object(INDEX_COLLECTION, buyer_id, "")
     local buyer_index = buyer_index_obj and buyer_index_obj.value or { AccountId = buyer_id, ActiveListingIds = {}, PurchaseHistoryIds = {} }
     if not buyer_index.PurchaseHistoryIds then
@@ -176,7 +186,7 @@ local function auction_buy(context, payload)
         return nk.json_encode({ success = false, errorCode = "CONFLICT" })
     end
 
-    -- Update seller's index (remove from active)
+    -- 5. Update seller's index (remove from active)
     local seller_index_obj = read_object(INDEX_COLLECTION, listing.SellerAccountId, "")
     if seller_index_obj and seller_index_obj.value then
         local seller_index = seller_index_obj.value
@@ -188,11 +198,12 @@ local function auction_buy(context, payload)
                 end
             end
             seller_index.ActiveListingIds = new_active
-            write_object(INDEX_COLLECTION, listing.SellerAccountId, seller_index, seller_index_obj.version, "", 1, 1)
+            local seller_index_version = write_object(INDEX_COLLECTION, listing.SellerAccountId, seller_index, seller_index_obj.version, "", 1, 1)
+            if not seller_index_version then
+                return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+            end
         end
     end
-
-    listing.StorageVersion = listing_version
 
     return nk.json_encode({
         success = true,

@@ -66,6 +66,8 @@ namespace MMO.Social
 
             ResolveAccountId();
             Inventory = GetComponent<PlayerInventory>();
+            if (Inventory != null && !string.IsNullOrEmpty(_accountId))
+                Inventory.SetHolderId(_accountId);
             SocialHubService hub = SocialHubService.Instance;
             if (hub != null)
             {

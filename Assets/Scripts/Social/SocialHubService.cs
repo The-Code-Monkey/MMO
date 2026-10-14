@@ -86,6 +86,12 @@ namespace MMO.Social
         /// <summary>Local <see cref="PlayerGuild"/>s keyed by account, whose bags a bank mutation moves items into.</summary>
         private readonly Dictionary<string, PlayerGuild> _localGuilds = new Dictionary<string, PlayerGuild>();
 
+        /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
+        private ItemOwnershipRegistry _ownershipRegistry;
+
+        /// <summary>Access to the item ownership registry for production code.</summary>
+        public ItemOwnershipRegistry OwnershipRegistry => _ownershipRegistry;
+
         private ISocialRepository _repository;
         private IRaidInstanceRepository _raidRepository;
         private IZoneRegistryRepository _zoneRepository;
@@ -278,6 +284,9 @@ namespace MMO.Social
                     this,
                     _casRetries)
                 : null;
+
+            // Item ownership registry: single-writer authority for dupe protection.
+            _ownershipRegistry = new ItemOwnershipRegistry();
         }
 
         private void EnsureChat()
