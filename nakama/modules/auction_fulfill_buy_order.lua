@@ -106,17 +106,8 @@ local function auction_fulfill_buy_order(context, payload)
     local seller_wallet = get_wallet(seller_id)
     local seller_gold = seller_wallet.gold or 0
 
-    -- Gold comes from the buy order (already reserved from buyer), not from seller
-    -- We just add to seller's wallet
-    seller_wallet.gold = seller_gold + total_price
-
-    -- Write seller wallet
-    local seller_version = update_wallet(seller_id, seller_wallet, seller_wallet.version)
-    if not seller_version then
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
-    end
-
-    -- Update buy order
+    -- 1. CLAIM THE BUY ORDER FIRST (version-guarded) - this is the exclusivity point.
+    -- If this fails, no money has moved and we return CONFLICT cleanly.
     buy_order.QuantityRemaining = buy_order.QuantityRemaining - quantity
     if buy_order.QuantityRemaining == 0 then
         buy_order.Status = 1 -- Filled = 1
@@ -125,14 +116,26 @@ local function auction_fulfill_buy_order(context, payload)
     end
     local buy_order_version = write_object(BUY_ORDER_COLLECTION, buy_order_id, buy_order, buy_order_obj.version, "", 1, 1)
     if not buy_order_version then
-        -- Rollback seller wallet (best effort)
-        seller_wallet.gold = seller_gold
-        update_wallet(seller_id, seller_wallet, seller_version)
         return nk.json_encode({ success = false, errorCode = "CONFLICT" })
     end
     buy_order.StorageVersion = buy_order_version
 
-    -- Create transaction record
+    -- 2. MOVE MONEY (only the winner reaches here)
+    -- Gold comes from the buy order (already reserved from buyer), not from seller.
+    -- We just add to seller's wallet.
+    seller_wallet.gold = seller_gold + total_price
+
+    -- Write seller wallet
+    local seller_version = update_wallet(seller_id, seller_wallet, seller_wallet.version)
+    if not seller_version then
+        -- Rollback buy order
+        buy_order.QuantityRemaining = buy_order.QuantityRemaining + quantity
+        buy_order.Status = buy_order.QuantityRemaining == 0 and 1 or 4
+        write_object(BUY_ORDER_COLLECTION, buy_order_id, buy_order, buy_order_version, "", 1, 1)
+        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+    end
+
+    -- 3. Create transaction record
     local transaction_id = nk.uuid_v4()
     local transaction = {
         TransactionId = transaction_id,
@@ -148,11 +151,18 @@ local function auction_fulfill_buy_order(context, payload)
     }
     local tx_version = write_object(TRANSACTION_COLLECTION, transaction_id, transaction, "*", "", 1, 1)
     if not tx_version then
+        -- Rollback seller wallet
+        seller_wallet.gold = seller_gold
+        update_wallet(seller_id, seller_wallet, seller_version)
+        -- Rollback buy order
+        buy_order.QuantityRemaining = buy_order.QuantityRemaining + quantity
+        buy_order.Status = buy_order.QuantityRemaining == 0 and 1 or 4
+        write_object(BUY_ORDER_COLLECTION, buy_order_id, buy_order, buy_order_version, "", 1, 1)
         return nk.json_encode({ success = false, errorCode = "CONFLICT" })
     end
     transaction.StorageVersion = tx_version
 
-    -- Update buyer's index (add to purchase history, remove buy order if filled)
+    -- 4. Update buyer's index (add to purchase history, remove buy order if filled)
     local buyer_index_obj = read_object(INDEX_COLLECTION, buy_order.BuyerAccountId, "")
     local buyer_index = buyer_index_obj and buyer_index_obj.value or { AccountId = buy_order.BuyerAccountId, ActiveListingIds = {}, ActiveBuyOrderIds = {}, PurchaseHistoryIds = {} }
     if not buyer_index.PurchaseHistoryIds then
@@ -182,7 +192,7 @@ local function auction_fulfill_buy_order(context, payload)
         return nk.json_encode({ success = false, errorCode = "CONFLICT" })
     end
 
-    -- Update seller's index (add to purchase history)
+    -- 5. Update seller's index (add to purchase history)
     local seller_index_obj = read_object(INDEX_COLLECTION, seller_id, "")
     local seller_index = seller_index_obj and seller_index_obj.value or { AccountId = seller_id, ActiveListingIds = {}, ActiveBuyOrderIds = {}, PurchaseHistoryIds = {} }
     if not seller_index.PurchaseHistoryIds then

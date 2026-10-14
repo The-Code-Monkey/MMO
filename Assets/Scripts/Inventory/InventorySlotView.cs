@@ -2,6 +2,7 @@ using MMO.Auction;
 using MMO.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UInput = UnityEngine.Input;
 
 namespace MMO.Inventory
 {
@@ -56,7 +57,7 @@ namespace MMO.Inventory
             if (eventData == null || eventData.button != PointerEventData.InputButton.Right)
                 return;
 
-            bool shiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            bool shiftHeld = UInput.GetKey(KeyCode.LeftShift) || UInput.GetKey(KeyCode.RightShift);
             if (shiftHeld)
             {
                 HandleAuctionListing();

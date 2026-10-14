@@ -5,6 +5,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Crafting;
 using MMO.Gameplay;
+using MMO.Social;
 using UnityEngine;
 
 namespace MMO.Inventory
@@ -85,6 +86,22 @@ namespace MMO.Inventory
         // Null-guarded lazy fetch so pure-logic tests can construct the component without a
         // sibling PlayerStats and still exercise everything except the stat push.
         private PlayerStats Stats => _stats != null ? _stats : _stats = GetComponent<PlayerStats>();
+
+        /// <summary>Server-wide item ownership registry for dupe protection; null in tests or on clients.</summary>
+        private ItemOwnershipRegistry Registry => IsServer && SocialHubService.Instance != null ? SocialHubService.Instance.OwnershipRegistry : null;
+
+        private string _holderId;
+
+        /// <summary>Sets the persistent account id for this inventory's holder. Called by PlayerGuild on server start.</summary>
+        public void SetHolderId(string accountId)
+        {
+            _holderId = accountId;
+        }
+
+        /// <summary>The persistent account id this inventory belongs to; falls back to connection ClientId if not set.</summary>
+        internal string HolderId => string.IsNullOrEmpty(_holderId)
+            ? (NetworkObject != null && NetworkObject.Owner != null ? NetworkObject.Owner.ClientId.ToString() : string.Empty)
+            : _holderId;
 
         public override void OnStartNetwork()
         {
@@ -212,7 +229,13 @@ namespace MMO.Inventory
             if (!_grid.TryFindFreeSpace(_items, definition.GridWidth, definition.GridHeight, out int x, out int y))
                 return false;
 
-            _items.Add(ItemInstance.Create(definition, x, y));
+            var instance = ItemInstance.Create(definition, x, y);
+            _items.Add(instance);
+
+            var registry = Registry;
+            if (registry != null && !string.IsNullOrEmpty(instance.InstanceId))
+                registry.Grant(instance.InstanceId, HolderId);
+
             return true;
         }
 
@@ -329,7 +352,13 @@ namespace MMO.Inventory
             if (index < 0)
                 return false;
 
+            var item = _items[index];
             _items.RemoveAt(index);
+
+            var registry = Registry;
+            if (registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                registry.Release(item.InstanceId, HolderId);
+
             return true;
         }
 
@@ -350,6 +379,11 @@ namespace MMO.Inventory
             item.GridX = gridX;
             item.GridY = gridY;
             _items.Add(item);
+
+            var registry = Registry;
+            if (registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                registry.Grant(item.InstanceId, HolderId);
+
             return true;
         }
 
@@ -371,6 +405,11 @@ namespace MMO.Inventory
             item.GridX = x;
             item.GridY = y;
             _items.Add(item);
+
+            var registry = Registry;
+            if (registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                registry.Grant(item.InstanceId, HolderId);
+
             return true;
         }
 
@@ -425,6 +464,23 @@ namespace MMO.Inventory
         [Server]
         public void ClearAll()
         {
+            var registry = Registry;
+            var holder = HolderId;
+
+            for (int i = 0; i < _items.Count; i++)
+            {
+                var item = _items[i];
+                if (!item.IsEmpty && registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                    registry.Release(item.InstanceId, holder);
+            }
+
+            for (int i = 0; i < _equipment.Count; i++)
+            {
+                var item = _equipment[i];
+                if (!item.IsEmpty && registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                    registry.Release(item.InstanceId, holder);
+            }
+
             _items.Clear();
             for (int i = 0; i < _equipment.Count; i++)
                 _equipment.Set(i, ItemInstance.Empty);
@@ -543,13 +599,20 @@ namespace MMO.Inventory
         {
             EnsureEquipmentSlots();
 
+            var registry = Registry;
+            var holder = HolderId;
+
             _items.Clear();
             if (bag != null)
             {
                 for (int i = 0; i < bag.Count; i++)
                 {
                     if (!bag[i].IsEmpty)
+                    {
                         _items.Add(bag[i]);
+                        if (registry != null && !string.IsNullOrEmpty(bag[i].InstanceId))
+                            registry.Grant(bag[i].InstanceId, holder);
+                    }
                 }
             }
 
@@ -560,6 +623,8 @@ namespace MMO.Inventory
                     : ItemInstance.Empty;
 
                 _equipment.Set(i, restored);
+                if (!restored.IsEmpty && registry != null && !string.IsNullOrEmpty(restored.InstanceId))
+                    registry.Grant(restored.InstanceId, holder);
             }
 
             RecalculateEquipmentStats();
@@ -576,6 +641,8 @@ namespace MMO.Inventory
                 _scratch.Add(_items[i]);
 
             var ingredients = recipe.Ingredients;
+            var consumedInstanceIds = new List<string>();
+
             for (int i = 0; i < ingredients.Count; i++)
             {
                 var ingredient = ingredients[i];
@@ -587,6 +654,8 @@ namespace MMO.Inventory
                     int index = FindByName(_scratch, ingredient.Item.ItemName);
                     if (index < 0)
                         return false;
+                    if (!_scratch[index].IsEmpty && !string.IsNullOrEmpty(_scratch[index].InstanceId))
+                        consumedInstanceIds.Add(_scratch[index].InstanceId);
                     _scratch.RemoveAt(index);
                 }
             }
@@ -602,15 +671,30 @@ namespace MMO.Inventory
                 {
                     int index = FindByName(_items, ingredient.Item.ItemName);
                     if (index >= 0)
+                    {
+                        var consumed = _items[index];
+                        if (!consumed.IsEmpty && !string.IsNullOrEmpty(consumed.InstanceId))
+                            consumedInstanceIds.Add(consumed.InstanceId);
                         _items.RemoveAt(index);
+                    }
                 }
+            }
+
+            var registry = Registry;
+            var holder = HolderId;
+
+            foreach (var instanceId in consumedInstanceIds)
+            {
+                if (registry != null && !string.IsNullOrEmpty(instanceId))
+                    registry.Release(instanceId, holder);
             }
 
             for (int outCount = 0; outCount < recipe.OutputCount; outCount++)
             {
-                // If we need to place multiple outputs, we need to find space for each
-                // For now, just place in the same position or find space - but simple case
-                _items.Add(ItemInstance.Create(recipe.Output, x, y));
+                var output = ItemInstance.Create(recipe.Output, x, y);
+                _items.Add(output);
+                if (registry != null && !string.IsNullOrEmpty(output.InstanceId))
+                    registry.Grant(output.InstanceId, holder);
             }
             return true;
         }

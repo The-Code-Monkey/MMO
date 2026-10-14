@@ -1,0 +1,67 @@
+{
+  "name": "PlayerMovement",
+  "controlSchemes": [
+    {
+      "name": "KeyboardMouse",
+      "bindingGroup": "KeyboardMouse",
+      "devices": [
+        {
+          "devicePath": "<Keyboard>",
+          "isRequired": true,
+          "isOptional": false
+        },
+        {
+          "devicePath": "<Mouse>",
+          "isRequired": false,
+          "isOptional": true
+        }
+      ]
+    }
+  ],
+  "actionMaps": [
+    {
+      "name": "Player",
+      "actions": [
+        {
+          "name": "Move",
+          "type": "Value",
+          "expectedControlType": "Vector2",
+          "processors": "",
+          "interactions": "",
+          "bindings": [
+            {
+              "path": "<Keyboard>/w",
+              "interactions": "",
+              "processors": "scaleVector2(x=0, y=1)",
+              "groups": "KeyboardMouse"
+            },
+            {
+              "path": "<Keyboard>/s",
+              "interactions": "",
+              "processors": "scaleVector2(x=0, y=-1)",
+              "groups": "KeyboardMouse"
+            },
+            {
+              "path": "<Keyboard>/a",
+              "interactions": "",
+              "processors": "scaleVector2(x=-1, y=0)",
+              "groups": "KeyboardMouse"
+            },
+            {
+              "path": "<Keyboard>/d",
+              "interactions": "",
+              "processors": "scaleVector2(x=1, y=0)",
+              "groups": "KeyboardMouse"
+            },
+            {
+              "path": "<Gamepad>/leftStick",
+              "interactions": "",
+              "processors": "",
+              "groups": "Gamepad"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

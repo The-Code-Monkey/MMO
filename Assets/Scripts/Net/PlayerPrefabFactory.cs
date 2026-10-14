@@ -8,6 +8,7 @@ using MMO.Auction;
 using MMO.Client;
 using MMO.Crafting;
 using MMO.Gameplay;
+using MMO.Input;
 using MMO.Inventory;
 using MMO.Persistence;
 using MMO.Social;
@@ -130,6 +131,9 @@ namespace MMO.Net
             // position. Appended last so every behaviour added before it keeps the NetworkBehaviour
             // and RPC index it was assigned (and the baked prefab's existing indices stay valid).
             go.AddComponent<PlayerMover>();
+
+            // Owner-side input driver for the mover. Added after PlayerMover so it can reference it.
+            go.AddComponent<MMO.Input.PlayerMoverInput>();
 
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.
