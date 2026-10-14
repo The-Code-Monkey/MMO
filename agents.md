@@ -20,7 +20,20 @@ This project is a 3D URP, server-authoritative MMO built with **Unity** and **Fi
 
 ---
 
-## 2. Testing & Quality Requirements (STRICT)
+## 2. Git Workflow
+
+### Branch Policy
+**Always create a new branch off `main` before doing any work.** Never commit directly to `main`.
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feature/your-feature-name
+```
+
+---
+
+## 3. Testing & Quality Requirements (STRICT)
 
 ### 90%+ Test Coverage Target
 All core game logic and network payloads **MUST** maintain at least 90% unit test coverage. 
