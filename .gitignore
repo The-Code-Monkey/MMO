@@ -30,3 +30,6 @@ crashlytics-build.properties
 
 # FishNet codegen + transport binaries
 /[Aa]ssets/Plugins/**/*.dll
+
+# Ignore .meta files in Assets
+/Assets/**/*.meta
