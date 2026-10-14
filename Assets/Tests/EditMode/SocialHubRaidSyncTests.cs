@@ -194,6 +194,127 @@ namespace MMO.Tests
             Assert.AreEqual("r1", transferredTo, "A dropped push must still converge via the 2 s poll.");
         }
 
+        [Test]
+        public async Task SyncAsync_RecordsReturnAnchorBeforeTransfer()
+        {
+            SeedRaid("p1", "r1", "server-b", "a");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            _hub.RegisterLocal("a", "Alice");
+            _hub.ZoneId = "server-a"; // source zone
+
+            await _hub.SyncAsync();
+
+            // The anchor should be recorded in the raid record
+            RaidInstanceRecord raid = _raids.Instances["r1"];
+            Assert.IsNotNull(raid.ReturnAnchors, "ReturnAnchors list should be initialized");
+            Assert.AreEqual(1, raid.ReturnAnchors.Count, "One anchor should be recorded");
+            Assert.AreEqual("a", raid.ReturnAnchors[0].AccountId);
+            Assert.AreEqual("server-a", raid.ReturnAnchors[0].OriginServerId);
+            Assert.IsFalse(raid.ReturnAnchors[0].Returned);
+        }
+
+        [Test]
+        public async Task SyncAsync_NoTransferWhenAnchorWriteFails()
+        {
+            // Use a raid repo that fails on save
+            var failingRaids = new FailingRaidRepository();
+            var hub = new GameObject("Hub").AddComponent<SocialHubService>();
+            hub.ZoneId = "server-a";
+            hub.Configure(_social, failingRaids);
+
+            SeedRaid("p1", "r1", "server-b", "a");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            hub.RegisterLocal("a", "Alice");
+
+            bool transferRaised = false;
+            hub.RaidTransferRequested += (_, _) => transferRaised = true;
+
+            await hub.SyncAsync();
+
+            Assert.IsFalse(transferRaised, "Transfer must not be raised when anchor write fails");
+        }
+
+        [Test]
+        public async Task SyncAsync_RaidCompleted_ReturnsMemberExactlyOnce()
+        {
+            // This test simulates the host zone (server-b) where the raid is hosted
+            var hub = new GameObject("HostHub").AddComponent<SocialHubService>();
+            hub.ZoneId = "server-b";
+            hub.Configure(_social, _raids);
+
+            // Seed a raid hosted on this zone
+            var party = new PartyRecord { PartyId = "p1", LeaderId = "a", RaidInstanceId = "r1" };
+            party.Members.Add(new PartyMemberRecord { AccountId = "a" });
+            _social.Parties["p1"] = party;
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+
+            var raid = new RaidInstanceRecord
+            {
+                InstanceId = "r1",
+                PartyId = "p1",
+                HostZoneId = "server-b",
+                HostAddress = "10.0.0.9",
+                HostPort = 7770,
+            };
+            raid.ReturnAnchors.Add(new RaidReturnAnchor
+            {
+                AccountId = "a",
+                OriginHost = "10.0.0.1",
+                OriginPort = 7770,
+                OriginServerId = "server-a",
+                Returned = false,
+            });
+            _raids.Instances["r1"] = raid;
+
+            hub.RegisterLocal("a", "Alice");
+
+            // First sync: establish lastInstanceId
+            await hub.SyncAsync();
+
+            // Clear the raid instance id (simulate completion)
+            party.RaidInstanceId = null;
+            await _social.SavePartyAsync(party);
+
+            int returnCount = 0;
+            RaidReturnAnchor capturedAnchor = default;
+            hub.RaidReturnRequested += (accountId, anchor) =>
+            {
+                returnCount++;
+                capturedAnchor = anchor;
+            };
+
+            // Second sync: should drive return
+            await hub.SyncAsync();
+
+            Assert.AreEqual(1, returnCount, "Return must be issued exactly once");
+            Assert.AreEqual("a", capturedAnchor.AccountId);
+            Assert.AreEqual("server-a", capturedAnchor.OriginServerId);
+
+            // Third sync: should NOT issue another return (exactly-once)
+            await hub.SyncAsync();
+            Assert.AreEqual(1, returnCount, "Second pass must not re-issue return");
+        }
+
+        private sealed class FailingRaidRepository : IRaidInstanceRepository
+        {
+            public readonly Dictionary<string, RaidInstanceRecord> Instances = new Dictionary<string, RaidInstanceRecord>();
+
+            public Task<RaidInstanceRecord> LoadRaidInstanceAsync(string instanceId, CancellationToken ct = default)
+                => Task.FromResult(Instances.TryGetValue(instanceId, out RaidInstanceRecord r) ? r : null);
+
+            public Task SaveRaidInstanceAsync(RaidInstanceRecord record, CancellationToken ct = default)
+            {
+                // Simulate CAS failure / save failure
+                return Task.FromException(new System.Exception("save failed"));
+            }
+
+            public Task DeleteRaidInstanceAsync(string instanceId, CancellationToken ct = default)
+            {
+                Instances.Remove(instanceId);
+                return Task.CompletedTask;
+            }
+        }
+
         private sealed class FakeRaidRepository : IRaidInstanceRepository
         {
             public readonly Dictionary<string, RaidInstanceRecord> Instances = new Dictionary<string, RaidInstanceRecord>();
