@@ -7,8 +7,9 @@ namespace MMO.Gameplay
     /// The geometry and arithmetic of resolving an accepted cast: where an effect originates,
     /// whether a point is inside it, how hard it hits, and who gets hit.
     ///
-    /// Pure on purpose. The networked component does the only impure part — asking the scene for
-    /// candidates and pushing the result into <c>PlayerStats</c> — while every decision that
+    /// The networked component does the only impure part — asking the scene for
+    /// candidates, the <see cref="IServerSight"/> raycast behind a seam, and pushing the result
+    /// into <c>PlayerStats</c> — while every decision that
     /// could be wrong (wrong origin for a cleave, a negative power sneaking in from hand-edited
     /// YAML, the caster being hit by their own AreaDamage) is decided here and covered by
     /// EditMode tests.
@@ -78,6 +79,34 @@ namespace MMO.Gameplay
             }
 
             return victims;
+        }
+
+        /// <summary>
+        /// The subset of <paramref name="victims"/> the caster can actually see from
+        /// <paramref name="eyePosition"/>: a fireball centred just past a wall damages only what
+        /// the wall did not hide. A null <paramref name="sight"/> is treated as a clear line, so a
+        /// caller with no sight wired keeps the old behaviour rather than silently hitting nobody.
+        /// </summary>
+        public static List<PlayerStats> SelectVisibleVictims(
+            Vector3 eyePosition,
+            IReadOnlyList<PlayerStats> victims,
+            IServerSight sight)
+        {
+            var visible = new List<PlayerStats>();
+            if (victims == null)
+                return visible;
+
+            for (int i = 0; i < victims.Count; i++)
+            {
+                PlayerStats victim = victims[i];
+                if (victim == null)
+                    continue;
+
+                if (sight == null || sight.HasLineOfSight(eyePosition, victim.transform.position, victim.gameObject))
+                    visible.Add(victim);
+            }
+
+            return visible;
         }
     }
 }

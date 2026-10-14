@@ -18,7 +18,9 @@ namespace MMO.Gameplay
     /// the resulting slot names to the owning client; the client sends an intent
     /// (<see cref="RequestCast"/>); the server validates mana, distance, the per-slot cooldown
     /// and the Global Cooldown, spends the mana, books the cooldowns and only then resolves the
-    /// effect into the world. A client never holds a decision it could second-guess — the local
+    /// effect into the world. Resolution filters its victims by line of sight (see
+    /// <see cref="Sight"/>), so an effect cannot reach a player a wall is hiding. A client never
+    /// holds a decision it could second-guess — the local
     /// <c>AbilityCaster</c> on a pure client stays empty, and the replicated slot names exist so
     /// an action bar can be drawn, not so it can be trusted.
     /// </para>
@@ -53,6 +55,18 @@ namespace MMO.Gameplay
         private readonly SyncVar<string> _slot5Name = new();
 
         private PlayerStats _stats;
+        private IServerSight _sight;
+
+        /// <summary>
+        /// The line-of-sight check applied to every victim of an area or targeted effect, so a
+        /// fireball aimed just past a wall does not reach through it. Defaults to a real raycast;
+        /// a test can replace it. Read only on the server, where casts resolve.
+        /// </summary>
+        public IServerSight Sight
+        {
+            get => _sight ??= new PhysicsSight();
+            set => _sight = value;
+        }
 
         /// <summary>The bar. Authoritative on the server only; a pure client's copy is empty.</summary>
         public IReadOnlyList<AbilityData> Slots => _caster.Slots;
@@ -219,6 +233,11 @@ namespace MMO.Gameplay
             Vector3 origin = AbilityEffects.ResolveOrigin(ability.Logic, transform.position, cast.TargetPosition);
             List<PlayerStats> victims = AbilityEffects.SelectVictims(
                 origin, ability.EffectRadius, caster, FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+
+            // Only what the caster can actually see is hit: a wall between the caster's eye and a
+            // victim makes that victim cover, so a fireball aimed just past the wall hits nothing.
+            Vector3 eye = transform.position + Vector3.up * PhysicsSight.DefaultEyeHeight;
+            victims = AbilityEffects.SelectVisibleVictims(eye, victims, Sight);
 
             int power = AbilityEffects.ComputePower(ability);
             for (int i = 0; i < victims.Count; i++)
