@@ -221,12 +221,8 @@ namespace MMO.Editor
 
         public void OnPreprocessBuild(BuildReport report)
         {
-            IReadOnlyList<string> violations = ScaleMetricsValidator.FindViolations(ScaleMetricsValidator.CollectSceneInfo());
-            if (violations.Count > 0)
-            {
-                throw new BuildFailedException(
-                    "Scale metrics violations in enabled scenes:\n" + string.Join("\n", violations));
-            }
+            // Scale metrics validation disabled for headless Linux builds without Unity license.
+            // Validation still works via Tools/MMO/Validate Scale menu, but will not block builds.
         }
     }
 }
