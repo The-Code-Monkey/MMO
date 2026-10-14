@@ -19,6 +19,7 @@ namespace MMO.Auction
     {
         public const int DefaultListingDurationHours = 48;
         public const int MaxActiveListingsPerPlayer = 20;
+        public const int MaxActiveBuyOrdersPerPlayer = 20;
         public const long MinPricePerUnit = 1;
 
         private readonly IAuctionRepository _repository;
@@ -352,6 +353,325 @@ namespace MMO.Auction
             return await _repository.LoadTransactionHistoryAsync(accountId, limit, ct);
         }
 
+        /// <summary>Creates a "want to buy" order. Reserves gold from buyer's wallet.</summary>
+        public async Task<AuctionResult> CreateBuyOrderAsync(
+            string buyerAccountId,
+            string itemName,
+            int quantity,
+            long pricePerUnit,
+            int durationHours = DefaultListingDurationHours,
+            CancellationToken ct = default)
+        {
+            if (!_rest.IsConnected)
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            if (!HasAuctionHouse())
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            if (pricePerUnit < MinPricePerUnit)
+                return AuctionResult.Fail(AuctionRule.InvalidPrice);
+
+            if (quantity < 1)
+                return AuctionResult.Fail(AuctionRule.InvalidStackCount);
+
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(itemName);
+            if (def == null)
+                return AuctionResult.Fail(AuctionRule.ItemNotFound);
+
+            long totalCost = pricePerUnit * quantity;
+
+            // Check max active buy orders
+            AuctionIndexRecord index = await _repository.LoadIndexAsync(buyerAccountId, ct)
+                ?? new AuctionIndexRecord { AccountId = buyerAccountId };
+
+            if (index.ActiveBuyOrderIds != null && index.ActiveBuyOrderIds.Count >= MaxActiveBuyOrdersPerPlayer)
+                return AuctionResult.Fail(AuctionRule.MaxBuyOrdersReached);
+
+            // Reserve gold from buyer's wallet
+            PlayerWallet wallet = GetPlayerWallet(buyerAccountId);
+            if (wallet == null || !wallet.TrySpend(totalCost))
+                return AuctionResult.Fail(AuctionRule.InsufficientFunds);
+
+            AuctionResult result = await RetryAsync(async () =>
+            {
+                // Re-read index inside CAS loop
+                index = await _repository.LoadIndexAsync(buyerAccountId, ct)
+                    ?? new AuctionIndexRecord { AccountId = buyerAccountId };
+
+                if (index.ActiveBuyOrderIds != null && index.ActiveBuyOrderIds.Count >= MaxActiveBuyOrdersPerPlayer)
+                    return AuctionResult.Fail(AuctionRule.MaxBuyOrdersReached);
+
+                // Create the buy order
+                string buyOrderId = Guid.NewGuid().ToString("N");
+                long nowTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+                long expiresTicks = nowTicks + TimeSpan.FromHours(durationHours).Ticks;
+
+                var buyOrder = new AuctionBuyOrderRecord
+                {
+                    BuyOrderId = buyOrderId,
+                    BuyerAccountId = buyerAccountId,
+                    BuyerPlayerName = _socialHub.GetPlayerName(buyerAccountId),
+                    ItemName = itemName,
+                    ItemWidth = def.GridWidth,
+                    ItemHeight = def.GridHeight,
+                    QuantityRemaining = quantity,
+                    QuantityTotal = quantity,
+                    PricePerUnit = pricePerUnit,
+                    ListedAtTicks = nowTicks,
+                    ExpiresAtTicks = expiresTicks,
+                    Status = AuctionBuyOrderStatus.Active,
+                };
+
+                await _repository.SaveBuyOrderAsync(buyOrder, ct);
+
+                // Update buyer's index
+                if (index.ActiveBuyOrderIds == null)
+                    index.ActiveBuyOrderIds = new List<string>();
+                index.ActiveBuyOrderIds.Add(buyOrderId);
+                await _repository.SaveIndexAsync(index, ct);
+
+                return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: buyOrder);
+            }, ct);
+
+            if (result.Rule == AuctionRule.Ok)
+            {
+                // Notify buyer's client
+                _socialHub.NotifyAuctionBuyOrderCreated(buyerAccountId, result.BuyOrder);
+            }
+            else
+            {
+                // Refund gold if buy order creation failed
+                wallet?.AddGold(totalCost);
+            }
+
+            return result;
+        }
+
+        /// <summary>Fulfills a buy order - seller sells items to the buy order.</summary>
+        public async Task<AuctionResult> FulfillBuyOrderAsync(
+            string sellerAccountId,
+            string buyOrderId,
+            int bagX,
+            int bagY,
+            int stackCount = -1,
+            CancellationToken ct = default)
+        {
+            if (!_rest.IsConnected)
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            if (!HasAuctionHouse())
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            // Load buy order to validate
+            AuctionBuyOrderRecord buyOrder = await _repository.LoadBuyOrderAsync(buyOrderId, ct);
+            if (buyOrder == null)
+                return AuctionResult.Fail(AuctionRule.NotFound);
+
+            if (buyOrder.Status != AuctionBuyOrderStatus.Active && buyOrder.Status != AuctionBuyOrderStatus.PartiallyFilled)
+                return AuctionResult.Fail(AuctionRule.BuyOrderNotActive);
+
+            if (buyOrder.ExpiresAtTicks > 0 && buyOrder.ExpiresAtTicks < DateTimeOffset.UtcNow.UtcDateTime.Ticks)
+                return AuctionResult.Fail(AuctionRule.BuyOrderNotActive); // expired
+
+            if (buyOrder.BuyerAccountId == sellerAccountId)
+                return AuctionResult.Fail(AuctionRule.NotOwner); // can't fulfill own buy order
+
+            // Verify seller has the item
+            PlayerInventory bag = GetPlayerBag(sellerAccountId);
+            if (bag == null)
+                return AuctionResult.Fail(AuctionRule.ItemNotFound);
+
+            int itemIndex = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight)
+                .FindAt(bag.Items, bagX, bagY);
+            if (itemIndex < 0)
+                return AuctionResult.Fail(AuctionRule.ItemNotFound);
+
+            ItemInstance item = bag.Items[itemIndex];
+            if (item.IsEmpty)
+                return AuctionResult.Fail(AuctionRule.ItemNotFound);
+
+            if (item.ItemName != buyOrder.ItemName)
+                return AuctionResult.Fail(AuctionRule.ItemNotFound); // item doesn't match buy order
+
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(item.ItemName);
+            if (def == null)
+                return AuctionResult.Fail(AuctionRule.ItemNotFound);
+
+            // Determine quantity to sell
+            int availableCount = item.StackCount < 1 ? 1 : item.StackCount;
+            int sellCount = stackCount > 0 ? Math.Min(stackCount, availableCount) : availableCount;
+            sellCount = Math.Min(sellCount, buyOrder.QuantityRemaining);
+            if (sellCount < 1)
+                return AuctionResult.Fail(AuctionRule.InvalidStackCount);
+
+            // Call atomic Lua RPC to transfer item and gold
+            string payload = JsonUtility.ToJson(new FulfillBuyOrderPayload
+            {
+                sellerAccountId = sellerAccountId,
+                buyOrderId = buyOrderId,
+                quantity = sellCount,
+            });
+
+            try
+            {
+                string response = await _rest.CallRpcAsync<string>("auction_fulfill_buy_order", payload, ct);
+                if (string.IsNullOrEmpty(response))
+                    return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+                FulfillBuyOrderResponse fulfillResponse = JsonUtility.FromJson<FulfillBuyOrderResponse>(response);
+                if (fulfillResponse == null || !fulfillResponse.success)
+                {
+                    return MapErrorToRule(fulfillResponse?.errorCode);
+                }
+
+                // Update seller's bag
+                if (sellCount >= availableCount)
+                {
+                    bag.RemoveItemAt(bagX, bagY);
+                }
+                else
+                {
+                    ItemInstance remaining = item;
+                    remaining.StackCount = availableCount - sellCount;
+                    bag.RemoveItemAt(bagX, bagY);
+                    bag.TryAddExistingItem(remaining, bagX, bagY);
+                }
+
+                // Update indexes
+                AuctionIndexRecord buyerIndex = await _repository.LoadIndexAsync(buyOrder.BuyerAccountId, ct);
+                if (buyerIndex != null && buyerIndex.ActiveBuyOrderIds != null)
+                {
+                    if (fulfillResponse.buyOrder.Status == AuctionBuyOrderStatus.Filled)
+                    {
+                        buyerIndex.ActiveBuyOrderIds.Remove(buyOrderId);
+                    }
+                    await _repository.SaveIndexAsync(buyerIndex, ct);
+                }
+
+                AuctionIndexRecord sellerIndex = await _repository.LoadIndexAsync(sellerAccountId, ct);
+                if (sellerIndex != null && sellerIndex.PurchaseHistoryIds == null)
+                    sellerIndex.PurchaseHistoryIds = new List<string>();
+
+                // Add to purchase history for both parties
+                if (buyerIndex != null)
+                {
+                    buyerIndex.PurchaseHistoryIds.Add(fulfillResponse.transaction.TransactionId);
+                    await _repository.SaveIndexAsync(buyerIndex, ct);
+                }
+                if (sellerIndex != null)
+                {
+                    sellerIndex.PurchaseHistoryIds.Add(fulfillResponse.transaction.TransactionId);
+                    await _repository.SaveIndexAsync(sellerIndex, ct);
+                }
+
+                // Notify clients
+                _socialHub.NotifyAuctionBuyOrderFulfilled(sellerAccountId, buyOrder.BuyerAccountId, fulfillResponse.buyOrder, fulfillResponse.transaction);
+                _socialHub.NotifyAuctionPurchaseCompleted(sellerAccountId, fulfillResponse.transaction);
+                _socialHub.NotifyAuctionPurchaseCompleted(buyOrder.BuyerAccountId, fulfillResponse.transaction);
+
+                return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: fulfillResponse.buyOrder);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Auction] Fulfill buy order RPC failed: {e.Message}");
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+            }
+        }
+
+        /// <summary>Cancels a buy order and returns reserved gold to buyer.</summary>
+        public async Task<AuctionResult> CancelBuyOrderAsync(
+            string buyerAccountId,
+            string buyOrderId,
+            CancellationToken ct = default)
+        {
+            if (!_rest.IsConnected)
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            if (!HasAuctionHouse())
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            AuctionBuyOrderRecord buyOrder = await _repository.LoadBuyOrderAsync(buyOrderId, ct);
+            if (buyOrder == null)
+                return AuctionResult.Fail(AuctionRule.NotFound);
+
+            if (buyOrder.BuyerAccountId != buyerAccountId)
+                return AuctionResult.Fail(AuctionRule.NotOwner);
+
+            if (buyOrder.Status != AuctionBuyOrderStatus.Active && buyOrder.Status != AuctionBuyOrderStatus.PartiallyFilled)
+                return AuctionResult.Fail(AuctionRule.BuyOrderNotActive);
+
+            long refundAmount = buyOrder.PricePerUnit * buyOrder.QuantityRemaining;
+
+            AuctionResult result = await RetryAsync(async () =>
+            {
+                buyOrder = await _repository.LoadBuyOrderAsync(buyOrderId, ct);
+                if (buyOrder == null || (buyOrder.Status != AuctionBuyOrderStatus.Active && buyOrder.Status != AuctionBuyOrderStatus.PartiallyFilled))
+                    return AuctionResult.Fail(AuctionRule.BuyOrderNotActive);
+
+                if (buyOrder.BuyerAccountId != buyerAccountId)
+                    return AuctionResult.Fail(AuctionRule.NotOwner);
+
+                // Mark as cancelled
+                buyOrder.Status = AuctionBuyOrderStatus.Cancelled;
+                await _repository.SaveBuyOrderAsync(buyOrder, ct);
+
+                // Update buyer's index
+                AuctionIndexRecord index = await _repository.LoadIndexAsync(buyerAccountId, ct);
+                if (index != null && index.ActiveBuyOrderIds != null)
+                {
+                    index.ActiveBuyOrderIds.Remove(buyOrderId);
+                    await _repository.SaveIndexAsync(index, ct);
+                }
+
+                return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: buyOrder);
+            }, ct);
+
+            if (result.Rule == AuctionRule.Ok)
+            {
+                // Refund reserved gold
+                PlayerWallet wallet = GetPlayerWallet(buyerAccountId);
+                wallet?.AddGold(refundAmount);
+
+                _socialHub.NotifyAuctionBuyOrderCancelled(buyerAccountId, buyOrder);
+            }
+
+            return result;
+        }
+
+        /// <summary>Gets active buy orders for a player.</summary>
+        public async Task<List<AuctionBuyOrderRecord>> GetMyBuyOrdersAsync(string accountId, CancellationToken ct = default)
+        {
+            if (!HasAuctionHouse())
+                return new List<AuctionBuyOrderRecord>();
+
+            AuctionIndexRecord index = await _repository.LoadIndexAsync(accountId, ct);
+            if (index == null || index.ActiveBuyOrderIds == null || index.ActiveBuyOrderIds.Count == 0)
+                return new List<AuctionBuyOrderRecord>();
+
+            return await _repository.LoadBuyOrdersAsync(index.ActiveBuyOrderIds, ct);
+        }
+
+        /// <summary>Searches buy orders.</summary>
+        public async Task<List<AuctionBuyOrderRecord>> SearchBuyOrdersAsync(
+            string itemNameFilter = null,
+            long minPrice = 0,
+            int page = 0,
+            int pageSize = 50,
+            CancellationToken ct = default)
+        {
+            if (!HasAuctionHouse())
+                return new List<AuctionBuyOrderRecord>();
+
+            return await _repository.SearchBuyOrdersAsync(itemNameFilter, minPrice, page, pageSize, ct);
+        }
+
+        private PlayerWallet GetPlayerWallet(string accountId)
+        {
+            if (!_socialHub.TryGetWallet(accountId, out PlayerWallet wallet))
+                return null;
+            return wallet;
+        }
+
         private PlayerInventory GetPlayerBag(string accountId)
         {
             if (!_socialHub.TryGetLocalPlayer(accountId, out PlayerGuild player) || player == null)
@@ -366,6 +686,7 @@ namespace MMO.Auction
                 case "INSUFFICIENT_FUNDS": return AuctionRule.InsufficientFunds;
                 case "ALREADY_SOLD": return AuctionRule.AlreadySold;
                 case "NOT_ACTIVE": return AuctionRule.ListingNotActive;
+                case "BUY_ORDER_NOT_ACTIVE": return AuctionRule.BuyOrderNotActive;
                 case "NOT_FOUND": return AuctionRule.NotFound;
                 default: return AuctionRule.BackendUnavailable;
             }
@@ -409,6 +730,23 @@ namespace MMO.Auction
             public bool success;
             public string errorCode;
             public AuctionListingRecord listing;
+            public AuctionTransactionRecord transaction;
+        }
+
+        [Serializable]
+        private class FulfillBuyOrderPayload
+        {
+            public string sellerAccountId;
+            public string buyOrderId;
+            public int quantity;
+        }
+
+        [Serializable]
+        private class FulfillBuyOrderResponse
+        {
+            public bool success;
+            public string errorCode;
+            public AuctionBuyOrderRecord buyOrder;
             public AuctionTransactionRecord transaction;
         }
     }

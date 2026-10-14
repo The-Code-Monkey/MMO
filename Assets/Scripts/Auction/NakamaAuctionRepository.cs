@@ -9,7 +9,7 @@ using UnityEngine;
 namespace MMO.Auction
 {
     /// <summary>
-    /// Nakama-backed auction repository: listings, index, and transactions all stored under
+    /// Nakama-backed auction repository: listings, buy orders, index, and transactions all stored under
     /// the shared service account. Every write is version-guarded so multiple zone servers
     /// race on the same revision rather than silently overwriting.
     /// </summary>
@@ -107,6 +107,93 @@ namespace MMO.Auction
             return result.GetRange(start, count);
         }
 
+        // Buy Orders
+        public async Task<AuctionBuyOrderRecord> LoadBuyOrderAsync(string buyOrderId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(AuctionBuyOrderRecord.Collection, buyOrderId, ct);
+            return Deserialize<AuctionBuyOrderRecord>(obj);
+        }
+
+        public async Task SaveBuyOrderAsync(AuctionBuyOrderRecord record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                AuctionBuyOrderRecord.Collection, record.BuyOrderId, JsonUtility.ToJson(record), record.StorageVersion, ct);
+        }
+
+        public async Task DeleteBuyOrderAsync(string buyOrderId, CancellationToken ct = default)
+            => await _rest.DeleteObjectAsync(AuctionBuyOrderRecord.Collection, buyOrderId, ct);
+
+        public async Task<List<AuctionBuyOrderRecord>> LoadBuyOrdersAsync(IReadOnlyList<string> buyOrderIds, CancellationToken ct = default)
+        {
+            if (buyOrderIds == null || buyOrderIds.Count == 0)
+                return new List<AuctionBuyOrderRecord>();
+
+            List<StorageObjectData> objects = await _rest.ReadObjectsAsync(AuctionBuyOrderRecord.Collection, buyOrderIds, ct);
+
+            var result = new List<AuctionBuyOrderRecord>(objects.Count);
+            foreach (StorageObjectData obj in objects)
+            {
+                AuctionBuyOrderRecord record = Deserialize<AuctionBuyOrderRecord>(obj);
+                if (record != null)
+                    result.Add(record);
+            }
+            return result;
+        }
+
+        public async Task<List<AuctionBuyOrderRecord>> SearchBuyOrdersAsync(string itemNameFilter = null, long minPrice = 0, int page = 0, int pageSize = 50, CancellationToken ct = default)
+        {
+            List<StorageObjectData> objects = await _rest.ListObjectsAsync(AuctionBuyOrderRecord.Collection, ct);
+
+            var result = new List<AuctionBuyOrderRecord>();
+            foreach (StorageObjectData obj in objects)
+            {
+                AuctionBuyOrderRecord record = Deserialize<AuctionBuyOrderRecord>(obj);
+                if (record == null)
+                    continue;
+
+                // Filter: only active buy orders
+                if (record.Status != AuctionBuyOrderStatus.Active && record.Status != AuctionBuyOrderStatus.PartiallyFilled)
+                    continue;
+
+                // Filter: not expired
+                if (record.ExpiresAtTicks > 0 && record.ExpiresAtTicks < DateTimeOffset.UtcNow.UtcDateTime.Ticks)
+                    continue;
+
+                // Filter: item name (case-insensitive contains)
+                if (!string.IsNullOrEmpty(itemNameFilter))
+                {
+                    ItemDefinition def = ItemDefinitionRegistry.Resolve(record.ItemName);
+                    string displayName = def != null ? def.ItemName : record.ItemName;
+                    if (!displayName.Contains(itemNameFilter, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                // Filter: min price (buyer's max price per unit)
+                if (minPrice > 0 && record.PricePerUnit < minPrice)
+                    continue;
+
+                result.Add(record);
+            }
+
+            // Sort by price descending (highest price first for buy orders), then by time
+            result.Sort((a, b) =>
+            {
+                int priceCompare = b.PricePerUnit.CompareTo(a.PricePerUnit);
+                return priceCompare != 0 ? priceCompare : b.ListedAtTicks.CompareTo(a.ListedAtTicks);
+            });
+
+            // Paginate
+            int start = page * pageSize;
+            if (start >= result.Count)
+                return new List<AuctionBuyOrderRecord>();
+
+            int count = Math.Min(pageSize, result.Count - start);
+            return result.GetRange(start, count);
+        }
+
         public async Task<AuctionIndexRecord> LoadIndexAsync(string accountId, CancellationToken ct = default)
         {
             StorageObjectData obj = await _rest.ReadObjectAsync(AuctionIndexRecord.Collection, accountId, ct);
@@ -172,6 +259,8 @@ namespace MMO.Auction
             T record = JsonUtility.FromJson<T>(obj.Value);
             if (record is AuctionListingRecord listing)
                 listing.StorageVersion = obj.Version;
+            else if (record is AuctionBuyOrderRecord buyOrder)
+                buyOrder.StorageVersion = obj.Version;
             else if (record is AuctionIndexRecord index)
                 index.StorageVersion = obj.Version;
             else if (record is AuctionTransactionRecord tx)

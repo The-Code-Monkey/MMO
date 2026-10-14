@@ -30,6 +30,31 @@ namespace MMO.Auction
     }
 
     /// <summary>
+    /// Represents a "want to buy" order - a player wants to buy an item at a specific price.
+    /// Stored under "auction_buy_orders" collection.
+    /// </summary>
+    [Serializable]
+    public sealed class AuctionBuyOrderRecord
+    {
+        public const string Collection = "auction_buy_orders";
+
+        public string BuyOrderId;
+        public string BuyerAccountId;
+        public string BuyerPlayerName;
+        public string ItemName;
+        public int ItemWidth;
+        public int ItemHeight;
+        public int QuantityRemaining;
+        public int QuantityTotal;
+        public long PricePerUnit;
+        public long TotalValue => PricePerUnit * QuantityTotal;
+        public long ListedAtTicks;
+        public long ExpiresAtTicks;
+        public AuctionBuyOrderStatus Status;
+        public string StorageVersion;
+    }
+
+    /// <summary>
     /// Tracks a completed auction transaction for history/audit.
     /// </summary>
     [Serializable]
@@ -39,6 +64,7 @@ namespace MMO.Auction
 
         public string TransactionId;
         public string ListingId;
+        public string BuyOrderId;
         public string SellerAccountId;
         public string BuyerAccountId;
         public string ItemName;
@@ -50,7 +76,7 @@ namespace MMO.Auction
     }
 
     /// <summary>
-    /// Per-player index of their active listings and purchases.
+    /// Per-player index of their active listings, buy orders, and purchases.
     /// </summary>
     [Serializable]
     public sealed class AuctionIndexRecord
@@ -59,6 +85,7 @@ namespace MMO.Auction
 
         public string AccountId;
         public List<string> ActiveListingIds = new List<string>();
+        public List<string> ActiveBuyOrderIds = new List<string>();
         public List<string> PurchaseHistoryIds = new List<string>();
         public string StorageVersion;
     }
@@ -71,6 +98,15 @@ namespace MMO.Auction
         Expired = 3,
     }
 
+    public enum AuctionBuyOrderStatus
+    {
+        Active = 0,
+        Filled = 1,
+        Cancelled = 2,
+        Expired = 3,
+        PartiallyFilled = 4,
+    }
+
     /// <summary>
     /// Result of an auction operation.
     /// </summary>
@@ -79,17 +115,21 @@ namespace MMO.Auction
     {
         public AuctionRule Rule;
         public string ListingId;
+        public string BuyOrderId;
         public AuctionListingRecord Listing;
+        public AuctionBuyOrderRecord BuyOrder;
 
-        public AuctionResult(AuctionRule rule, string listingId = null, AuctionListingRecord listing = null)
+        public AuctionResult(AuctionRule rule, string listingId = null, string buyOrderId = null, AuctionListingRecord listing = null, AuctionBuyOrderRecord buyOrder = null)
         {
             Rule = rule;
             ListingId = listingId;
+            BuyOrderId = buyOrderId;
             Listing = listing;
+            BuyOrder = buyOrder;
         }
 
-        public static AuctionResult Ok(string listingId = null, AuctionListingRecord listing = null)
-            => new AuctionResult(AuctionRule.Ok, listingId, listing);
+        public static AuctionResult Ok(string listingId = null, string buyOrderId = null, AuctionListingRecord listing = null, AuctionBuyOrderRecord buyOrder = null)
+            => new AuctionResult(AuctionRule.Ok, listingId, buyOrderId, listing, buyOrder);
 
         public static AuctionResult Fail(AuctionRule rule)
             => new AuctionResult(rule);
@@ -109,5 +149,7 @@ namespace MMO.Auction
         MaxListingsReached = 9,
         Conflict = 10,
         InvalidStackCount = 11,
+        BuyOrderNotActive = 12,
+        MaxBuyOrdersReached = 13,
     }
 }
