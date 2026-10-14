@@ -245,8 +245,8 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(10, behaviours.Length,
-                "The player carries stats, combat, inventory, ability slots, gathering, crafting, the save trigger, the party and guild views, and the camera script.");
+            Assert.AreEqual(11, behaviours.Length,
+                "The player carries stats, combat, inventory, ability slots, gathering, crafting, the save trigger, the party and guild views, the camera script, and the server-authoritative mover.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -257,6 +257,7 @@ namespace MMO.Tests
             Assert.IsInstanceOf<MMO.Social.PlayerParty>(behaviours[7]);
             Assert.IsInstanceOf<MMO.Social.PlayerGuild>(behaviours[8]);
             Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[9]);
+            Assert.IsInstanceOf<PlayerMover>(behaviours[10]);
 
             foreach (NetworkBehaviour behaviour in behaviours)
             {
