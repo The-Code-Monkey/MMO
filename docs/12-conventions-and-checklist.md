@@ -26,14 +26,25 @@ private void RpcDoThing(SomeArg arg, NetworkConnection sender = null)
 
 This double check is deliberate even though FishNet also enforces ownership — see
 `PlayerStats.RpcRequestDamage` (`Assets/Scripts/Gameplay/PlayerStats.cs:230`) and
-`PlayerAbilities.RpcRequestCast` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:151`) for the pattern.
+`PlayerAbilities.RpcRequestCast` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:166`) for the pattern.
+
+Three anti-cheat rules fall out of this; they are documented in full in
+[14](14-server-authority-hardening.md):
+
+- **Movement takes input, never a position.** A client's intent is a direction, and the server
+  integrates it at its own speed (`PlayerMover`). Any position-bearing message is judged by
+  `MovementRules` and snapped back if it is implausible.
+- **Line of sight is a server raycast.** An attack or ability lands only on a target the server can
+  actually reach (`SightRules` + `IServerSight`), so nothing hits through a wall.
+- **Item identity is server-minted.** Every item carries an `InstanceId` the server assigns, and
+  `ItemOwnershipRegistry` is the single writer for who holds each one.
 
 ## 2. The pure-core / networked-shell split
 
 - Put decision logic in pure classes/static methods that take every input (including `now`) as an
   argument, read no clock, and touch no Unity objects. Examples: `AbilityCastRules`,
   `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `GatheringRules`, `JoinPolicy`,
-  `PartyRules`, `GuildRules`.
+  `PartyRules`, `GuildRules`, `MovementRules`, `SightRules`.
 - Put the clock, world and network in a `NetworkBehaviour` shell that calls the pure core.
 
 This is what keeps the test suite fast and offline. If you find yourself writing `Time.time` inside a
@@ -107,6 +118,10 @@ See [10](10-testing.md) for the fakes (`FakeApiGateway`, `InMemoryPlayerReposito
 Before opening a PR:
 
 - [ ] The change preserves server authority (no client writes authoritative state).
+- [ ] Movement, line of sight and item identity are still server-owned (see
+      [14](14-server-authority-hardening.md)).
+- [ ] State a client could exploit is guarded structurally, not merely validated once (e.g. shared
+      state goes through a single-writer; a second item grant is refused).
 - [ ] Tests were written first and pass; core logic is well covered.
 - [ ] New pure logic lives in a pure class taking `now`/inputs as arguments.
 - [ ] New data uses ScriptableObject assets where possible.

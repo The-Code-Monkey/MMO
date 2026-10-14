@@ -100,22 +100,24 @@ whether the player stands back up — otherwise a safe-zone death would strand t
 
 ## 2. Basic weapon attacks
 
-## 2. Basic weapon attacks
-
-`PlayerCombat` (`Assets/Scripts/Gameplay/PlayerCombat.cs:19`) handles the "auto attack" a weapon
+`PlayerCombat` (`Assets/Scripts/Gameplay/PlayerCombat.cs:21`) handles the "auto attack" a weapon
 provides. The weapon is a `WeaponData` assigned only by the server.
 
-- `RequestAttack(NetworkObject target)` (`:50`) — owner only; sends `RpcRequestAttack`.
-- `RpcRequestAttack` (`:62`) — re-checks ownership, then calls `Attack`.
-- `Attack(NetworkObject target)` (`:80`) — the server's checks, in order:
+- `RequestAttack(NetworkObject target)` (`:71`) — owner only; sends `RpcRequestAttack`.
+- `RpcRequestAttack` (`:84`) — re-checks ownership, then calls `Attack`.
+- `Attack(NetworkObject target)` (`:103`) — the server's checks, in order:
   1. a weapon must be equipped,
   2. the target must be spawned,
   3. the target must have a `TargetDummy` component (only dummies are attackable today),
-  4. the target must be within `weapon.AttackRange`,
+  4. the target must be **visible** — within `weapon.AttackRange`, inside the facing cone
+     (`_attackHalfAngleDegrees`, default `60`), and with a clear line of sight (no wall between the
+     attacker's eye, `_eyeHeight`, and the target),
   5. then `dummy.TakeDamage(weapon.AutoAttackDamage)`.
 
-`IsWithinAttackRange` (`:103`) is a pure helper using strict `<` — a target exactly on the boundary
-is a miss. `FindLocal` (`:118`) finds the local player's `PlayerCombat` component on either the host
+`IsWithinAttackRange` (`:150`) is a pure helper using strict `<` — a target exactly on the boundary
+is a miss. `IsVisibleToAttack` (`:132`) combines range, cone and the server's raycast into the one
+verdict (`SightRules.CanSee`); the raycast arrives through the injectable `Sight` property (`:42`,
+defaults to a real `PhysicsSight`). `FindLocal` (`:165`) finds the local player's `PlayerCombat` component on either the host
 or client side, used by the mouse-click path.
 
 `TargetDummy` (`Assets/Scripts/Gameplay/TargetDummy.cs:18`) is the punching bag. It has its own
@@ -248,32 +250,39 @@ passed. `EquipGear` (`:41`) rebuilds the loadout and drops in-flight casts but k
 
 ### AbilityEffects — the geometry and arithmetic
 
-`AbilityEffects` (`Assets/Scripts/Gameplay/AbilityEffects.cs:16`) is a pure static class:
+`AbilityEffects` (`Assets/Scripts/Gameplay/AbilityEffects.cs:17`) is a pure static class:
 
-- `ResolveOrigin(logic, casterPosition, targetPosition)` (`:23`) — `AreaDamage` and `SelfHeal` use
+- `ResolveOrigin(logic, casterPosition, targetPosition)` (`:24`) — `AreaDamage` and `SelfHeal` use
   the caster's position; everything else uses the target position.
-- `Hits(origin, position, radius)` (`:42`) — true when the distance is within (clamped) radius.
-- `ComputePower(ability)` (`:48`) — the clamped `EffectPower` (0 for a null ability).
-- `SelectVictims(origin, radius, self, candidates)` (`:59`) — every non-null candidate inside the
+- `Hits(origin, position, radius)` (`:44`) — true when the distance is within (clamped) radius.
+- `ComputePower(ability)` (`:50`) — the clamped `EffectPower` (0 for a null ability).
+- `SelectVictims(origin, radius, self, candidates)` (`:61`) — every non-null candidate inside the
   radius **except the caster**, so `AreaDamage` cannot hit its own caster.
+- `SelectVisibleVictims(eyePosition, victims, sight)` (`:90`) — filters victims down to those the
+  caster can actually see, so a fireball centred just past a wall damages only what the wall did not
+  hide. A null `sight` is treated as a clear line. See
+  [14](14-server-authority-hardening.md#2-line-of-sight).
 
 ### PlayerAbilities — the networked shell
 
-`PlayerAbilities` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:40`) is the `NetworkBehaviour`
+`PlayerAbilities` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:42`) is the `NetworkBehaviour`
 implementing `IAbilityBarSource`. It replicates six slot-name strings (one SyncVar per slot) so the
 action bar knows what to draw, and it owns the cast request flow.
 
-- `EquipGear(WeaponData, ArmorData)` (`:126`) — `[Server]`. Rebuilds the caster's loadout, then
+- `Sight` (`:65`) — the line-of-sight check applied to every victim of an area/targeted effect
+  (defaults to a real `PhysicsSight`; a test can replace it).
+- `EquipGear(WeaponData, ArmorData)` (`:141`) — `[Server]`. Rebuilds the caster's loadout, then
   publishes the slot names.
-- `RequestCast(int slot, Vector3 targetPosition)` (`:138`) — owner only; sends `RpcRequestCast`.
-- `RpcRequestCast` (`:151`) — `[ServerRpc]`. Re-checks the sender owns the object, reads live mana
+- `RequestCast(int slot, Vector3 targetPosition)` (`:152`) — owner only; sends `RpcRequestCast`.
+- `RpcRequestCast` (`:166`) — `[ServerRpc]`. Re-checks the sender owns the object, reads live mana
   from `PlayerStats`, calls `_caster.TryCast(...)`, and on success spends the mana and applies any
   due casts immediately.
-- `Update` (`:177`) — the server also calls `ApplyDueCasts` every frame while casts are pending, so
+- `Update` (`:191`) — the server also calls `ApplyDueCasts` every frame while casts are pending, so
   a cast-time ability resolves when its timer elapses.
-- `ApplyEffect` (`:198`) — the dispatch per `AbilityLogic`:
+- `ApplyEffect` (`:212`) — the dispatch per `AbilityLogic`:
   - `SelfHeal` → `caster.Heal(ComputePower)`,
-  - otherwise → `ResolveOrigin`, `SelectVictims`, then `victims[i].TakeDamage(power)`.
+  - otherwise → `ResolveOrigin`, `SelectVictims`, then `SelectVisibleVictims(eye, victims, Sight)`
+    so only victims the caster can see are hit, then `victims[i].TakeDamage(power)`.
 
 `GetSlotName` (`:78`) is what the bar reads; the cooldown tracker is deliberately **not** exposed on
 the interface, because cooldowns are server-only state and a client must not be able to display

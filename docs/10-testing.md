@@ -28,6 +28,11 @@ drive them with made-up numbers and no waiting. For example, every rule in `Abil
 (see [05](05-gameplay-stats-combat-abilities.md)) has an isolated EditMode test, and
 `AbilityCooldownTrackerTests` verifies cooldowns without a single frame elapsing.
 
+The anti-cheat rules follow the same shape: `MovementRulesTests` pins the movement budget and
+`SightRulesTests` pins the range/cone/ray verdict, both driven with hand-picked vectors and no scene.
+Only the raycast itself (`PhysicsSight`) and the networked shells (`PlayerMover`, `PlayerCombat`)
+need PlayMode. See [14](14-server-authority-hardening.md).
+
 ## 3. The shared fakes and helpers
 
 These types are used across many tests:
@@ -39,6 +44,7 @@ These types are used across many tests:
 | `TestItemDefinitions` | `Assets/Tests/EditMode/TestItemDefinitions.cs:14` | Builds and registers `ItemDefinition` objects in code by writing every field through a `SerializedObject` (the Inspector path). |
 | `PlayerPrefabTestAsset` | `Assets/Tests/EditMode/PlayerPrefabTestAsset.cs:13` | Tracks whether the player prefab/folder pre-existed so `[TearDown]` removes only what the test created. |
 | `SpawnablePrefabTestAsset` | `Assets/Tests/EditMode/SpawnablePrefabTestAsset.cs:13` | The same idea for the player, dummy and resource-node prefabs. |
+| `FakeSight` | `Assets/Tests/EditMode/FakeSight.cs` and `Assets/Tests/PlayMode/FakeSight.cs` | A stand-in for `IServerSight` whose line of sight is always clear, so combat and ability tests never need a real wall. |
 | `InMemoryPlayerRepository` | nested in `Assets/Tests/EditMode/PlayerPersistenceServiceTests.cs:209` | An `IPlayerRepository` backed by a dictionary, with a `ThrowOnSave` switch to inject failures. |
 
 ### The in-memory repository (the most important fake)
@@ -64,6 +70,22 @@ private sealed class InMemoryPlayerRepository : IPlayerRepository
 This is what lets the entire save-lifecycle be tested with no Nakama. `PlayerPersistenceService`
 exposes `Configure(IPlayerRepository)` and a fake-clock entry point (`ProcessDueSavesAsync(double now)`)
 precisely so tests can control time and failure.
+
+### Deterministic concurrency tests
+
+`ItemOwnershipRegistry` is lock-guarded, so its guarantees hold under any interleaving — which means
+a stress test can assert an *exact* outcome instead of tolerating a flaky one. The pattern
+(`ItemOwnershipRegistryStressTests`) is:
+
+1. Start N real threads that all wait on a `System.Threading.Barrier`.
+2. Release the barrier so every contender races the *same* instance id at once.
+3. Assert the deterministic invariant — for a pickup race, exactly one `Grant` returned `Ok` and
+   every other returned `DuplicateDetected`, with the registry holding the id once.
+
+Because the lock serialises the calls, the assertion does not depend on which thread wins, only that
+there is exactly one winner. A thread-unsafe registry would fail this under load; a correct one
+passes every run. This is how the dupe guard is pinned without a live server. See
+[14](14-server-authority-hardening.md#3-dupe-protection).
 
 ## 4. What a good test looks like here
 
@@ -154,5 +176,9 @@ See [12](12-conventions-and-checklist.md) for the full checklist.
   `ScriptableObject` and register it, then clear the registry in teardown.
 - **Test a baker.** Follow the `PlayerPrefabTestAsset` / `SpawnablePrefabTestAsset` pattern so the
   test deletes only what it created.
+- **Test a shared single-writer under threads.** Follow `ItemOwnershipRegistryStressTests`: real
+  threads on a `Barrier`, then assert the exact deterministic invariant (e.g. "exactly one winner").
+- **Test something the server raycasts or replicates.** Put the pure half in EditMode and inject a
+  `FakeSight`, then put the live half in PlayMode; see [14](14-server-authority-hardening.md).
 - **Find what covers a class.** Search `Assets/Tests` for the class name; the convention is a
   matching `*Tests.cs` file.
