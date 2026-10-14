@@ -25,18 +25,22 @@ Only the server mutates these lists. A client asks through `RequestEquip` / `Req
 | Field | Meaning | Line |
 |---|---|---|
 | `ItemName` | The registry key. The definition itself never travels. | `:30` |
-| `GridX`, `GridY` | Position in the bag grid. | `:33`, `:36` |
-| `Width`, `Height` | Footprint size. | `:39`, `:42` |
-| `Durability` | Remaining wear, `0..MaxDurability`. `0` on an indestructible item. | `:52` |
+| `InstanceId` | The server-minted unique id of this physical item; the ownership registry tracks it. Empty means an empty cell, or a legacy save entry not yet assigned an id. | `:39` |
+| `GridX`, `GridY` | Position in the bag grid. | `:42`, `:45` |
+| `Width`, `Height` | Footprint size. | `:48`, `:51` |
+| `Durability` | Remaining wear, `0..MaxDurability`. `0` on an indestructible item. | `:61` |
 
 Why public fields? FishNet auto-generates serialisers for network payloads from **public** fields and
 ignores private `[SerializeField]` fields, so a wire type must expose them. This is the opposite of
 the data assets, which keep their fields private.
 
-Helpers: `IsEmpty` (`:55`) is true when `ItemName` is blank; `Empty` (`:58`) is the default value;
-`Create(ItemDefinition definition, int gridX, int gridY)` (`:65`) builds an instance from a
-definition, copying its footprint **and** seeding `Durability` from the definition's
-`MaxDurability`.
+Helpers: `IsEmpty` (`:64`) is true when `ItemName` is blank; `Empty` (`:67`) is the default value;
+`Create(ItemDefinition definition, int gridX, int gridY)` (`:74`) builds an instance from a
+definition, copying its footprint, seeding `Durability` from the definition's `MaxDurability`, and
+minting a fresh `InstanceId`. `NewInstanceId()` (`:119`) mints a new id
+(`Guid.NewGuid().ToString("N")`); `WithIdentity()` (`:129`) returns the instance with a guaranteed id,
+assigning one only to a legacy instance that has none (see
+[14](14-server-authority-hardening.md#3-dupe-protection)).
 
 ## 3. ItemDefinition — what an item is
 
@@ -224,7 +228,7 @@ currently simple: multiple outputs are added at the same coordinates (`:613`).
 ## 10. Death, loot and durability
 
 Item durability is the anti-inflation half of death, and it is persisted. `ItemSaveData.Durability`
-(`PlayerSaveRecord.cs:24`) round-trips the count; `PlayerSaveMapper.Apply` restores it clamped to the
+(`PlayerSaveRecord.cs:32`) round-trips the count; `PlayerSaveMapper.Apply` restores it clamped to the
 definition's current `MaxDurability` (`PlayerSaveMapper.cs:112`) and treats a zero from a
 pre-durability save as "fully repaired" rather than broken. A balance rollback that lowers a cap can
 therefore never leave a saved item above its own ceiling.
@@ -260,6 +264,33 @@ registration that gives the loot bag its id), so no per-prefab reference needs b
 [05, section 1a](05-gameplay-stats-combat-abilities.md#1a-death-and-the-risk-tiers) for the tier
 table.
 
+## 11. Single-writer ownership (dupe protection)
+
+Two copies of one item is the oldest MMO exploit. `ItemInstance.InstanceId` (`:39`) gives every item
+the server mints a unique identity, and `ItemOwnershipRegistry`
+(`Assets/Scripts/Inventory/ItemOwnershipRegistry.cs:43`) is the single writer that maps each id to
+exactly one holder, so the same physical item can never end up in two bags.
+
+`OwnershipMove` (`:11`) is the outcome of one operation — `Ok` is the only success:
+
+| Operation | What it does | Line |
+|---|---|---|
+| `Grant(instanceId, holder)` | First grant wins; re-granting to the same holder is `Ok`, a second holder is `DuplicateDetected`. | `:64` |
+| `Transfer(instanceId, from, to)` | Atomically moves an id. `NotHeld` when `from` does not hold it; `DuplicateDetected` when `to` already does. | `:87` |
+| `Release(instanceId, holder)` | Forgets a consumed/destroyed/dropped item. Only the current holder may; anyone else gets `NotHeld`. | `:113` |
+| `TryGetOwner` / `IsHeldBy` / `Count` / `Clear` | Read helpers (owner lookup, ownership test, tracked count, wipe for tests). | `:132`, `:143`, `:49`, `:154` |
+
+The registry is lock-guarded, so "exactly one holder per id" holds even when calls arrive from
+different threads. That makes the in-process race impossible rather than merely unlikely; the
+**cross-process** race (two zones, one item) is settled on the backend by the version-guarded writes
+described in [14](14-server-authority-hardening.md#3-dupe-protection).
+
+Identity is **server-minted**: `ItemInstance.NewInstanceId()` (`:119`) is called only by
+`ItemInstance.Create` and the load path, so a client can never inject an id. For persistence,
+`ItemSaveData.InstanceId` (`PlayerSaveRecord.cs:24`) round-trips the id; `PlayerSaveMapper.Apply`
+mints a fresh one when an older save carries an empty id (`PlayerSaveMapper.cs:117`) and
+`ToSaveData` writes it back (`PlayerSaveMapper.cs:150`).
+
 ## Common tasks
 
 - **Add an item.** Create the asset (`Assets > Create > MMO > Item Definition`), name it, set the
@@ -278,3 +309,6 @@ table.
 - **Test an equip rule.** Use `InventoryValidator.CanEquip` directly, or `TestItemDefinitions.Create`
   to build an item in code and drive `TryEquip` on a fresh `PlayerInventory` (see
   [10-testing](10-testing.md)).
+- **Protect an item from duplication.** Route the mutation through `ItemOwnershipRegistry`
+  (`Grant` / `Transfer` / `Release`); a second holder for one id is refused. See
+  [14](14-server-authority-hardening.md#3-dupe-protection).

@@ -201,12 +201,15 @@ baker *and* by tests:
    `persistence.AttachTo(gate)` to give the gate its loader, and
    `gate.TransferTokenStore = tokenService.Store`.
 
-`PlayerPrefabFactory.Create` (`Assets/Scripts/Net/PlayerPrefabFactory.cs:72`) builds the player
+`PlayerPrefabFactory.Create` (`Assets/Scripts/Net/PlayerPrefabFactory.cs:73`) builds the player
 capsule and adds its components in a deliberate order: `NetworkObject`, then `PlayerStats`,
 `PlayerCombat`, `PlayerInventory`, `PlayerAbilities`, `PlayerGathering`, `PlayerCrafting`,
 `PlayerDeath` (the risk-tier resolver — it must come after the stats and inventory it reads),
-`PlayerSaveTrigger`, `PlayerParty`, `PlayerGuild`, and finally `LocalPlayerCamera`.
-`PlayerPrefabFactory.Attach` (`:181`) installs a FishNet `PlayerSpawner`, which is what actually
+`PlayerSaveTrigger`, `PlayerParty`, `PlayerGuild`, and `LocalPlayerCamera`. The
+`PlayerMover` is appended **last** (`:132`) so no earlier behaviour's NetworkBehaviour/RPC index
+shifts; it is the sole writer of the player's position (see [§7](#7-server-authoritative-movement)
+and [14](14-server-authority-hardening.md)).
+`PlayerPrefabFactory.Attach` (`:187`) installs a FishNet `PlayerSpawner`, which is what actually
 instantiates the player when the gate admits a connection.
 
 ## 5. Zone transfers
@@ -300,6 +303,28 @@ the loading screen.
 | Loader only | Join still succeeds; player spawns **fresh** (loader returns null). |
 | Token validator wired | Join is **refused** (validator fails closed). |
 | Transfer token | Join is refused unless the token consumes. |
+
+## 7. Server-authoritative movement
+
+Once the player is admitted, their position is still not theirs to set. `PlayerMover`
+(`Assets/Scripts/Gameplay/PlayerMover.cs:29`) is the **only** thing that writes it. A client sends an
+**input direction**, never a position:
+
+```
+client (owner)                            server (PlayerMover)
+  RequestMove(input) ─── ServerRpc ─────► RpcRequestMove(input, sender)
+   • non-owners get no RPC                  • re-check sender owns the object
+                                             • ApplyInput(input, dt)  (server integrates at MaxSpeed)
+                                             • MoveBy(dir * MaxSpeed * dt) → capture authoritative position
+```
+
+The input path carries no position, so there is nothing for a cheating client to inflate. Any
+message that *does* carry a position goes through `ApplyReportedPosition`, which judges it with the
+pure `MovementRules` and snaps an impossible delta back to the last server-observed position. Notable
+members: `RequestMove` (`:60`), `RpcRequestMove` (`:74`), `ApplyInput` (`:89`),
+`ApplyReportedPosition` (`:106`), `Teleport` (`:125`). The mover works with or without a
+`CharacterController`. See [14](14-server-authority-hardening.md#1-movement-is-server-authoritative)
+for the rules and the tests.
 
 ## Common tasks
 

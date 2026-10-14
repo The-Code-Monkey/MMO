@@ -90,7 +90,8 @@ The most useful pattern to understand is that almost every gameplay system is sp
 - A **pure core** — plain C# classes and static methods that take all of their inputs as arguments
   and never read a clock (`Time.time`), never touch Unity objects, and never touch the network.
   Examples: `AbilityCastRules`, `AbilityCooldownTracker`, `AbilityEffects`, `AbilityCaster`,
-  `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `GatheringRules`, `JoinPolicy`.
+  `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `GatheringRules`, `JoinPolicy`, and the
+  anti-cheat rules `MovementRules` and `SightRules` (see [14](14-server-authority-hardening.md)).
 - A **networked shell** — a FishNet `NetworkBehaviour` (a component that can replicate over the
   network) that holds the real clock and world references and calls into the pure core. Examples:
   `PlayerStats`, `PlayerInventory`, `PlayerAbilities`, `PlayerGathering`, `ResourceNode`,
@@ -221,6 +222,9 @@ This is the same picture the introduction drew, at the level of named classes.
 | **ScriptableObject** | A Unity asset that holds data (not behaviour) and can be edited in the Inspector. Used for abilities, weapons, armor, items and recipes. |
 | **Baker** | An editor menu command under `Tools > MMO` that builds a prefab or scene object for you. |
 | **CAS** | "Compare And Swap": read a record with a version, write it back expecting the same version. Used for social state. |
+| **InstanceId** | The server-minted unique id of one item instance. What the ownership registry tracks, so the same physical item cannot be held twice. |
+| **Ownership registry** | `ItemOwnershipRegistry`: the in-process, single-writer authority for who holds which item instance. |
+| **Line of sight** | Whether a server raycast reaches a target without a wall first. Checked before an attack or ability effect lands. |
 
 ## Common tasks
 
