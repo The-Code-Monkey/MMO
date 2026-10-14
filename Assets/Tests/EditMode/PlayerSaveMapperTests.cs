@@ -82,6 +82,38 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Capture_RoundTripsTheInstanceId()
+        {
+            ItemInstance sword = ItemInstance.Create(TestItemDefinitions.Create(SwordName), 0, 0);
+
+            PlayerSaveRecord record = Capture(bag: new[] { sword });
+
+            Assert.AreEqual(sword.InstanceId, record.Items[0].InstanceId);
+
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out _, out int skipped, out _);
+
+            Assert.AreEqual(0, skipped);
+            Assert.AreEqual(sword.InstanceId, bag[0].InstanceId,
+                "The same physical item must keep its identity across a save/load.");
+        }
+
+        [Test]
+        public void Apply_MintsAnInstanceIdForALegacySaveWithNone()
+        {
+            TestItemDefinitions.Create(SwordName);
+            var legacy = Saved(SwordName);
+            legacy.InstanceId = null;
+            var record = new PlayerSaveRecord { Items = { legacy } };
+
+            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out _, out int skipped, out _);
+
+            Assert.AreEqual(0, skipped);
+            Assert.AreEqual(1, bag.Count);
+            Assert.IsNotEmpty(bag[0].InstanceId,
+                "An item from a save written before instance ids existed enters the world with a fresh one.");
+        }
+
+        [Test]
         public void Capture_SkipsEmptyCellsAndVacantSlots()
         {
             ItemInstance sword = ItemInstance.Create(TestItemDefinitions.Create(SwordName), 0, 0);

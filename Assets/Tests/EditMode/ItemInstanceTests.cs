@@ -28,7 +28,7 @@ namespace MMO.Tests
         [Test]
         public void ItemInstance_HoldsPublicFieldsForTheWire()
         {
-            foreach (string name in new[] { "ItemName", "GridX", "GridY", "Width", "Height", "StackCount" })
+            foreach (string name in new[] { "ItemName", "InstanceId", "GridX", "GridY", "Width", "Height", "StackCount" })
             {
                 FieldInfo field = typeof(ItemInstance).GetField(name, BindingFlags.Instance | BindingFlags.Public);
 
@@ -89,6 +89,63 @@ namespace MMO.Tests
             // A null here would fabricate a nameless instance that reads as "empty" while still
             // sitting in a cell — corruption the grid would happily stack a second item on top of.
             Assert.Throws<ArgumentNullException>(() => ItemInstance.Create(null, 0, 0));
+        }
+
+        [Test]
+        public void ItemInstance_Create_AssignsAServerSideInstanceId()
+        {
+            ItemDefinition definition = CreateDefinition("Identity");
+
+            ItemInstance instance = ItemInstance.Create(definition, 0, 0);
+
+            Assert.IsNotNull(instance.InstanceId);
+            Assert.IsNotEmpty(instance.InstanceId);
+        }
+
+        [Test]
+        public void ItemInstance_Create_GivesEveryInstanceADistinctId()
+        {
+            ItemDefinition definition = CreateDefinition("Copies");
+
+            ItemInstance first = ItemInstance.Create(definition, 0, 0);
+            ItemInstance second = ItemInstance.Create(definition, 0, 0);
+
+            Assert.AreNotEqual(first.InstanceId, second.InstanceId,
+                "Two created items are two physical things; they must never share an identity.");
+        }
+
+        [Test]
+        public void ItemInstance_Empty_HasNoInstanceId()
+        {
+            Assert.IsTrue(string.IsNullOrEmpty(ItemInstance.Empty.InstanceId));
+            Assert.IsTrue(string.IsNullOrEmpty(default(ItemInstance).InstanceId));
+        }
+
+        [Test]
+        public void WithIdentity_AssignsAnIdToALegacyItemAndKeepsItStable()
+        {
+            var legacy = new ItemInstance { ItemName = "Old Sword" };
+
+            ItemInstance withIdentity = legacy.WithIdentity();
+
+            Assert.IsNotEmpty(withIdentity.InstanceId);
+            Assert.AreEqual(withIdentity.InstanceId, withIdentity.WithIdentity().InstanceId,
+                "An item that already has an identity must keep it across reloads.");
+        }
+
+        [Test]
+        public void WithIdentity_LeavesAnEmptyInstanceEmpty()
+        {
+            ItemInstance empty = ItemInstance.Empty.WithIdentity();
+
+            Assert.IsTrue(empty.IsEmpty);
+            Assert.IsTrue(string.IsNullOrEmpty(empty.InstanceId));
+        }
+
+        [Test]
+        public void NewInstanceId_IsUniquePerCall()
+        {
+            Assert.AreNotEqual(ItemInstance.NewInstanceId(), ItemInstance.NewInstanceId());
         }
 
         private ItemDefinition CreateDefinition(string name, int width = 1, int height = 1)

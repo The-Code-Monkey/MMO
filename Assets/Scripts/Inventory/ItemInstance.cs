@@ -29,6 +29,15 @@ namespace MMO.Inventory
         /// <summary>The <see cref="ItemDefinition.ItemName"/> key of the definition. Null or empty means no item.</summary>
         public string ItemName;
 
+        /// <summary>
+        /// The server-assigned identity of this instance, unique across the whole game and never
+        /// supplied by a client. It is what the single-writer <see cref="ItemOwnershipRegistry"/>
+        /// tracks, so the same item can never be granted to two holders — the structural half of
+        /// dupe protection. Null or empty means "no item" (an empty cell, or a legacy save entry
+        /// that has not been assigned an id on load yet).
+        /// </summary>
+        public string InstanceId;
+
         /// <summary>Left edge of the item's footprint in grid columns.</summary>
         public int GridX;
 
@@ -70,6 +79,7 @@ namespace MMO.Inventory
             return new ItemInstance
             {
                 ItemName = definition.ItemName,
+                InstanceId = NewInstanceId(),
                 GridX = gridX,
                 GridY = gridY,
                 Width = definition.GridWidth,
@@ -91,6 +101,7 @@ namespace MMO.Inventory
             return new ItemInstance
             {
                 ItemName = definition.ItemName,
+                InstanceId = NewInstanceId(),
                 GridX = gridX,
                 GridY = gridY,
                 Width = definition.GridWidth,
@@ -98,6 +109,29 @@ namespace MMO.Inventory
                 StackCount = count,
                 Durability = definition.MaxDurability,
             };
+        }
+
+        /// <summary>
+        /// Generates a fresh, server-side instance id. Only server code creates items, so a client
+        /// can never inject one; the id is a plain wire field purely so the server can recognise
+        /// the same physical item across containers and saves.
+        /// </summary>
+        public static string NewInstanceId()
+        {
+            return Guid.NewGuid().ToString("N");
+        }
+
+        /// <summary>
+        /// Returns this instance with a guaranteed identity: an empty instance is untouched, an
+        /// instance that already has an id keeps it, and a legacy instance with no id is assigned a
+        /// fresh one. Called when loading a save written before instance ids existed.
+        /// </summary>
+        public ItemInstance WithIdentity()
+        {
+            if (!IsEmpty && string.IsNullOrEmpty(InstanceId))
+                InstanceId = NewInstanceId();
+
+            return this;
         }
 
         public long GetTotalValue(ItemDefinition definition)

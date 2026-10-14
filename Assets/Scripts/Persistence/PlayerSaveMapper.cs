@@ -114,6 +114,7 @@ namespace MMO.Persistence
                 var instance = new ItemInstance
                 {
                     ItemName = saved.ItemName,
+                    InstanceId = string.IsNullOrEmpty(saved.InstanceId) ? ItemInstance.NewInstanceId() : saved.InstanceId,
                     GridX = saved.GridX,
                     GridY = saved.GridY,
                     Width = saved.Width,
@@ -146,6 +147,7 @@ namespace MMO.Persistence
             return new ItemSaveData
             {
                 ItemName = item.ItemName,
+                InstanceId = item.InstanceId,
                 GridX = item.GridX,
                 GridY = item.GridY,
                 Width = item.Width,
