@@ -56,8 +56,8 @@ namespace MMO.Gameplay
             if (currentMana < ability.ManaCost)
                 return AbilityCastResult.NotEnoughMana;
 
-            // A self-heal is cast on oneself, so there is no aimed-at point to be out of range of.
-            if (ability.Logic != AbilityLogic.SelfHeal && distanceToTarget > ability.CastRange)
+            // A self-heal or taunt is cast on oneself/the enemy, so there is no aimed-at point to be out of range of.
+            if (ability.Logic != AbilityLogic.SelfHeal && ability.Logic != AbilityLogic.Taunt && distanceToTarget > ability.CastRange)
                 return AbilityCastResult.OutOfRange;
 
             return AbilityCastResult.Success;

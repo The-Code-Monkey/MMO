@@ -156,6 +156,17 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Validate_SkipsTheRangeCheckForTaunt()
+        {
+            // Taunt targets an enemy, not a position the caster aims at; the distance is to the
+            // enemy, not the cursor, so it skips the range check like SelfHeal.
+            AbilityData taunt = NewAbility("Taunt", castRange: 0f, logic: AbilityLogic.Taunt);
+
+            Assert.AreEqual(AbilityCastResult.Success,
+                AbilityCastRules.Validate(0, Slots(taunt), new AbilityCooldownTracker(), 50, 999f, Now));
+        }
+
+        [Test]
         public void Validate_RangeChecksEveryNonSelfSkillIncludingUnknownLogics()
         {
             // An asset hand-edited to a logic value nobody has implemented still aimed

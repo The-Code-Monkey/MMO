@@ -210,13 +210,44 @@ namespace MMO.Gameplay
                 return;
             }
 
+            if (ability.Logic == AbilityLogic.Taunt)
+            {
+                ApplyTaunt(caster, cast.TargetPosition);
+                return;
+            }
+
             Vector3 origin = AbilityEffects.ResolveOrigin(ability.Logic, transform.position, cast.TargetPosition);
             List<PlayerStats> victims = AbilityEffects.SelectVictims(
-                origin, ability.EffectRadius, caster, FindObjectsByType<PlayerStats>(FindObjectsSortMode.None));
+                origin, ability.EffectRadius, caster, FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
 
             int power = AbilityEffects.ComputePower(ability);
             for (int i = 0; i < victims.Count; i++)
                 victims[i].TakeDamage(power);
+        }
+
+        /// <summary>
+        /// Applies a taunt effect: finds an EnemyBrain at the target position and forces it to target the caster.
+        /// </summary>
+        private void ApplyTaunt(PlayerStats caster, Vector3 targetPosition)
+        {
+            if (caster == null)
+                return;
+
+            // Find EnemyBrain near the target position
+            var enemies = FindObjectsByType<EnemyBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                EnemyBrain enemy = enemies[i];
+                if (enemy == null || !enemy.IsSpawned)
+                    continue;
+
+                float distance = Vector3.Distance(enemy.transform.position, targetPosition);
+                if (distance <= 5f) // Within effect radius of the taunt
+                {
+                    enemy.OnTaunted(caster.name);
+                    break; // Taunt affects the nearest enemy
+                }
+            }
         }
 
         private PlayerStats GetStats()

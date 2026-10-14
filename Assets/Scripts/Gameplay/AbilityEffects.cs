@@ -17,8 +17,8 @@ namespace MMO.Gameplay
     {
         /// <summary>
         /// The point an effect measures from. Targeted damage explodes where the caster aimed;
-        /// anything centred on the caster (cleaves, self-heals) uses the caster's own position,
-        /// so a client cannot choose an origin for them.
+        /// anything centred on the caster (cleaves, self-heals, taunt) uses the caster's own position,
+        /// so a client cannot choose an origin for them. Heal uses the target position like targeted damage.
         /// </summary>
         public static Vector3 ResolveOrigin(AbilityLogic logic, Vector3 casterPosition, Vector3 targetPosition)
         {
@@ -26,6 +26,7 @@ namespace MMO.Gameplay
             {
                 case AbilityLogic.AreaDamage:
                 case AbilityLogic.SelfHeal:
+                case AbilityLogic.Taunt:
                     return casterPosition;
                 default:
                     // Unknown enum values are hand-edited assets: treat them like the ranged

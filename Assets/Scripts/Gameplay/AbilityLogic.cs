@@ -7,7 +7,8 @@ namespace MMO.Gameplay
     /// class hierarchy, so the whole skill stays serializable into a <c>ScriptableObject</c>
     /// asset, diffable in YAML, and testable without spawning a single object. The shipped
     /// skills map onto it directly — Fireball is <see cref="TargetedDamage"/>, Cleave is
-    /// <see cref="AreaDamage"/>, and a potion-like self-heal is <see cref="SelfHeal"/>.
+    /// <see cref="AreaDamage"/>, a heal on others is <see cref="Heal"/>, and a potion-like self-heal is
+    /// <see cref="SelfHeal"/>.
     /// </summary>
     public enum AbilityLogic
     {
@@ -27,5 +28,15 @@ namespace MMO.Gameplay
         /// Heal the caster. Self-cast, so it skips the distance check entirely.
         /// </summary>
         SelfHeal = 2,
+
+        /// <summary>
+        /// Heal other targets within <c>EffectRadius</c> of the point the caster aimed at.
+        /// </summary>
+        Heal = 3,
+
+        /// <summary>
+        /// Taunt: force the enemy's threat table to target the caster. No damage or heal.
+        /// </summary>
+        Taunt = 4,
     }
 }
