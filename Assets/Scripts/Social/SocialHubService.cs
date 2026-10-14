@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using FishNet.Managing;
 using MMO.Auction;
 using MMO.Inventory;
+using MMO.Net;
 using MMO.Persistence;
 using UnityEngine;
 
@@ -58,6 +59,15 @@ namespace MMO.Social
         /// <summary>Configuration for which zones have auction houses (central trading hubs).</summary>
         [SerializeField] private AuctionHouseZoneConfig _auctionHouseZoneConfig;
 
+        /// <summary>Orchestrator control plane base URL (e.g., "http://127.0.0.1:8080").</summary>
+        [SerializeField] private string _orchestratorUrl = "http://127.0.0.1:8080";
+
+        /// <summary>Whether on-demand raid orchestration is enabled.</summary>
+        [SerializeField] private bool _orchestratorEnabled = true;
+
+        /// <summary>How long to wait for an orchestrated container to become healthy.</summary>
+        [SerializeField, Min(1f)] private float _orchestratorHealthTimeoutSeconds = 90f;
+
         private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
@@ -83,6 +93,8 @@ namespace MMO.Social
         private ISocialBus _socketBus;
         private ChatService _chat;
         private RaidInstanceService _raidService;
+        private RaidOrchestrationService _orchestrationService;
+        private IOrchestratorClient _orchestratorClient;
         private AuctionService _auctionService;
         private NetworkManager _manager;
         private bool _connected;
@@ -240,6 +252,23 @@ namespace MMO.Social
             _raidService = _raidRepository != null && _zoneRepository != null
                 ? new RaidInstanceService(_repository, _raidRepository, _zoneRepository, _casRetries)
                 : null;
+
+            // On-demand raid orchestration service (issue #61).
+            if (_orchestratorEnabled && _raidService != null)
+            {
+                _orchestratorClient = new HttpOrchestratorClient(_orchestratorUrl, _orchestratorEnabled);
+                _orchestrationService = new RaidOrchestrationService(
+                    _orchestratorClient,
+                    _zoneRepository,
+                    async (party, ct) => await _raidService.AllocateAsync(party.LeaderId),
+                    _orchestratorHealthTimeoutSeconds,
+                    _maxInstances);
+            }
+            else
+            {
+                _orchestratorClient = null;
+                _orchestrationService = null;
+            }
 
             // Auction service: requires REST client for RPC calls and repository for storage.
             _auctionService = _rest != null
@@ -2324,6 +2353,21 @@ namespace MMO.Social
         {
             if (_raidService == null)
                 return (RaidRule.BackendUnavailable, null);
+
+            // Use orchestration service if enabled, otherwise fall back to direct allocation.
+            if (_orchestrationService != null)
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(requesterId);
+                if (index == null || string.IsNullOrEmpty(index.PartyId))
+                    return (RaidRule.NoParty, null);
+
+                PartyRecord party = await _repository.LoadPartyAsync(index.PartyId);
+                var result = await _orchestrationService.EnterRaidAsync(party, CancellationToken.None);
+                if (result.Rule == RaidRule.Ok)
+                    await SyncAsync();
+                return result;
+            }
+
             var result = await _raidService.AllocateAsync(requesterId);
             if (result.Rule == RaidRule.Ok)
                 await SyncAsync();
@@ -2372,9 +2416,37 @@ namespace MMO.Social
         {
             if (_raidService == null)
                 return RaidRule.BackendUnavailable;
+
+            // Get the instance ID before completing, so we can teardown orchestrated instances.
+            string instanceId = null;
+            if (_orchestrationService != null)
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(requesterId);
+                if (index != null && !string.IsNullOrEmpty(index.PartyId))
+                {
+                    PartyRecord party = await _repository.LoadPartyAsync(index.PartyId);
+                    if (party != null)
+                        instanceId = party.RaidInstanceId;
+                }
+            }
+
             RaidRule rule = await _raidService.CompleteAsync(requesterId);
             if (rule == RaidRule.Ok)
+            {
                 await SyncAsync();
+
+                // Teardown orchestrated container if this was an orchestrated raid.
+                if (_orchestrationService != null && !string.IsNullOrEmpty(instanceId))
+                {
+                    // Check if this was an orchestrated instance by looking at the raid record's host zone.
+                    // Orchestrated instances have HostZoneId starting with "orchestrator-".
+                    RaidInstanceRecord raid = await _raidRepository.LoadRaidInstanceAsync(instanceId);
+                    if (raid != null && raid.HostZoneId != null && raid.HostZoneId.StartsWith("orchestrator-"))
+                    {
+                        await _orchestrationService.TeardownAsync(instanceId, CancellationToken.None);
+                    }
+                }
+            }
             return rule;
         }
 
