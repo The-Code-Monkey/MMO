@@ -60,6 +60,10 @@ namespace MMO.Social
 
                     party.RaidInstanceId = instance.InstanceId;
                     await _social.SavePartyAsync(party);
+
+                    // Only after the winning CAS: peers start the handoff before the next reconcile
+                    // tick. A lost CAS or a rule failure never reaches this line.
+                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, instance));
                     return (RaidRule.Ok, instance);
                 }
                 catch (StorageVersionConflictException)
@@ -110,6 +114,11 @@ namespace MMO.Social
                     string instanceId = party.RaidInstanceId;
                     party.RaidInstanceId = null;
                     await _social.SavePartyAsync(party);
+
+                    // Only after the winning CAS: peers clear their local raid handoff before the
+                    // next reconcile tick (feeds the return pass in #55).
+                    await SafeNotifyAsync(
+                        PartyRaidNotification(SocialNotificationKind.RaidCompleted, instanceId, party));
                     if (!string.IsNullOrEmpty(instanceId))
                         await _raids.DeleteRaidInstanceAsync(instanceId);
                     return RaidRule.Ok;
@@ -141,6 +150,8 @@ namespace MMO.Social
                 {
                     party.RaidInstanceId = null;
                     await _social.SavePartyAsync(party);
+                    await SafeNotifyAsync(
+                        PartyRaidNotification(SocialNotificationKind.RaidCompleted, instanceId, party));
                     await _raids.DeleteRaidInstanceAsync(instanceId);
                 }
             }
@@ -150,6 +161,59 @@ namespace MMO.Social
             catch (Exception e)
             {
                 Debug.LogError($"[Raid] Disband clear failed: {e.Message}");
+            }
+        }
+
+        private static SocialNotification RaidNotification(
+            SocialNotificationKind kind, RaidInstanceRecord instance)
+        {
+            var notification = new SocialNotification
+            {
+                Kind = kind,
+                RaidId = instance.InstanceId,
+                PartyId = instance.PartyId,
+                HostZoneId = instance.HostZoneId,
+            };
+
+            foreach (RaidInstanceMember member in instance.Members)
+                notification.AccountIds.Add(member.AccountId);
+
+            return notification;
+        }
+
+        private static SocialNotification PartyRaidNotification(
+            SocialNotificationKind kind, string instanceId, PartyRecord party)
+        {
+            var notification = new SocialNotification
+            {
+                Kind = kind,
+                RaidId = instanceId,
+                PartyId = party?.PartyId,
+            };
+
+            if (party?.Members != null)
+            {
+                foreach (PartyMemberRecord member in party.Members)
+                    notification.AccountIds.Add(member.AccountId);
+            }
+
+            return notification;
+        }
+
+        /// <summary>
+        /// Best-effort by contract: a failed notify must never fail the allocation, because the
+        /// reconcile pass (<c>SocialHubService.SyncAsync</c>) will converge every host within one
+        /// tick anyway (the fail-open posture from #36).
+        /// </summary>
+        private async Task SafeNotifyAsync(SocialNotification notification)
+        {
+            try
+            {
+                await _social.NotifySocialAsync(notification);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Raid] social_notify push failed; reconcile will converge. {e.Message}");
             }
         }
 

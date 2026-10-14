@@ -124,11 +124,108 @@ namespace MMO.Tests
             Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p1"].RaidInstanceId));
         }
 
+        [Test]
+        public async Task AllocateAsync_WinningCas_EmitsRaidAllocatedNotification()
+        {
+            SeedParty(_social, "a", 5);
+
+            var res = await _svc.AllocateAsync("a", "z1", "10.0.0.4", 7770);
+
+            Assert.AreEqual(RaidRule.Ok, res.Rule);
+            Assert.AreEqual(1, _social.Notifications.Count);
+            SocialNotification notification = _social.Notifications[0];
+            Assert.AreEqual(SocialNotificationKind.RaidAllocated, notification.Kind);
+            Assert.AreEqual(res.Instance.InstanceId, notification.RaidId);
+            Assert.AreEqual("p1", notification.PartyId);
+            Assert.AreEqual("z1", notification.HostZoneId);
+            Assert.AreEqual(5, notification.AccountIds.Count);
+        }
+
+        [Test]
+        public async Task AllocateAsync_RuleFailure_EmitsNothing()
+        {
+            SeedParty(_social, "a", 4);
+
+            var res = await _svc.AllocateAsync("a", "z1");
+
+            Assert.AreEqual(RaidRule.PartyTooSmall, res.Rule);
+            Assert.IsEmpty(_social.Notifications, "A rule failure must never reach the push.");
+        }
+
+        [Test]
+        public async Task AllocateAsync_LostCasRetries_EmitsExactlyOneNotification()
+        {
+            SeedParty(_social, "a", 5);
+            _social.ConflictOnNextPartySave = true;
+
+            var res = await _svc.AllocateAsync("a", "z1");
+
+            Assert.AreEqual(RaidRule.Ok, res.Rule);
+            Assert.AreEqual(
+                1,
+                _social.Notifications.FindAll(n => n.Kind == SocialNotificationKind.RaidAllocated).Count,
+                "Only the winning CAS may fire the push; a lost attempt must be silent.");
+        }
+
+        [Test]
+        public async Task AllocateAsync_NotifyFailure_DoesNotFailTheAllocation()
+        {
+            SeedParty(_social, "a", 5);
+            _social.ThrowOnNotify = true;
+
+            var res = await _svc.AllocateAsync("a", "z1");
+
+            Assert.AreEqual(RaidRule.Ok, res.Rule);
+            Assert.AreEqual(1, _raids.Instances.Count);
+        }
+
+        [Test]
+        public async Task AllocateAsync_CasExhausted_EmitsNothing()
+        {
+            SeedParty(_social, "a", 5);
+            _social.ConflictEveryPartySave = true;
+
+            var res = await _svc.AllocateAsync("a", "z1");
+
+            Assert.AreEqual(RaidRule.CasExhausted, res.Rule);
+            Assert.IsEmpty(_social.Notifications, "A never-winning CAS must never push.");
+            Assert.AreEqual(0, _raids.Instances.Count, "The orphan instance must be cleaned up.");
+        }
+
+        [Test]
+        public async Task CompleteAsync_WinningCas_EmitsRaidCompletedNotification()
+        {
+            SeedParty(_social, "a", 5);
+            var alloc = await _svc.AllocateAsync("a", "z1");
+            _social.Notifications.Clear();
+
+            RaidRule rule = await _svc.CompleteAsync("a");
+
+            Assert.AreEqual(RaidRule.Ok, rule);
+            Assert.AreEqual(1, _social.Notifications.Count);
+            Assert.AreEqual(SocialNotificationKind.RaidCompleted, _social.Notifications[0].Kind);
+            Assert.AreEqual(alloc.Instance.InstanceId, _social.Notifications[0].RaidId);
+        }
+
+        [Test]
+        public async Task CompleteAsync_RuleFailure_EmitsNothing()
+        {
+            SeedParty(_social, "a", 5);
+
+            RaidRule rule = await _svc.CompleteAsync("a");
+
+            Assert.AreEqual(RaidRule.RaidMissing, rule);
+            Assert.IsEmpty(_social.Notifications);
+        }
+
         private sealed class FakeSocialRepository : ISocialRepository
         {
             public readonly Dictionary<string, PartyRecord> Parties = new Dictionary<string, PartyRecord>();
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
+            public readonly List<SocialNotification> Notifications = new List<SocialNotification>();
             public bool ConflictOnNextPartySave;
+            public bool ConflictEveryPartySave;
+            public bool ThrowOnNotify;
             public int PartySaveCalls;
             private int _v;
 
@@ -145,6 +242,9 @@ namespace MMO.Tests
             public Task SavePartyAsync(PartyRecord record, CancellationToken ct = default)
             {
                 PartySaveCalls++;
+                if (ConflictEveryPartySave)
+                    return Task.FromException(new StorageVersionConflictException("x"));
+
                 if (ConflictOnNextPartySave)
                 {
                     ConflictOnNextPartySave = false;
@@ -177,6 +277,14 @@ namespace MMO.Tests
             public Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default) => Task.FromResult<GuildBankLedgerRecord>(null);
             public Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default) => Task.CompletedTask;
             public Task<List<PresenceRecord>> LoadPresencesAsync(IReadOnlyList<string> accountIds, CancellationToken ct = default) => Task.FromResult(new List<PresenceRecord>());
+            public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
+            {
+                if (ThrowOnNotify)
+                    return Task.FromException(new InvalidOperationException("notify down"));
+
+                Notifications.Add(notification);
+                return Task.CompletedTask;
+            }
         }
 
         private sealed class FakeRaidRepo : IRaidInstanceRepository

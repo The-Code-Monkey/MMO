@@ -545,6 +545,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, GuildBankRecord> GuildBanks = new Dictionary<string, GuildBankRecord>();
             public readonly Dictionary<string, GuildBankLedgerRecord> GuildBankLedgers = new Dictionary<string, GuildBankLedgerRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
+            public readonly List<SocialNotification> Notifications = new List<SocialNotification>();
 
             public bool ConflictOnNextIndexSave;
             public int IndexSaveCalls;
@@ -660,6 +661,12 @@ namespace MMO.Tests
                 }
 
                 return Task.FromResult(result);
+            }
+
+            public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
+            {
+                Notifications.Add(notification);
+                return Task.CompletedTask;
             }
 
             private static TValue Get<TValue>(Dictionary<string, TValue> store, string key)

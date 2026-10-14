@@ -172,6 +172,22 @@ namespace MMO.Persistence
             return response?.payload;
         }
 
+        /// <summary>
+        /// Calls a server-side Lua RPC and deserialises the module's own return value. The
+        /// <c>?unwrap</c> query makes Nakama answer with the raw payload object instead of wrapping
+        /// it as <c>{"payload":"&lt;json string&gt;"}</c>, so a module returning <c>{"ok":true}</c>
+        /// lands directly in <typeparamref name="TResponse"/>.
+        /// </summary>
+        public async Task<TResponse> CallRpcAsync<TResponse>(
+            string rpcId, string jsonPayload, CancellationToken ct)
+        {
+            RequireSession();
+            await GetFreshTokenAsync(ct);
+
+            return await PostAsync<TResponse>(
+                "/v2/rpc/" + rpcId + "?unwrap", jsonPayload, useBasic: false, ct);
+        }
+
         /// <summary>Reads one owned storage object, or null when it does not exist.</summary>
         public async Task<StorageObjectData> ReadObjectAsync(string collection, string key, CancellationToken ct)
         {

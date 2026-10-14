@@ -102,6 +102,62 @@ namespace MMO.Tests
             Assert.AreEqual(1, count, "A repeated sync must not re-ask a member already told to move.");
         }
 
+        [Test]
+        public async Task OnSocialNotification_RaidPush_StartsTheTransferBeforeTheNextTick()
+        {
+            SeedRaid("p1", "r1", "server-b", "a");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            _hub.RegisterLocal("a", "Alice");
+
+            string transferredTo = null;
+            _hub.RaidTransferRequested += (_, instance) => transferredTo = instance.InstanceId;
+
+            var notification = new SocialNotification
+            {
+                Kind = SocialNotificationKind.RaidAllocated,
+                RaidId = "r1",
+                PartyId = "p1",
+                HostZoneId = "server-b",
+                AccountIds = { "a" },
+            };
+
+            await _hub.OnSocialNotification(SocialNotification.FromEnvelope(
+                SocialNotification.ToEnvelope(notification)));
+
+            Assert.AreEqual("r1", transferredTo, "The push must funnel into the same reconcile path.");
+        }
+
+        [Test]
+        public async Task OnSocialNotification_NonRaidKind_DoesNothing()
+        {
+            SeedRaid("p1", "r1", "server-b", "a");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            _hub.RegisterLocal("a", "Alice");
+
+            bool raised = false;
+            _hub.RaidTransferRequested += (_, _) => raised = true;
+
+            await _hub.OnSocialNotification(null);
+
+            Assert.IsFalse(raised);
+        }
+
+        [Test]
+        public async Task MissedNotification_StillConvergesOnTheNextReconcile()
+        {
+            SeedRaid("p1", "r1", "server-b", "a");
+            _social.Indexes["a"] = new SocialIndexRecord { AccountId = "a", PartyId = "p1" };
+            _hub.RegisterLocal("a", "Alice");
+
+            string transferredTo = null;
+            _hub.RaidTransferRequested += (_, instance) => transferredTo = instance.InstanceId;
+
+            // No push is ever delivered; the poll path alone must move the member.
+            await _hub.SyncAsync();
+
+            Assert.AreEqual("r1", transferredTo, "A dropped push must still converge via the 2 s poll.");
+        }
+
         private sealed class FakeRaidRepository : IRaidInstanceRepository
         {
             public readonly Dictionary<string, RaidInstanceRecord> Instances = new Dictionary<string, RaidInstanceRecord>();
@@ -126,6 +182,7 @@ namespace MMO.Tests
         {
             public readonly Dictionary<string, PartyRecord> Parties = new Dictionary<string, PartyRecord>();
             public readonly Dictionary<string, SocialIndexRecord> Indexes = new Dictionary<string, SocialIndexRecord>();
+            public readonly List<SocialNotification> Notifications = new List<SocialNotification>();
 
             public Task<PartyRecord> LoadPartyAsync(string partyId, CancellationToken ct = default)
                 => Task.FromResult(Parties.TryGetValue(partyId, out PartyRecord p) ? Clone(p) : null);
@@ -197,8 +254,20 @@ namespace MMO.Tests
             public Task SaveGuildBankAsync(GuildBankRecord record, CancellationToken ct = default)
                 => Task.CompletedTask;
 
+            public Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default)
+                => Task.FromResult<GuildBankLedgerRecord>(null);
+
+            public Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default)
+                => Task.CompletedTask;
+
             public Task<List<PresenceRecord>> LoadPresencesAsync(IReadOnlyList<string> accountIds, CancellationToken ct = default)
                 => Task.FromResult(new List<PresenceRecord>());
+
+            public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
+            {
+                Notifications.Add(notification);
+                return Task.CompletedTask;
+            }
 
             private static T Clone<T>(T value) where T : class
                 => JsonUtility.FromJson<T>(JsonUtility.ToJson(value));

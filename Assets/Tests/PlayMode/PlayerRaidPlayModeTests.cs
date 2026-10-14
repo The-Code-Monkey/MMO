@@ -374,6 +374,12 @@ namespace MMO.Tests
                 return Task.CompletedTask;
             }
 
+            public Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default)
+                => Task.FromResult<GuildBankLedgerRecord>(null);
+
+            public Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default)
+                => Task.CompletedTask;
+
             public Task<List<PresenceRecord>> LoadPresencesAsync(
                 IReadOnlyList<string> accountIds, CancellationToken ct = default)
             {
@@ -386,6 +392,9 @@ namespace MMO.Tests
 
                 return Task.FromResult(result);
             }
+
+            public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
+                => Task.CompletedTask;
         }
     }
 }
