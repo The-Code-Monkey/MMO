@@ -10,7 +10,7 @@ namespace MMO.Net
     [Serializable]
     public sealed class MMOConnectionSettings
     {
-        public const ushort DefaultPort = 7770;
+        public const ushort DefaultPort = 7777;
         public const int DefaultMaxClients = 64;
         public const float DefaultHandshakeTimeoutSeconds = 5f;
 
