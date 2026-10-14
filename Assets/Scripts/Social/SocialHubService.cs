@@ -153,6 +153,15 @@ namespace MMO.Social
         /// <summary>Raised when a purchase is completed and the buyer receives the item.</summary>
         public event Action<string, AuctionTransactionRecord> AuctionPurchaseCompleted;
 
+        /// <summary>Raised when a new buy order is created by a local player.</summary>
+        public event Action<string, AuctionBuyOrderRecord> AuctionBuyOrderCreated;
+
+        /// <summary>Raised when a buy order is fulfilled (seller and buyer notified).</summary>
+        public event Action<string, string, AuctionBuyOrderRecord, AuctionTransactionRecord> AuctionBuyOrderFulfilled;
+
+        /// <summary>Raised when a buy order is cancelled by the buyer.</summary>
+        public event Action<string, AuctionBuyOrderRecord> AuctionBuyOrderCancelled;
+
         /// <summary>The zone label stamped into presence so a member's host zone can be resolved.</summary>
         public string ZoneId
         {
@@ -2239,6 +2248,24 @@ namespace MMO.Social
         internal void NotifyAuctionPurchaseCompleted(string buyerAccountId, AuctionTransactionRecord transaction)
         {
             AuctionPurchaseCompleted?.Invoke(buyerAccountId, transaction);
+        }
+
+        /// <summary>Notifies the buyer's client that their buy order was created.</summary>
+        internal void NotifyAuctionBuyOrderCreated(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
+        {
+            AuctionBuyOrderCreated?.Invoke(buyerAccountId, buyOrder);
+        }
+
+        /// <summary>Notifies both seller and buyer that a buy order was fulfilled.</summary>
+        internal void NotifyAuctionBuyOrderFulfilled(string sellerAccountId, string buyerAccountId, AuctionBuyOrderRecord buyOrder, AuctionTransactionRecord transaction)
+        {
+            AuctionBuyOrderFulfilled?.Invoke(sellerAccountId, buyerAccountId, buyOrder, transaction);
+        }
+
+        /// <summary>Notifies the buyer that their buy order was cancelled.</summary>
+        internal void NotifyAuctionBuyOrderCancelled(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
+        {
+            AuctionBuyOrderCancelled?.Invoke(buyerAccountId, buyOrder);
         }
 
         private async Task<PartyRule> RetryPartyAsync(Func<Task<PartyRule>> attempt)
