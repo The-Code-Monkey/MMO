@@ -157,6 +157,38 @@ enabled scene is missing one. This is split into a pure rule and an editor hook:
 `CollectSceneInfo` (`NetworkManagerBuildGuard.cs:29`) opens each enabled build scene additively,
 checks it with `NetworkManagerSceneBaker.TryFind`, and closes it.
 
+## 5a. Launching a dedicated zone server
+
+The build contains every scene (MainMenu first, then the zones), so a bare launch would sit on the
+menu. Passing `-zone <name>` turns the same binary into a dedicated zone server:
+
+```
+server.x86_64 -zone Tutorial     # listens on 7772
+server.x86_64 -zone SafeZone     # listens on 7770
+server.x86_64 -zone Wilderness   # listens on 7771
+```
+
+The launch is a two-step handshake between two existing components, so no scene needs re-baking:
+
+1. `MainMenuBootstrap.TryRedirectToZone` (`Assets/Scripts/Bootstrap/MainMenuBootstrap.cs`) parses the
+   switch with `DedicatedServerArgs.ParseZone`, confirms the name is an enabled build scene, calls
+   `DedicatedServerMode.Enable(zone)` and `SceneManager.LoadScene(zone)` — and returns before any menu
+   UI or Nakama login is wired. An unknown zone name logs an error and quits with code 1.
+2. The loaded zone scene's `WorldBootstrap.Start` sees `DedicatedServerMode.IsActive` and calls
+   `ServerManager.StartConnection()`, which opens the zone's baked port and spawns the world.
+
+`DedicatedServerMode` is the process-wide switch that keeps a *client* build honest: a client that
+loads a zone scene (FishNet syncs the scene to clients) never set the flag, so it never opens a
+server of its own. `DedicatedServerArgs.ParseZone` and `DedicatedServerMode` are pure and unit tested
+(`DedicatedServerLaunchTests`). The repo-root `run-servers.sh` wraps the per-zone launches into one
+command (see [02](02-getting-started.md#option-d--a-dedicated-zone-server)).
+
+Every baked zone scene carries **SO_REUSEADDR** on its Tugboat socket (`_reuseAddress: 1`, set by
+`ZoneSceneBaker.EnableTransportReuseAddress` — FishNet exposes the flag only as a private serialized
+field with no public setter). Without it, a quick restart leaves TIME_WAIT sockets on the zone port
+that make the next bind fail with "Address already in use", leaving the zone silently offline.
+`run-servers.sh` also kills any process already holding a zone's port before launching.
+
 ## 6. How a fresh zone scene comes together
 
 ```

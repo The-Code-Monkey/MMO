@@ -92,6 +92,24 @@ ever overwritten. This is how tests run.
 You do not need Docker for tests. Open **Window > General > Test Runner**, then click **Run All**.
 See [10-testing](10-testing.md) for the full story.
 
+### Option D — a dedicated zone server
+
+A zone server is the same binary as the client. Build it with **File > Build Settings**, switch the
+platform to **Linux Server** (or **Dedicated Server**) and press **Build**. The project ships a
+launcher script, `run-servers.sh`, that boots the servers for you:
+
+```sh
+./run-servers.sh              # every zone (SafeZone 7770, Wilderness 7771, Tutorial 7772)
+./run-servers.sh Tutorial     # just one zone
+./run-servers.sh --list       # print the known zone names
+```
+
+The script starts `./build/server.x86_64` once per zone (override the path with `SERVER_BINARY` or
+`--binary <path>`), writes each server's log to `zone-<name>.log`, and stops every process on
+Ctrl+C. Run the servers **before** signing in from the editor client; the Main Menu's default zone
+is the Tutorial, so a first login lands on port `7772`.
+
+
 ## 6. Bake the scenes you need
 
 The repository holds the source code, but the scene objects and prefabs are produced by editor menu

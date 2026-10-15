@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using FishNet.Component.Spawning;
 using FishNet.Managing;
+using FishNet.Transporting.Tugboat;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Net;
@@ -199,6 +200,7 @@ namespace MMO.Editor
 
             NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(settings);
             ConfigureZoneIdentity(manager, serverId, templateId, port);
+            EnableTransportReuseAddress(manager);
 
             // NetworkManagerFactory attaches a fixed single target-dummy spawner and
             // crafting-station spawner so a bare dev scene has one of each. A zone authors those —
@@ -262,6 +264,25 @@ namespace MMO.Editor
         }
 
         // ---- Zone identity -------------------------------------------------
+
+        /// <summary>
+        /// Turns on <c>SO_REUSEADDR</c> for the zone's Tugboat socket. Tugboat exposes this only as
+        /// a private serialized field (<c>_reuseAddress</c>, no public setter) and defaults it to
+        /// off, so a dedicated server restarted while sockets from the previous run are still in
+        /// TIME_WAIT fails to bind its port with "Address already in use" and the zone silently
+        /// comes up offline. Baking the flag into every zone scene makes rebinding the port a
+        /// property of the scene rather than something each launch has to arrange.
+        /// </summary>
+        private static void EnableTransportReuseAddress(NetworkManager manager)
+        {
+            var tugboat = manager.GetComponent<Tugboat>();
+            if (tugboat == null)
+                return;
+
+            var serialized = new SerializedObject(tugboat);
+            serialized.FindProperty("_reuseAddress").boolValue = true;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
 
         private static void ConfigureZoneIdentity(NetworkManager manager, string serverId, string templateId, ushort port)
         {

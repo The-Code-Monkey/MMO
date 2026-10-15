@@ -64,6 +64,29 @@ namespace MMO.Net
             Subscribe();
         }
 
+        private void Start()
+        {
+            // A dedicated-server process was started with `-zone <name>`; the launcher set this
+            // flag and loaded this zone scene, so start the FishNet listener now. A client build
+            // loading the same scene (FishNet syncs scenes to clients) leaves the flag false and
+            // never opens a server of its own.
+            if (!DedicatedServerMode.IsActive)
+                return;
+
+            if (_manager == null)
+            {
+                Debug.LogError($"[DedicatedServer] {nameof(WorldBootstrap)}: no NetworkManager found; cannot start the zone server.");
+                return;
+            }
+
+            if (_manager.IsServerStarted)
+                return;
+
+            Debug.Log($"[DedicatedServer] Starting '{DedicatedServerMode.ZoneName}' zone server...");
+            if (!_manager.ServerManager.StartConnection())
+                Debug.LogError("[DedicatedServer] StartConnection() returned false.");
+        }
+
         private void Update()
         {
             if (_manager == null)
