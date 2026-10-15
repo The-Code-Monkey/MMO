@@ -28,6 +28,7 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Create Local Camera` | `LocalCameraBaker` | Adds the Cinemachine-based local camera rig to the scene. |
 | `Tools > MMO > Create NetworkManager In Scene` | `NetworkManagerSceneBaker` | Drops a fully wired `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Main Menu Scene` | `MainMenuSceneBaker` | Rebuilds `Assets/Scenes/MainMenu.unity` with a token-auth manager and the bootstrap. |
+| `Tools > MMO > Build Zones` | `ZoneSceneBaker` | Rebuilds `Assets/Scenes/SafeZone.unity` and `Assets/Scenes/Wilderness.unity` from the graybox prefab kit and registers both in Build Settings. |
 
 ## 3. The prefab bakers
 
@@ -92,6 +93,24 @@ bootstrap builds it at runtime.
 creates one via `LocalCameraRigFactory.Create()`, registers an undo step, and marks the scene dirty.
 `Validate` (`:99`) checks the Cinemachine parts are present.
 
+### ZoneSceneBaker
+
+`Assets/Editor/ZoneSceneBaker.cs`. `BuildBoth` (`Tools > MMO > Build Zones`) assembles the two
+always-on zones — a walkable `SafeZone` town and a hostile `Wilderness` — each as a **self-contained
+zone server**. `BuildSafeZone`/`BuildWilderness` build one scene each; `ZoneSceneBakerTests` covers
+both. Every scene gets a baked `NetworkManager` (via `NetworkManagerSceneBaker.CreateInActiveScene`,
+token auth on, its own port), an authored camera rig, a `ZoneRiskConfig` (`Safe` / `Red`, plus red
+hazard volumes in the wilderness), four spawn points wired into the `PlayerSpawner`, and one
+`ZoneTransferTrigger` road to the other zone (`server-a:7770` ⇄ `server-b:7771`). The zone's
+`SocialHubService.ZoneId` and raid-registry host/port/template are set so the two servers are
+addressable and distinct, and both scenes are added to Build Settings so the `NetworkManager` build
+guard checks them.
+
+Geometry is assembled with `PrefabUtility.InstantiatePrefab` over the primitive **graybox prefab kit**
+in `Assets/Prefabs/Graybox` — plain built-in-mesh prefabs, deliberately **not** ProBuilder. The baker
+is idempotent: a second run regenerates the same scene (the wilderness scatter uses a fixed random
+seed) rather than duplicating geometry or managers.
+
 ### UrpSetupBaker
 
 `Assets/Editor/UrpSetupBaker.cs:22`. `EnsureUrp` (`:52`) loads or creates the
@@ -129,6 +148,17 @@ Or, for the main menu specifically:
 ```
 Tools > MMO > Create Main Menu Scene
 ```
+
+Or, for the always-on zone pair (town + wilderness) at once:
+
+```
+Tools > MMO > Build Zones
+```
+
+`Build Zones` is the one-shot path from the "fresh zone scene" recipe above, repeated for both zones
+and wired to each other: it bakes the `NetworkManager`, assembles the ground/boundary/buildings (or
+scatter + hazards) from the graybox prefab kit, drops the spawn points and the `ZoneRiskConfig`, adds
+the cross-zone `ZoneTransferTrigger`, saves both scenes and registers them in Build Settings.
 
 ## Common tasks
 
