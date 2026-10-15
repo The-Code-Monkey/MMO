@@ -131,6 +131,5 @@ A clean run prints **no `error CS` lines**. Warnings (`CS0618` obsolete `IsServe
 - To execute the suites, activate a license (`unity license activate`) or let
   [`.github/workflows/unity-tests.yml`](.github/workflows/unity-tests.yml) run EditMode + PlayMode
   on a licensed runner. That is the only source of truth for passing tests.
-- Every `.cs` must ship a sibling `.meta` (`fileFormatVersion: 2` + a unique `guid`); Unity generates
-  them on import, but committing them keeps GUIDs stable. Generate one per new file when working
-  without an editor.
+- **Do not commit `.meta` files.** `Assets/**/*.meta` is gitignored; let Unity generate them on
+  import and leave them untracked.
