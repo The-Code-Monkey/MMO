@@ -2,11 +2,23 @@ const http = require('http');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { randomBytes } = require('crypto');
+const { createPortAllocator } = require('./portAllocator');
 
 const PORT = process.env.PORT || 8080;
 const RAID_IMAGE = process.env.RAID_IMAGE || 'mmo-raid-server:local';
 const HEALTH_TIMEOUT_SECONDS = parseInt(process.env.HEALTH_TIMEOUT_SECONDS || '90', 10);
 const DEFAULT_RAID_PORT = parseInt(process.env.DEFAULT_RAID_PORT || '7777', 10);
+const RAID_PORT_RANGE_START = parseInt(process.env.RAID_PORT_RANGE_START || '7800', 10);
+const RAID_PORT_RANGE_END = parseInt(process.env.RAID_PORT_RANGE_END || '7899', 10);
+
+// Deterministic host ports, lowest free first. `-p 0:<port>` used to let Docker pick an ephemeral
+// port per container; that port became the players' zone address and died with the `--rm`
+// container, leaving stale `last_zone` records pointing at nothing. A fixed range keeps zone
+// addresses meaningful (and greppable) for the life of the instance.
+const hostPorts = createPortAllocator({
+    start: RAID_PORT_RANGE_START,
+    end: RAID_PORT_RANGE_END,
+});
 
 const instances = new Map();
 
@@ -28,7 +40,7 @@ function runDocker(args) {
     });
 }
 
-async function startContainer(instanceId, raidId, buildRef, zoneTemplateId, tokenSecret) {
+async function startContainer(instanceId, raidId, buildRef, zoneTemplateId, tokenSecret, hostPort) {
     const containerName = `mmo-raid-${instanceId}`;
     const env = [
         `RAID_INSTANCE_ID=${raidId}`,
@@ -40,7 +52,7 @@ async function startContainer(instanceId, raidId, buildRef, zoneTemplateId, toke
     const args = [
         'run', '-d', '--rm',
         '--name', containerName,
-        '-p', `0:${DEFAULT_RAID_PORT}`,
+        '-p', `${hostPort}:${DEFAULT_RAID_PORT}`,
     ];
 
     for (const e of env) {
@@ -54,20 +66,6 @@ async function startContainer(instanceId, raidId, buildRef, zoneTemplateId, toke
         return { containerId, containerName };
     } catch (err) {
         throw new Error(`Failed to start container: ${err.message}`);
-    }
-}
-
-async function getContainerHostPort(containerName) {
-    try {
-        const inspect = await runDocker(['inspect', containerName]);
-        const data = JSON.parse(inspect);
-        const bindings = data[0]?.NetworkSettings?.Ports?.[`${DEFAULT_RAID_PORT}/tcp`];
-        if (bindings && bindings.length > 0) {
-            return bindings[0].HostPort;
-        }
-        return null;
-    } catch {
-        return null;
     }
 }
 
@@ -124,11 +122,27 @@ const server = http.createServer(async (req, res) => {
                 return sendJson(res, 400, { error: 'raidId, zoneTemplateId, and tokenSecret are required' });
             }
 
+            let hostPort;
+            try {
+                hostPort = await hostPorts.allocate();
+            } catch (err) {
+                return sendJson(res, 503, { error: err.message });
+            }
+
             const instanceId = generateInstanceId();
-            const handle = { instanceId, raidId, buildRef, zoneTemplateId, tokenSecret, state: 'Requested', createdAt: Date.now() };
+            const handle = {
+                instanceId,
+                raidId,
+                buildRef,
+                zoneTemplateId,
+                tokenSecret,
+                hostPort,
+                state: 'Requested',
+                createdAt: Date.now(),
+            };
             instances.set(instanceId, handle);
 
-            startContainer(instanceId, raidId, buildRef || RAID_IMAGE, zoneTemplateId, tokenSecret)
+            startContainer(instanceId, raidId, buildRef || RAID_IMAGE, zoneTemplateId, tokenSecret, hostPort)
                 .then(({ containerId, containerName }) => {
                     handle.containerId = containerId;
                     handle.containerName = containerName;
@@ -137,6 +151,7 @@ const server = http.createServer(async (req, res) => {
                 .catch(err => {
                     handle.state = 'Failed';
                     handle.error = err.message;
+                    hostPorts.release(hostPort);
                     console.error(`[orchestrator] Failed to start container for ${instanceId}:`, err.message);
                 });
 
@@ -155,13 +170,11 @@ const server = http.createServer(async (req, res) => {
                 if (handle.containerName) {
                     const health = await getContainerHealth(handle.containerName);
                     if (health === 'healthy') {
-                        const hostPort = await getContainerHostPort(handle.containerName);
-                        if (hostPort) {
-                            handle.hostPort = parseInt(hostPort, 10);
-                            handle.state = 'Healthy';
-                        }
+                        handle.state = 'Healthy';
                     } else if (health === 'unhealthy') {
                         handle.state = 'Failed';
+                        await stopContainer(handle.containerName);
+                        hostPorts.release(handle.hostPort);
                     }
                 }
 
@@ -171,6 +184,7 @@ const server = http.createServer(async (req, res) => {
                     if (handle.containerName) {
                         await stopContainer(handle.containerName);
                     }
+                    hostPorts.release(handle.hostPort);
                 }
             }
 
@@ -207,6 +221,7 @@ const server = http.createServer(async (req, res) => {
             if (handle.containerName) {
                 await stopContainer(handle.containerName);
             }
+            hostPorts.release(handle.hostPort);
 
             instances.delete(instanceId);
             return sendJson(res, 200, { state: 'stopped', instanceId });
@@ -227,4 +242,5 @@ server.listen(PORT, () => {
     console.log(`[orchestrator] Listening on port ${PORT}`);
     console.log(`[orchestrator] RAID_IMAGE=${RAID_IMAGE}`);
     console.log(`[orchestrator] HEALTH_TIMEOUT_SECONDS=${HEALTH_TIMEOUT_SECONDS}`);
+    console.log(`[orchestrator] Raid host ports: ${RAID_PORT_RANGE_START}-${RAID_PORT_RANGE_END} (container port ${DEFAULT_RAID_PORT})`);
 });

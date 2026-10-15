@@ -126,7 +126,7 @@ Notes:
 
 ## 5. PlayMode specifics
 
-- `NetworkManagerTestHelper.TestPort = 7979` (`:22`) — away from the shipped 7770 so tests do not
+- `NetworkManagerTestHelper.TestPort = 7979` (`:22`) — away from the shipped 7777 so tests do not
   collide with a running editor server.
 - `TestHandshakeTimeoutSeconds = 30f` (`:28`) — a generous CI timeout.
 - Waiting is done by polling frames with a cap (for example `WaitForPlayerObject` polls up to 600

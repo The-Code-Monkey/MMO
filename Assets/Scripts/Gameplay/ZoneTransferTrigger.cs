@@ -35,7 +35,7 @@ namespace MMO.Gameplay
         public const string DefaultTargetHost = "127.0.0.1";
 
         /// <summary>Destination port used when the inspector value is zero.</summary>
-        public const ushort DefaultTargetPort = 7770;
+        public const ushort DefaultTargetPort = 7777;
 
         [Header("Destination")]
         [SerializeField] private string _targetHost = DefaultTargetHost;
