@@ -25,7 +25,7 @@ namespace MMO.Tests
         [Test]
         public void Defaults_AreDocumentedValues()
         {
-            Assert.AreEqual((ushort)7770, MMOConnectionSettings.DefaultPort);
+            Assert.AreEqual((ushort)7777, MMOConnectionSettings.DefaultPort);
             Assert.AreEqual(64, MMOConnectionSettings.DefaultMaxClients);
             Assert.AreEqual(5f, MMOConnectionSettings.DefaultHandshakeTimeoutSeconds);
         }

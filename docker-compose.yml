@@ -49,6 +49,11 @@ services:
     environment:
       RAID_IMAGE: mmo-raid-server:local
       HEALTH_TIMEOUT_SECONDS: "90"
+      # Deterministic host-port range for raid instances (lowest free first). Replaces the old
+      # `-p 0:7777` ephemeral mapping, whose random port became a dead zone address once the
+      # container was torn down.
+      RAID_PORT_RANGE_START: "7800"
+      RAID_PORT_RANGE_END: "7899"
     restart: unless-stopped
 
 volumes:

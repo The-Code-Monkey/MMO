@@ -133,6 +133,65 @@ namespace MMO.Tests
         }
 
         [UnityTest]
+        public IEnumerator StaleStoredZone_FallsBackToTheMenuDefaultZone_AndRecordsIt()
+        {
+            // A stored zone can point at a raid container that has since been torn down; its
+            // port is then dead forever. The menu default zone is live.
+            var staleRaid = LastZoneInfo.Create("127.0.0.1", 1);
+            var fallback = LastZoneInfo.Create("127.0.0.1", NetworkManagerTestHelper.TestPort);
+            Assert.IsTrue(_manager.ServerManager.StartConnection(), "Zone server failed to start.");
+            yield return null;
+
+            _gateway.OnLogin = (_, _, _) => FakeApiGateway.Success("tok-1", "user-1", "Bob", staleRaid);
+
+            Task<LoginResult> task = _connector.LoginAndConnectAsync("Bob", "password123", fallback);
+            yield return new WaitForTask(task);
+
+            LoginResult result = task.GetAwaiter().GetResult();
+            Assert.IsTrue(result.Success,
+                "An unreachable stored zone must fall back to the menu's default zone.");
+            Assert.AreEqual(fallback.Port, _gateway.SavedZone.Port,
+                "The fallback is what was reached, so the fallback is what gets recorded.");
+            Assert.AreEqual(1, _gateway.SaveCalls);
+        }
+
+        [UnityTest]
+        public IEnumerator StaleStoredZone_AndDeadFallback_FailsWithoutRecordingAnything()
+        {
+            var staleRaid = LastZoneInfo.Create("127.0.0.1", 1);
+            var deadFallback = LastZoneInfo.Create("127.0.0.1", 2);
+            _gateway.OnLogin = (_, _, _) => FakeApiGateway.Success("tok-1", "user-1", "Bob", staleRaid);
+
+            Task<LoginResult> task = _connector.LoginAndConnectAsync("Bob", "password123", deadFallback);
+            yield return new WaitForTask(task);
+
+            LoginResult result = task.GetAwaiter().GetResult();
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual("Could not reach the zone server. Try again.", result.Error);
+            Assert.AreEqual(0, _gateway.SaveCalls,
+                "Neither zone was reached, so nothing may be recorded.");
+            Assert.IsFalse(_manager.IsClientStarted);
+        }
+
+        [UnityTest]
+        public IEnumerator StoredZoneEqualToFallback_Unreachable_FailsWithoutRetry()
+        {
+            // Retrying against the very zone that just failed is pointless; the connector must
+            // not burn a second attempt when stored zone and fallback are the same place.
+            var zone = LastZoneInfo.Create("127.0.0.1", 1);
+            _gateway.OnLogin = (_, _, _) => FakeApiGateway.Success("tok-1", "user-1", "Bob", zone);
+
+            Task<LoginResult> task = _connector.LoginAndConnectAsync("Bob", "password123", zone);
+            yield return new WaitForTask(task);
+
+            LoginResult result = task.GetAwaiter().GetResult();
+            Assert.IsFalse(result.Success);
+            Assert.AreEqual(1, _gateway.LoginCalls);
+            Assert.AreEqual(0, _gateway.SaveCalls);
+            Assert.IsFalse(_manager.IsClientStarted);
+        }
+
+        [UnityTest]
         public IEnumerator InvalidCredentials_FailBeforeAnyConnectionAttempt()
         {
             _gateway.OnLogin = (_, _, _) => FakeApiGateway.Failure("Invalid credentials.");

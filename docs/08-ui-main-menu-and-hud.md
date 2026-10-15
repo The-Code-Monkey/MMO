@@ -67,17 +67,22 @@ does the end-to-end flow:
 1. Refuse if already busy; set `IsBusy`.
 2. Validate the input with `AuthRules.Validate` — fail fast on a bad username/password.
 3. `_gateway.LoginAsync(username, password)` — authenticate against the backend.
-4. If the result has a valid last zone, use it; otherwise use the fallback. `ApplyZone` (`:133`)
+4. If the result has a valid last zone, use it; otherwise use the fallback. `ApplyZone` (`:140`)
    points the transport at the address/port.
 5. If a `JoinRequestClient` exists, hand it the session token and player name.
 6. `ClientManager.StartConnection()`.
-7. `WaitForAdmissionAsync` (`:190`) — wait until FishNet reports the client **authenticated**.
+7. `WaitForAdmissionAsync` (`:224`) — wait until FishNet reports the client **authenticated**.
    Important detail: FishNet's "Started" state fires before the join gate admits you, so admission is
    signalled by `OnAuthenticated`, not by "started".
-8. `RecordZoneAsync` (`:151`) — write the `last_zone` record now that the connection is admitted.
-9. Return success.
+8. If that attempt failed *and* the zone tried was a stored one that differs from the menu default,
+   retry once against the default (`ShouldRetryFallbackZone`, `:178`). A stored zone can outlive
+   the server it names — orchestrated raids are ephemeral containers — so the stale record heals
+   itself instead of blocking the login.
+9. `RecordZoneAsync` (`:185`) — write the `last_zone` record now that the connection is admitted;
+   whichever zone actually admitted (stored or fallback) is what gets recorded.
+10. Return success.
 
-The admission timeout is `AdmissionTimeoutMilliseconds = 10000` (`:29`).
+The admission timeout is `AdmissionTimeoutMilliseconds = 10000` (`:36`) per attempt.
 
 ### Connection buttons
 
@@ -176,6 +181,7 @@ Play MainMenu scene
          JoinRequestClient.SetAuthToken
          ClientManager.StartConnection
          wait for OnAuthenticated      (the gate admitted us)
+         ↳ stored zone failed? retry the menu default once
          gateway.SaveLastZoneAsync     (record last_zone)
     → status line updates; on success the player spawns in the zone
 ```

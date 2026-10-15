@@ -247,7 +247,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: MMO.Runtime::MMO.Bootstrap.MainMenuBootstrap
   _networkManager: {fileID: 1440899969}
   _defaultZoneIp: 127.0.0.1
-  _defaultZonePort: 7770
+  _defaultZonePort: 7777
 --- !u!4 &624710164
 Transform:
   m_ObjectHideFlags: 0
@@ -575,7 +575,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Net.MMOConnectionGate
   _settings:
-    _port: 7770
+    _port: 7777
     _maxClients: 64
     _handshakeTimeoutSeconds: 5
     _maintenanceMode: 0
@@ -600,7 +600,7 @@ MonoBehaviour:
   _ipv4BindAddress: 
   _enableIpv6: 1
   _ipv6BindAddress: 
-  _port: 7770
+  _port: 7777
   _maximumClients: 64
   _clientAddress: localhost
 --- !u!4 &1440899981

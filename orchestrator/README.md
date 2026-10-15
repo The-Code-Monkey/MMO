@@ -38,7 +38,7 @@ Get the status of a raid instance.
   "zoneTemplateId": "raid",
   "startedAt": 1700000000000,
   "host": "host.docker.internal",
-  "port": 32768
+  "port": 7800
 }
 ```
 
@@ -82,6 +82,15 @@ Health check endpoint.
 | `RAID_IMAGE` | `mmo-raid-server:local` | Docker image to run for raid instances |
 | `HEALTH_TIMEOUT_SECONDS` | `90` | Max seconds to wait for container to become healthy |
 | `DEFAULT_RAID_PORT` | `7777` | Port the raid server listens on inside the container |
+| `RAID_PORT_RANGE_START` | `7800` | First host port of the raid publish range |
+| `RAID_PORT_RANGE_END` | `7899` | Last host port of the raid publish range |
+
+Raid containers are published with a **deterministic** host port (`-p <allocated>:7777`), taken
+lowest-free-first from the `RAID_PORT_RANGE_START`–`RAID_PORT_RANGE_END` range and verified free
+with a bind probe. This replaces the old `-p 0:7777` ephemeral mapping: a random Docker port was
+handed to players as their zone address, but the container is `--rm`, so the port died with it and
+clients' persisted `last_zone` records kept pointing at nothing. The port is released back to the
+pool when an instance stops, fails, or times out.
 
 ## Docker Compose Integration
 
@@ -98,6 +107,8 @@ services:
     environment:
       RAID_IMAGE: mmo-raid-server:local
       HEALTH_TIMEOUT_SECONDS: "90"
+      RAID_PORT_RANGE_START: "7800"
+      RAID_PORT_RANGE_END: "7899"
     restart: unless-stopped
 ```
 
@@ -141,7 +152,7 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=12 \
 ENTRYPOINT ["./MmoRaidServer"]
 ```
 
-The orchestrator polls `docker inspect` for the container's health status. When it becomes `healthy`, the published host port is resolved and returned.
+The orchestrator polls `docker inspect` for the container's health status. When it becomes `healthy`, the instance is marked `Healthy` and the allocated host port (from the configured range) is returned.
 
 ## Security Notes
 

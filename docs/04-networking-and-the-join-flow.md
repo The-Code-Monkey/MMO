@@ -65,7 +65,7 @@ Client                                   Server (MMOConnectionGate)             
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `Port` | 7770 | The zone's TCP port. |
+| `Port` | 7777 | The zone's TCP port. |
 | `MaxClients` | 64 | Server capacity; joins are refused when full. |
 | `HandshakeTimeoutSeconds` | 5 | How long a parked connection may take to identify itself. |
 | `MaintenanceMode` | false | Refuse everyone (except via the allow list). |

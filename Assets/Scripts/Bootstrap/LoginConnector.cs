@@ -18,6 +18,13 @@ namespace MMO.Bootstrap
     /// a server-verified fact, never a guess.
     ///
     /// <para>
+    /// A stored zone can outlive the server it names: orchestrated raids are ephemeral containers,
+    /// so the recorded address may be dead by the next login. When a <em>stored</em> zone fails and
+    /// the menu supplied a different default zone, the connector retries once against that default
+    /// and records whichever zone actually admitted it — the stale answer heals itself.
+    /// </para>
+    ///
+    /// <para>
     /// Everything is one awaited method on a plain class so the whole story is unit-testable with a
     /// fake <see cref="IApiGateway"/>; the scene's <see cref="MainMenuBootstrap"/> owns the UI and
     /// submits into it. Progress surfaces through <see cref="StatusChanged"/>.
@@ -78,10 +85,10 @@ namespace MMO.Bootstrap
                     return result;
                 }
 
-                LastZoneInfo zone = result.LastZone != null && result.LastZone.IsValid
+                LastZoneInfo storedZone = result.LastZone != null && result.LastZone.IsValid
                     ? result.LastZone
-                    : fallbackZone;
-                ApplyZone(zone);
+                    : null;
+                ApplyZone(storedZone ?? fallbackZone);
 
                 if (_joinClient != null)
                 {
@@ -90,19 +97,19 @@ namespace MMO.Bootstrap
                 }
 
                 SetStatus("Connecting to zone...");
-                if (_networkManager.ClientManager == null ||
-                    !_networkManager.ClientManager.StartConnection())
+                string failure = await ConnectAndAdmitAsync();
+
+                if (failure != null && ShouldRetryFallbackZone(storedZone, fallbackZone))
                 {
-                    const string startError = "Could not start the connection to the zone.";
-                    SetStatus(startError);
-                    return LoginResult.Fail(startError);
+                    SetStatus("The saved zone could not be reached. Trying the default zone...");
+                    ApplyZone(fallbackZone);
+                    failure = await ConnectAndAdmitAsync();
                 }
 
-                if (!await WaitForAdmissionAsync(_networkManager))
+                if (failure != null)
                 {
-                    const string zoneError = "Could not reach the zone server. Try again.";
-                    SetStatus(zoneError);
-                    return LoginResult.Fail(zoneError);
+                    SetStatus(failure);
+                    return LoginResult.Fail(failure);
                 }
 
                 await RecordZoneAsync(result);
@@ -147,6 +154,33 @@ namespace MMO.Bootstrap
             transport.SetPort((ushort)zone.Port);
             LastZone = zone;
         }
+
+        /// <summary>
+        /// One connection attempt: starts the client socket and waits for the gate to admit it.
+        /// Returns null on admission, or the player-facing failure message.
+        /// </summary>
+        private async Task<string> ConnectAndAdmitAsync()
+        {
+            if (_networkManager.ClientManager == null ||
+                !_networkManager.ClientManager.StartConnection())
+                return "Could not start the connection to the zone.";
+
+            return await WaitForAdmissionAsync(_networkManager)
+                ? null
+                : "Could not reach the zone server. Try again.";
+        }
+
+        /// <summary>
+        /// True when a failed <paramref name="storedZone"/> is worth one retry against the menu
+        /// default: there must be a usable default that is not simply the zone that just failed.
+        /// The stored record outliving an ephemeral raid container is the motivating case.
+        /// </summary>
+        private static bool ShouldRetryFallbackZone(LastZoneInfo storedZone, LastZoneInfo fallbackZone)
+            => storedZone != null &&
+               fallbackZone != null &&
+               fallbackZone.IsValid &&
+               !(string.Equals(storedZone.Ip, fallbackZone.Ip, StringComparison.OrdinalIgnoreCase) &&
+                 storedZone.Port == fallbackZone.Port);
 
         private async Task RecordZoneAsync(LoginResult result)
         {
