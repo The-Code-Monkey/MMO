@@ -30,13 +30,19 @@ A set of reusable, grid-snapping primitive prefabs for rapid level prototyping. 
 3. All pieces have `BoxCollider` and are marked **Navigation Static** for NavMesh baking
 4. Replace with final art assets when design is locked
 
-## ProBuilder
+## Built from primitive meshes
 
-ProBuilder (`com.unity.probuilder` 5.1.0) is installed for custom shape editing. To modify a piece:
-1. Select the prefab in Project view
-2. Open **Tools → ProBuilder → ProBuilder Window**
-3. Click **Edit** to modify vertices/faces
-4. Save as new prefab variant if needed
+The kit has **no ProBuilder dependency**. Each piece is a Unity built-in primitive mesh (Cube/Plane)
+scaled on the grid, with a `BoxCollider`. To modify a piece, edit its transform scale in the prefab,
+or duplicate it as a prefab variant. Do not add ProBuilder: it is not part of the package manifest and
+importing ProBuilder meshes breaks the project.
+
+## Assembling zones from the kit
+
+`Tools > MMO > Build Zones` (`ZoneSceneBaker`, see [docs/09](docs/09-editor-tooling-and-scenes.md))
+assembles the SafeZone and Wilderness scenes from these prefabs with
+`PrefabUtility.InstantiatePrefab`. Any new zone geometry should reuse these prefabs the same way
+rather than generating meshes at runtime.
 
 ## Conventions
 
