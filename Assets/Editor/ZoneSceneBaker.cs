@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using FishNet.Component.Spawning;
 using FishNet.Managing;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Net;
 using MMO.Social;
@@ -14,12 +15,12 @@ using UnityEngine.SceneManagement;
 namespace MMO.Editor
 {
     /// <summary>
-    /// Assembles the two always-on zones the multi-server architecture is tested against: a
-    /// walkable <c>SafeZone</c> town and a hostile <c>Wilderness</c>. Each is a self-contained
-    /// scene — its own <see cref="NetworkManager"/> on its own port, its own
-    /// <see cref="ZoneRiskConfig"/>, its own <see cref="SocialHubService.ZoneId"/> and a
-    /// <see cref="ZoneTransferTrigger"/> road to the other one — so the pair really is two servers
-    /// rather than two rooms of one.
+    /// Assembles the three always-on zones the multi-server architecture is tested against: the
+    /// flat <c>Tutorial</c> training ground, the walkable <c>SafeZone</c> town and the hostile
+    /// <c>Wilderness</c>. Each is a self-contained scene — its own <see cref="NetworkManager"/> on
+    /// its own port, its own <see cref="ZoneRiskConfig"/>, its own
+    /// <see cref="SocialHubService.ZoneId"/> and a <see cref="ZoneTransferTrigger"/> road to the
+    /// next one — so the set really is separate servers rather than rooms of one.
     ///
     /// <para>
     /// Geometry is assembled from the primitive <b>graybox prefab kit</b>
@@ -34,10 +35,12 @@ namespace MMO.Editor
         public const string MenuPath = "Tools/MMO/Build Zones";
         public const string SafeZonePath = "Assets/Scenes/SafeZone.unity";
         public const string WildernessZonePath = "Assets/Scenes/Wilderness.unity";
+        public const string TutorialZonePath = "Assets/Scenes/Tutorial.unity";
 
         /// <summary>Scene/zone names used as the transfer trigger's target zone label.</summary>
         public const string SafeZoneName = "SafeZone";
         public const string WildernessZoneName = "Wilderness";
+        public const string TutorialZoneName = "Tutorial";
 
         /// <summary>
         /// Distinct ports so both zones can run side by side on one machine — the whole point of
@@ -46,6 +49,7 @@ namespace MMO.Editor
         /// </summary>
         public const ushort SafeZonePort = 7770;
         public const ushort WildernessZonePort = 7771;
+        public const ushort TutorialZonePort = 7772;
 
         /// <summary>
         /// Stable server ids. The same ids are written to the zone's
@@ -54,6 +58,7 @@ namespace MMO.Editor
         /// </summary>
         public const string SafeZoneServerId = "server-a";
         public const string WildernessServerId = "server-b";
+        public const string TutorialServerId = "server-tutorial";
 
         /// <summary>Host the transfer triggers point at when the destination is a local process.</summary>
         public const string DefaultTargetHost = "127.0.0.1";
@@ -67,6 +72,8 @@ namespace MMO.Editor
         public const float GroundTile = 2f;
 
         public const int SpawnPointCount = 4;
+        public const int WildernessSpawnPointCount = 2;
+        public const int TutorialSpawnPointCount = 1;
         public const float PortalHeight = 3f;
 
         // ---- Names --------------------------------------------------------
@@ -78,6 +85,7 @@ namespace MMO.Editor
         public const string ScatterName = "Scatter";
         public const string HazardsName = "Hazards";
         public const string SpawnPointsName = "SpawnPoints";
+        public const string MarkersName = "Markers";
         public const string RiskConfigName = "ZoneRiskConfig";
 
         // ---- Prefabs ------------------------------------------------------
@@ -100,6 +108,7 @@ namespace MMO.Editor
         {
             SafeZone,
             Wilderness,
+            Tutorial,
         }
 
         [MenuItem(MenuPath)]
@@ -107,7 +116,8 @@ namespace MMO.Editor
         {
             BuildSafeZone();
             BuildWilderness();
-            AddToBuildSettings(SafeZonePath, WildernessZonePath);
+            BuildTutorial();
+            AddToBuildSettings(SafeZonePath, WildernessZonePath, TutorialZonePath);
         }
 
         /// <summary>Rebuilds <c>Assets/Scenes/SafeZone.unity</c>.</summary>
@@ -137,6 +147,27 @@ namespace MMO.Editor
             targetServerId: SafeZoneServerId,
             portalName: "PortalToSafeZone",
             layout: ZoneLayout.Wilderness);
+
+        /// <summary>
+        /// Rebuilds <c>Assets/Scenes/Tutorial.unity</c>: the flat training ground a brand-new player
+        /// lands in. Deliberately empty — flat ground, one spawn point and a target dummy to hit —
+        /// with a single road out to the SafeZone, so the first thing a new character sees is the
+        /// game's tag-loops rather than a cliff, and the only thing to do is try the combat the
+        /// loop is built on. New players are routed here by the Main Menu's default zone (the
+        /// fallback when the backend reports no last zone).
+        /// </summary>
+        public static void BuildTutorial() => BuildScene(
+            scenePath: TutorialZonePath,
+            risk: ZoneRiskTier.Safe,
+            port: TutorialZonePort,
+            serverId: TutorialServerId,
+            templateId: "tutorial",
+            targetHost: DefaultTargetHost,
+            targetPort: SafeZonePort,
+            targetZoneName: SafeZoneName,
+            targetServerId: SafeZoneServerId,
+            portalName: "PortalToSafeZone",
+            layout: ZoneLayout.Tutorial);
 
         private static void BuildScene(
             string scenePath,
@@ -169,6 +200,14 @@ namespace MMO.Editor
             NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(settings);
             ConfigureZoneIdentity(manager, serverId, templateId, port);
 
+            // NetworkManagerFactory attaches a fixed single target-dummy spawner and
+            // crafting-station spawner so a bare dev scene has one of each. A zone authors those —
+            // and every other world object — as markers instead, so strip the fixed pair or each
+            // zone would spawn two dummies (and the tutorial, which is only a dummy, would also get
+            // an unwanted station). The PlayerSpawner stays: WorldBootstrap hands it the zone's
+            // spawn points.
+            RemoveFixedSpawners(manager);
+
             var zoneRoot = new GameObject(ZoneRootName);
             Transform ground = CreateChild(GroundName, zoneRoot.transform).transform;
             Transform boundary = CreateChild(BoundaryWallsName, zoneRoot.transform).transform;
@@ -180,18 +219,46 @@ namespace MMO.Editor
             {
                 BuildTown(CreateChild(BuildingsName, zoneRoot.transform).transform);
             }
-            else
+            else if (layout == ZoneLayout.Wilderness)
             {
                 BuildWilderness(
                     CreateChild(ScatterName, zoneRoot.transform).transform,
                     CreateChild(HazardsName, zoneRoot.transform).transform);
             }
+            // The tutorial zone is deliberately bare: flat ground and boundary only.
 
-            WireSpawnPoints(manager, CreateSpawnPoints(zoneRoot.transform));
+            WireSpawnPoints(manager, CreateSpawnPoints(zoneRoot.transform, SpawnCountFor(layout)));
+            AddMarkers(zoneRoot.transform, layout);
+
+            // Connects the scene to the server: spawn points, marker-driven world objects and
+            // player placement. Added after the geometry so the bootstrap sees the finished scene.
+            WorldBootstrapBaker.EnsureInActiveScene();
+            WorldBootstrapBaker.RegisterMarkerPrefabs(manager);
+
             CreateRiskConfig(zoneRoot.transform, risk);
             CreatePortal(zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName);
 
             SaveScene(scene, scenePath);
+        }
+
+        private static int SpawnCountFor(ZoneLayout layout) => layout switch
+        {
+            ZoneLayout.Wilderness => WildernessSpawnPointCount,
+            ZoneLayout.Tutorial => TutorialSpawnPointCount,
+            _ => SpawnPointCount,
+        };
+
+        /// <summary>
+        /// Removes the factory's single fixed dummy/station spawners so the zone's markers are the
+        /// only thing that puts interactive objects in the world.
+        /// </summary>
+        private static void RemoveFixedSpawners(NetworkManager manager)
+        {
+            foreach (TargetDummySpawner dummy in manager.GetComponents<TargetDummySpawner>())
+                UnityEngine.Object.DestroyImmediate(dummy);
+
+            foreach (CraftingStationSpawner station in manager.GetComponents<CraftingStationSpawner>())
+                UnityEngine.Object.DestroyImmediate(station);
         }
 
         // ---- Zone identity -------------------------------------------------
@@ -403,7 +470,7 @@ namespace MMO.Editor
 
         // ---- Spawns, risk and portal ---------------------------------------
 
-        private static GameObject[] CreateSpawnPoints(Transform zoneRoot)
+        private static GameObject[] CreateSpawnPoints(Transform zoneRoot, int count)
         {
             Transform parent = CreateChild(SpawnPointsName, zoneRoot).transform;
 
@@ -415,12 +482,19 @@ namespace MMO.Editor
                 new Vector3(0f, 0.1f, 3f),
             };
 
-            var spawns = new GameObject[SpawnPointCount];
-            for (int i = 0; i < SpawnPointCount; i++)
+            count = Mathf.Clamp(count, 1, positions.Length);
+
+            var spawns = new GameObject[count];
+            for (int i = 0; i < count; i++)
             {
                 var spawn = new GameObject($"PlayerSpawn_{i + 1}");
                 spawn.transform.SetParent(parent, false);
                 spawn.transform.localPosition = positions[i];
+
+                // The marker the server reads to place a joining player; the first one is the
+                // zone's default (where a fresh character with no saved position appears).
+                var point = spawn.AddComponent<PlayerSpawnPoint>();
+                point.SetDefault(i == 0);
                 spawns[i] = spawn;
             }
 
@@ -440,6 +514,76 @@ namespace MMO.Editor
                 transforms[i] = spawns[i].transform;
 
             spawner.Spawns = transforms;
+        }
+
+        // ---- Server-spawned world objects ----------------------------------
+
+        /// <summary>
+        /// Authors the markers the server turns into networked world objects on start. A node, a
+        /// station and an enemy are all just a marker here: geometry the server instantiates and
+        /// publishes, never a loose object in the scene. Heights sit each object on the ground
+        /// (a cube's mesh is centred on its origin).
+        /// </summary>
+        private static void AddMarkers(Transform zoneRoot, ZoneLayout layout)
+        {
+            Transform markers = CreateChild(MarkersName, zoneRoot).transform;
+
+            float nodeY = ResourceNodePrefabFactory.DefaultHeight / 2f;
+            float stationY = CraftingStationPrefabFactory.DefaultHeight / 2f;
+            float enemyY = TargetDummyPrefabFactory.DefaultHeight / 2f;
+
+            if (layout == ZoneLayout.SafeZone)
+            {
+                // The smithy: a furnace and an anvil beside the town square.
+                AddStationMarker(markers, 1, new Vector3(-6f, stationY, -6f), CraftingStationType.Furnace);
+                AddStationMarker(markers, 2, new Vector3(-4f, stationY, -7f), CraftingStationType.Anvil);
+
+                // A few veins at the city edge to gather from.
+                AddNodeMarker(markers, 1, new Vector3(-15f, nodeY, 5f));
+                AddNodeMarker(markers, 2, new Vector3(-15f, nodeY, -4f));
+                AddNodeMarker(markers, 3, new Vector3(15f, nodeY, 8f));
+                return;
+            }
+
+            if (layout == ZoneLayout.Wilderness)
+            {
+                // Resources worth the risk, clear of the spawn clearing, portal and hazards.
+                AddNodeMarker(markers, 1, new Vector3(-8f, nodeY, -12f));
+                AddNodeMarker(markers, 2, new Vector3(8f, nodeY, 12f));
+                AddNodeMarker(markers, 3, new Vector3(-14f, nodeY, -6f));
+                AddNodeMarker(markers, 4, new Vector3(6f, nodeY, -16f));
+
+                // Enemies. The AI is #60's job; for now a target dummy is the enemy placed here.
+                AddEnemyMarker(markers, 1, new Vector3(5f, enemyY, -8f));
+                AddEnemyMarker(markers, 2, new Vector3(-8f, enemyY, 8f));
+                AddEnemyMarker(markers, 3, new Vector3(10f, enemyY, 2f));
+                return;
+            }
+
+            // Tutorial: the one dummy a new player learns to hit, a few metres in front of spawn.
+            AddEnemyMarker(markers, 1, new Vector3(0f, enemyY, 4f));
+        }
+
+        private static void AddNodeMarker(Transform parent, int index, Vector3 position)
+        {
+            var go = CreateChild($"ResourceNodeMarker_{index}", parent);
+            go.transform.localPosition = position;
+            go.AddComponent<ResourceNodeMarker>();
+        }
+
+        private static void AddStationMarker(Transform parent, int index, Vector3 position, CraftingStationType type)
+        {
+            var go = CreateChild($"CraftingStationMarker_{index}", parent);
+            go.transform.localPosition = position;
+            var marker = go.AddComponent<CraftingStationMarker>();
+            marker.SetStationType(type);
+        }
+
+        private static void AddEnemyMarker(Transform parent, int index, Vector3 position)
+        {
+            var go = CreateChild($"EnemyMarker_{index}", parent);
+            go.transform.localPosition = position;
+            go.AddComponent<EnemyMarker>();
         }
 
         private static void CreateRiskConfig(Transform zoneRoot, ZoneRiskTier tier)

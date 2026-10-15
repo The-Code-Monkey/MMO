@@ -127,6 +127,18 @@ namespace MMO.Gameplay
             SetPosition(position);
         }
 
+        /// <summary>
+        /// Server: place the player at the position the server has decided is authoritative —
+        /// the restore path a <see cref="MMO.Net.WorldBootstrap"/> uses when a character re-joins at
+        /// its saved position or arrives in a new zone. Updates the anti-cheat baseline exactly
+        /// like <see cref="Teleport"/>, so the restored position is not treated as a teleport.
+        /// </summary>
+        [Server]
+        public void SetAuthoritativePosition(Vector3 position)
+        {
+            SetPosition(position);
+        }
+
         private void MoveBy(Vector3 motion)
         {
             if (_controller != null && _controller.enabled)
