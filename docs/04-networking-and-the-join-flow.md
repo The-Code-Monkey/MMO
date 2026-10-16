@@ -212,6 +212,30 @@ and [14](14-server-authority-hardening.md)).
 `PlayerPrefabFactory.Attach` (`:187`) installs a FishNet `PlayerSpawner`, which is what actually
 instantiates the player when the gate admits a connection.
 
+### World bootstrap and player placement
+
+The `NetworkManager` object graph is generic; the **scene** layers the world on top of it. A zone
+scene carries a server-only `WorldBootstrap` (`Assets/Scripts/Net/WorldBootstrap.cs`) on the
+`NetworkManager` object. On server start it:
+
+- spawns every `ResourceNodeMarker`, `CraftingStationMarker` and `EnemyMarker` under the scene's
+  `Markers` root (each marker names the prefab to use, so the level is authored by placing markers,
+  not by hand-spawning networked objects), and
+- subscribes to the `PlayerSpawner`'s `OnSpawned` event so it can place each joining player.
+
+Placement is decided by the scene's `PlayerSpawnPoint`s (`Assets/Scripts/Net/PlayerSpawnPoint.cs`).
+Every spawn point is tagged with the component; the first is the zone default. `ChooseSpawn` is pure
+and unit-tested (`PlayerSpawnPointTests`): a returning player whose save carried a position is placed
+at the **nearest** spawn point to it, while a brand-new player (no saved position) gets the default
+point. The chosen position is written through `PlayerMover.SetAuthoritativePosition` — the sole
+writer of player position — so the client sees a server-authored landing spot rather than its own
+initial transform. Markers and spawn points are baked into a scene by `WorldBootstrapBaker` (see
+[09](09-editor-tooling-and-scenes.md)).
+
+Because the tutorial, safe and wilderness zones share one coordinate space (a 40×40 graybox), a
+saved position from the source zone is meaningful in the destination, so a zone transfer keeps a
+player roughly where they were instead of dumping them at a fixed point.
+
 ## 5. Zone transfers
 
 A zone is one server process. Moving a player between zones is a **server-driven handoff**; the

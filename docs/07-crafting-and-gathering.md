@@ -101,8 +101,10 @@ The client only ever sends a **recipe name**; everything else is decided by the 
 
 ## 6. Gathering data: ResourceNode
 
-`ResourceNode` (`Assets/Scripts/Gameplay/ResourceNode.cs:41`) is a `NetworkBehaviour` placed in a
-scene (built as a prefab with `Tools > MMO > Create Resource Node Prefab`). Its defaults:
+`ResourceNode` (`Assets/Scripts/Gameplay/ResourceNode.cs:41`) is a `NetworkBehaviour`. It is placed
+in a scene as a `ResourceNodeMarker` (built as a prefab with `Tools > MMO > Create Resource Node
+Prefab`); on server start the zone's `WorldBootstrap` spawns the networked node at each marker (see
+[04](04-networking-and-the-join-flow.md) and [09](09-editor-tooling-and-scenes.md)). Its defaults:
 
 | Constant | Value | Line |
 |---|---|---|
@@ -185,9 +187,9 @@ SERVER
   changes.
 - **Change the crafting XP curve.** Edit `CraftingXpTable.XpForLevel`/`LevelForXp`. Ignore the dead
   `CraftingXpTableImpl` copy.
-- **Add a resource node to a scene.** Bake the prefab
-  (`Tools > MMO > Create Resource Node Prefab`), place it in the scene, and set its item id, tool
-  requirement, yield, respawn and interval in the Inspector.
+- **Add a resource node to a scene.** Drop a `ResourceNodeMarker` where the node should appear (or
+  bake the zone with `Tools > MMO > Build Zones`), point it at the resource-node prefab and set its
+  item id, tool requirement, yield, respawn and interval.
 - **Change how long gathering takes per item.** Edit `GatherIntervalSeconds` on the node.
 - **Tune node respawn.** Edit `RespawnSeconds` on the node.
 - **Make gathering stop when the player moves.** Already handled: `PlayerGathering.Update` re-checks

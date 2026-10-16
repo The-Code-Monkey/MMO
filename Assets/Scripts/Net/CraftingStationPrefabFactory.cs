@@ -45,7 +45,7 @@ namespace MMO.Net
             return single.Prefabs.Contains(craftingStation);
         }
 
-        public static bool Register(PrefabObjects prefabs, NetworkObject craftingStation)
+        public static bool Register(PrefabObjects prefabs, NetworkObject craftingStation, bool initializeAdded = false)
         {
             if (prefabs == null)
                 throw new ArgumentNullException(nameof(prefabs));
@@ -53,7 +53,7 @@ namespace MMO.Net
             if (craftingStation == null || Contains(prefabs, craftingStation))
                 return false;
 
-            prefabs.AddObject(craftingStation, checkForDuplicates: true, initializeAdded: false);
+            prefabs.AddObject(craftingStation, checkForDuplicates: true, initializeAdded: initializeAdded);
             return true;
         }
 

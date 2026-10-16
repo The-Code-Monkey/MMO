@@ -57,7 +57,11 @@ namespace MMO.Editor
         {
             var bootstrapObject = new GameObject("MainMenuBootstrap");
             MainMenuBootstrap bootstrap = bootstrapObject.AddComponent<MainMenuBootstrap>();
-            bootstrap.SetDefaultZone("127.0.0.1", MMOConnectionSettings.DefaultPort);
+
+            // The fallback zone is the one a player with no stored "last zone" joins — i.e. a
+            // brand-new character. That is the Tutorial zone, so first login lands on the flat
+            // training ground rather than in the middle of a live zone.
+            bootstrap.SetDefaultZone(ZoneSceneBaker.DefaultTargetHost, ZoneSceneBaker.TutorialZonePort);
             bootstrap.SetNetworkManager(
                 Object.FindFirstObjectByType<FishNet.Managing.NetworkManager>());
             return bootstrap;

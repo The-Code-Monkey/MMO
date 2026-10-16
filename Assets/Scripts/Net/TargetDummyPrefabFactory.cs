@@ -102,7 +102,7 @@ namespace MMO.Net
         /// player prefab must be registered first and the dummy second, on every end.
         /// </summary>
         /// <returns>True when this call added the prefab, false when it was a no-op.</returns>
-        public static bool Register(PrefabObjects prefabs, NetworkObject targetDummy)
+        public static bool Register(PrefabObjects prefabs, NetworkObject targetDummy, bool initializeAdded = false)
         {
             if (prefabs == null)
                 throw new ArgumentNullException(nameof(prefabs));
@@ -112,7 +112,8 @@ namespace MMO.Net
 
             // initializeAdded: false leaves prefab id assignment to NetworkManager.Awake, which is
             // the only place that knows the final list order and whether the game is playing.
-            prefabs.AddObject(targetDummy, checkForDuplicates: true, initializeAdded: false);
+            // Callers registering a prefab after Awake (at runtime) pass true instead.
+            prefabs.AddObject(targetDummy, checkForDuplicates: true, initializeAdded: initializeAdded);
             return true;
         }
 

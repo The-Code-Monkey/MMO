@@ -66,6 +66,22 @@ Tests and local demos run with no database: the persistence service fails open, 
 player fresh, and saves are queued but dropped. A save is never overwritten this way — the version
 check refuses to stomp a record the offline process never saw.
 
+## Running a dedicated zone server
+
+The same build contains the menu and every zone. Launching it with `-zone <name>` skips the menu and
+runs that zone as a dedicated server on its baked port (Tutorial `7772`, SafeZone `7770`, Wilderness
+`7771`). `run-servers.sh` boots all of them at once:
+
+```sh
+./run-servers.sh              # every zone, one process each
+./run-servers.sh Tutorial     # just the tutorial
+```
+
+Each process loads its zone scene, starts the FishNet listener and spawns the world; a name that is
+not an enabled scene fails fast with a clear error. See
+[09-editor-tooling-and-scenes](docs/09-editor-tooling-and-scenes.md#5a-launching-a-dedicated-zone-server)
+for the mechanism.
+
 ## Main Menu, login and the last-zone record
 
 Zone servers boot into a scene with a baked NetworkManager (run `Tools > MMO > Create NetworkManager

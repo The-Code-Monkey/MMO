@@ -23,12 +23,13 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Create Player Prefab And Wire Scene` | `PlayerPrefabBaker` | The above, then wires a `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Target Dummy Prefab` | `TargetDummyBaker` | Builds the training-dummy prefab and wires its spawner. |
 | `Tools > MMO > Create Crafting Station Prefab` | `CraftingStationBaker` | Builds the crafting-station prefab and wires its spawner. |
-| `Tools > MMO > Create Resource Node Prefab` | `ResourceNodeBaker` | Builds the resource-node prefab (placed into levels by hand). |
+| `Tools > MMO > Create Resource Node Prefab` | `ResourceNodeBaker` | Builds the resource-node prefab a zone's markers spawn. |
 | `Tools > MMO > Create Loot Bag Prefab` | `LootBagBaker` | Builds the loot-bag prefab a black-zone death drops. |
 | `Tools > MMO > Create Local Camera` | `LocalCameraBaker` | Adds the Cinemachine-based local camera rig to the scene. |
 | `Tools > MMO > Create NetworkManager In Scene` | `NetworkManagerSceneBaker` | Drops a fully wired `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Main Menu Scene` | `MainMenuSceneBaker` | Rebuilds `Assets/Scenes/MainMenu.unity` with a token-auth manager and the bootstrap. |
-| `Tools > MMO > Build Zones` | `ZoneSceneBaker` | Rebuilds `Assets/Scenes/SafeZone.unity` and `Assets/Scenes/Wilderness.unity` from the graybox prefab kit and registers both in Build Settings. |
+| `Tools > MMO > Wire Zone With World Bootstrap` | `WorldBootstrapBaker` | Connects an open scene to the server: adds `WorldBootstrap`, tags spawn points, registers marker prefabs. |
+| `Tools > MMO > Build Zones` | `ZoneSceneBaker` | Rebuilds the `Tutorial`, `SafeZone` and `Wilderness` zones from the graybox prefab kit and registers all three in Build Settings. |
 
 ## 3. The prefab bakers
 
@@ -58,7 +59,8 @@ server-side on startup.
 ### ResourceNodeBaker
 
 `Assets/Editor/ResourceNodeBaker.cs:19`. Builds via `ResourceNodePrefabFactory.Create()`. It has no
-`Wire...` method — resource nodes are placed into levels by hand and registered elsewhere.
+`Wire...` method of its own — resource nodes are authored as `ResourceNodeMarker`s in a zone and the
+prefab is registered into the scene by `WorldBootstrapBaker.RegisterMarkerPrefabs` (see below).
 
 ### LootBagBaker
 
@@ -85,7 +87,9 @@ build guard.
 `Assets/Editor/MainMenuSceneBaker.cs:25`. `CreateMainMenuScene` (`:31`) creates a new scene, builds a
 `NetworkManager` with **token auth on**, adds a `MainMenuBootstrap` object, saves the scene to
 `Assets/Scenes/MainMenu.unity`, and adds it to Build Settings. Note the UI is **not** baked — the
-bootstrap builds it at runtime.
+bootstrap builds it at runtime. The token-auth manager's `ZoneServer` is pointed at the **Tutorial**
+zone (`ZoneSceneBaker.TutorialZonePort`), which is the fallback a login with no stored "last zone"
+lands in — see [04](04-networking-and-the-join-flow.md).
 
 ### LocalCameraBaker
 
@@ -95,21 +99,42 @@ creates one via `LocalCameraRigFactory.Create()`, registers an undo step, and ma
 
 ### ZoneSceneBaker
 
-`Assets/Editor/ZoneSceneBaker.cs`. `BuildBoth` (`Tools > MMO > Build Zones`) assembles the two
-always-on zones — a walkable `SafeZone` town and a hostile `Wilderness` — each as a **self-contained
-zone server**. `BuildSafeZone`/`BuildWilderness` build one scene each; `ZoneSceneBakerTests` covers
-both. Every scene gets a baked `NetworkManager` (via `NetworkManagerSceneBaker.CreateInActiveScene`,
-token auth on, its own port), an authored camera rig, a `ZoneRiskConfig` (`Safe` / `Red`, plus red
-hazard volumes in the wilderness), four spawn points wired into the `PlayerSpawner`, and one
-`ZoneTransferTrigger` road to the other zone (`server-a:7770` ⇄ `server-b:7771`). The zone's
-`SocialHubService.ZoneId` and raid-registry host/port/template are set so the two servers are
-addressable and distinct, and both scenes are added to Build Settings so the `NetworkManager` build
-guard checks them.
+`Assets/Editor/ZoneSceneBaker.cs`. `BuildBoth` (`Tools > MMO > Build Zones`) assembles the three
+always-on zones — the flat `Tutorial` training ground, the walkable `SafeZone` town and the hostile
+`Wilderness` — each as a **self-contained zone server**. `BuildSafeZone`/`BuildWilderness`/
+`BuildTutorial` build one scene each; `ZoneSceneBakerTests` and `WorldBootstrapBakerTests` cover
+them. Every scene gets a baked `NetworkManager` (via `NetworkManagerSceneBaker.CreateInActiveScene`,
+token auth on, its own port: tutorial `7772`, safe `7770`, wilderness `7771`), an authored camera
+rig, a `ZoneRiskConfig`, spawn points carrying `PlayerSpawnPoint` (four in the town, two in the
+wilderness, one in the tutorial; the first is the zone default) wired into the `PlayerSpawner`, a
+`WorldBootstrap`, and one `ZoneTransferTrigger` road out (`tutorial → safe → wilderness` and back).
+Each scene also authors `ResourceNodeMarker` / `CraftingStationMarker` / `EnemyMarker` children under
+`ZoneRoot/Markers` that the server spawns from — the town has a smithy (furnace + anvil) and edge
+veins, the wilderness has scattered veins and a few enemies, and the tutorial has a single target
+dummy and nothing else. The zone's `SocialHubService.ZoneId` and raid-registry host/port/template are
+set so the servers are addressable and distinct, and all three scenes are added to Build Settings so
+the `NetworkManager` build guard checks them.
+
+The tutorial is the **new-player** zone: it is the Main Menu's default (fallback) zone, so a login
+with no stored "last zone" lands there. See `MainMenuSceneBaker` above and
+[04](04-networking-and-the-join-flow.md) for the routing.
 
 Geometry is assembled with `PrefabUtility.InstantiatePrefab` over the primitive **graybox prefab kit**
 in `Assets/Prefabs/Graybox` — plain built-in-mesh prefabs, deliberately **not** ProBuilder. The baker
 is idempotent: a second run regenerates the same scene (the wilderness scatter uses a fixed random
 seed) rather than duplicating geometry or managers.
+
+### WorldBootstrapBaker
+
+`Assets/Editor/WorldBootstrapBaker.cs`. `WireActiveScene` (`Tools > MMO > Wire Zone With World
+Bootstrap`) is the generic "connect this scene to the server" step for hand-authored scenes:
+`EnsureInActiveScene` adds a `WorldBootstrap` to the scene's `NetworkManager`,
+`EnsureSpawnPointComponents` tags every `PlayerSpawn_*` under a `SpawnPoints` root with a
+`PlayerSpawnPoint` (marking the first as the default), and `RegisterMarkerPrefabs` bakes the shared
+resource-node prefab (via `ResourceNodeBaker`) plus any marker-referenced prefabs into the scene's
+spawnable collection, so the server and every client that loads the scene agree on prefab ids.
+`ZoneSceneBaker.BuildScene` calls `EnsureInActiveScene` and `RegisterMarkerPrefabs` as it assembles a
+zone, so a generated zone is wired by construction and needs no second pass.
 
 ### UrpSetupBaker
 
@@ -132,6 +157,46 @@ enabled scene is missing one. This is split into a pure rule and an editor hook:
 `CollectSceneInfo` (`NetworkManagerBuildGuard.cs:29`) opens each enabled build scene additively,
 checks it with `NetworkManagerSceneBaker.TryFind`, and closes it.
 
+## 5a. Launching a dedicated zone server
+
+The build contains every scene (MainMenu first, then the zones), so a bare launch would sit on the
+menu. Passing `-zone <name>` turns the same binary into a dedicated zone server:
+
+```
+server.x86_64 -zone Tutorial     # listens on 7772
+server.x86_64 -zone SafeZone     # listens on 7770
+server.x86_64 -zone Wilderness   # listens on 7771
+```
+
+The launch is a three-step handshake between existing components, so no scene needs re-baking:
+
+1. `MainMenuBootstrap.TryRedirectToZone` (`Assets/Scripts/Bootstrap/MainMenuBootstrap.cs`) parses the
+   switch with `DedicatedServerArgs.ParseZone`, confirms the name is an enabled build scene, calls
+   `DedicatedServerMode.Enable(zone)` and `SceneManager.LoadScene(zone)` — and returns before any menu
+   UI or Nakama login is wired. An unknown zone name logs an error and quits with code 1.
+2. The loaded zone scene's `WorldBootstrap.Start` sees `DedicatedServerMode.IsActive` and calls
+   `ServerManager.StartConnection()`, which opens the zone's baked port and spawns the world.
+3. Once the server reports `Started`, `WorldBootstrap.RegisterGlobalScene` registers the already
+   loaded zone scene as a FishNet **global scene** via `SceneManager.LoadGlobalScenes`. The launcher
+   loaded the scene with Unity's `SceneManager` directly, which FishNet does not track, so without
+   this call `_globalScenes` stays empty and FishNet tells every admitted client "no start scenes" —
+   stranding it on the offline (main menu) scene. With the scene registered, FishNet broadcasts a
+   load to each admitted client (`ReplaceOption.All`, so the client's main menu is swapped out for
+   the zone) and adds the client to the scene so scene-scoped observers can see it. No zone scene
+   needs re-baking for this; it mirrors FishNet's own `DefaultScene` component.
+
+`DedicatedServerMode` is the process-wide switch that keeps a *client* build honest: a client that
+loads a zone scene (FishNet syncs the scene to clients) never set the flag, so it never opens a
+server of its own. `DedicatedServerArgs.ParseZone` and `DedicatedServerMode` are pure and unit tested
+(`DedicatedServerLaunchTests`). The repo-root `run-servers.sh` wraps the per-zone launches into one
+command (see [02](02-getting-started.md#option-d--a-dedicated-zone-server)).
+
+Every baked zone scene carries **SO_REUSEADDR** on its Tugboat socket (`_reuseAddress: 1`, set by
+`ZoneSceneBaker.EnableTransportReuseAddress` — FishNet exposes the flag only as a private serialized
+field with no public setter). Without it, a quick restart leaves TIME_WAIT sockets on the zone port
+that make the next bind fail with "Address already in use", leaving the zone silently offline.
+`run-servers.sh` also kills any process already holding a zone's port before launching.
+
 ## 6. How a fresh zone scene comes together
 
 ```
@@ -139,7 +204,8 @@ Tools > MMO > Configure URP
 Tools > MMO > Create Player Prefab
 Tools > MMO > Create Target Dummy Prefab
 Tools > MMO > Create NetworkManager In Scene   ← builds/wires the NetworkManager
-(place resource nodes, crafting stations, a ZoneTransferTrigger, terrain, lighting)
+(place spawn points, markers, a ZoneTransferTrigger, terrain, lighting)
+Tools > MMO > Wire Zone With World Bootstrap   ← tags spawn points, attaches WorldBootstrap, registers marker prefabs
 save the scene and add it to Build Settings
 ```
 
@@ -149,16 +215,17 @@ Or, for the main menu specifically:
 Tools > MMO > Create Main Menu Scene
 ```
 
-Or, for the always-on zone pair (town + wilderness) at once:
+Or, for the always-on zones (tutorial + town + wilderness) at once:
 
 ```
 Tools > MMO > Build Zones
 ```
 
-`Build Zones` is the one-shot path from the "fresh zone scene" recipe above, repeated for both zones
-and wired to each other: it bakes the `NetworkManager`, assembles the ground/boundary/buildings (or
-scatter + hazards) from the graybox prefab kit, drops the spawn points and the `ZoneRiskConfig`, adds
-the cross-zone `ZoneTransferTrigger`, saves both scenes and registers them in Build Settings.
+`Build Zones` is the one-shot path from the "fresh zone scene" recipe above, repeated for all three
+zones and wired together: it bakes the `NetworkManager`, assembles the ground/boundary/buildings (or
+scatter + hazards) from the graybox prefab kit, drops the `PlayerSpawnPoint`s, the markers and the
+`ZoneRiskConfig`, attaches the `WorldBootstrap`, adds the cross-zone `ZoneTransferTrigger`, saves the
+scenes and registers them in Build Settings.
 
 ## Common tasks
 

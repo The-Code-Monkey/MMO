@@ -122,6 +122,7 @@ namespace MMO.Net
             if (connection == null)
                 return;
 
+            Debug.Log($"[JoinGate] Client {connection.ClientId} finished the version handshake; awaiting join request.");
             _tracker.Begin(connection.ClientId, Time.unscaledTimeAsDouble);
         }
 
@@ -148,6 +149,12 @@ namespace MMO.Net
         /// <param name="transferToken">Zone-transfer token from the previous zone, when this join is a handoff.</param>
         public void HandleJoinRequest(NetworkConnection connection, string playerName, string accountId = null, string authToken = null, string transferToken = null)
         {
+            int joinClientId = connection != null ? connection.ClientId : -1;
+            Debug.Log($"[JoinGate] Join request from client {joinClientId} (name '{playerName}', " +
+                      $"token {(string.IsNullOrWhiteSpace(authToken) ? "absent" : "present")}, " +
+                      $"transfer {(string.IsNullOrWhiteSpace(transferToken) ? "absent" : "present")}, " +
+                      $"account {(string.IsNullOrWhiteSpace(accountId) ? "absent" : "present")}).");
+
             // A join request from an already authenticated client is a replay; a legitimate
             // client only ever announces itself once, before it is admitted.
             if (connection != null && connection.IsAuthenticated)
@@ -401,8 +408,16 @@ namespace MMO.Net
             if (connection == null)
                 return;
 
-            if (!decision.Approved)
+            int applyClientId = connection.ClientId;
+            if (decision.Approved)
+            {
+                Debug.Log($"[JoinGate] Admitted client {applyClientId}.");
+            }
+            else
+            {
+                Debug.Log($"[JoinGate] Refused client {applyClientId}: {decision.Reason}");
                 SendRejection(connection, decision.Reason);
+            }
 
             _tracker.End(connection.ClientId);
             OnAuthenticationResult?.Invoke(connection, decision.Approved);

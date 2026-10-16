@@ -44,6 +44,16 @@ gh run list --workflow unity-tests.yml
 gh api repos/owner/repo/actions/runs --jq '.workflow_runs[].conclusion'
 ```
 
+### Committing Unity Scene Files (`.unity`)
+
+Rebaking a scene via `Tools > MMO > Build Zones` (or any editor operation that re-serializes a
+scene) rewrites the whole `.unity` file. Unity reorders YAML documents, so a one-line logical
+change — e.g. flipping `_reuseAddress` on the Tugboat transport — routinely shows up as a
+**15k–20k line diff** (thousands of `-`/`+` lines that only reorder `target:`/`guid:` pairs).
+**This is expected and correct.** Commit the scene files as-is; do not try to minimize, squash, or
+hand-prune the diff, and do not assume the file was corrupted or duplicated. Review scene diffs by
+spot-checking the specific fields you intended to change, not by reading the whole patch.
+
 ---
 
 ## 3. Testing & Quality Requirements (STRICT)
@@ -131,6 +141,5 @@ A clean run prints **no `error CS` lines**. Warnings (`CS0618` obsolete `IsServe
 - To execute the suites, activate a license (`unity license activate`) or let
   [`.github/workflows/unity-tests.yml`](.github/workflows/unity-tests.yml) run EditMode + PlayMode
   on a licensed runner. That is the only source of truth for passing tests.
-- Every `.cs` must ship a sibling `.meta` (`fileFormatVersion: 2` + a unique `guid`); Unity generates
-  them on import, but committing them keeps GUIDs stable. Generate one per new file when working
-  without an editor.
+- **Do not commit `.meta` files.** `Assets/**/*.meta` is gitignored; let Unity generate them on
+  import and leave them untracked.
