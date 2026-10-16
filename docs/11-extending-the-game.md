@@ -80,7 +80,7 @@ If the effect is genuinely new (not just new numbers):
 //
 // 2. Recipes self-register in OnEnable (RecipeData.OnEnable → RecipeRegistry.Register),
 //    so there is nothing else to wire. The server-side check before anything is granted is
-//    exactly what PlayerCrafting.TryCraft runs (Assets/Scripts/Crafting/PlayerCrafting.cs:64):
+//    exactly what PlayerCrafting.TryCraft runs (Assets/Scripts/Crafting/PlayerCrafting.cs:160):
 
 RecipeData recipe = RecipeRegistry.Resolve(recipeName);
 bool ok = recipe != null

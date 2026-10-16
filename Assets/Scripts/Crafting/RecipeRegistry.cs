@@ -53,5 +53,26 @@ namespace MMO.Crafting
         }
 
         public static void Clear() => Registered.Clear();
+
+        /// <summary>
+        /// A point-in-time copy of every registered recipe, for callers that need to walk the
+        /// whole set — the server building a station's offer payload, most notably. It is a
+        /// snapshot, so a recipe registered or destroyed while the caller walks it is the next
+        /// snapshot's business, never a collection-modified surprise mid-loop.
+        /// </summary>
+        public static IReadOnlyList<RecipeData> All
+        {
+            get
+            {
+                var snapshot = new List<RecipeData>(Registered.Count);
+                foreach (KeyValuePair<string, RecipeData> entry in Registered)
+                {
+                    if (entry.Value != null)
+                        snapshot.Add(entry.Value);
+                }
+
+                return snapshot;
+            }
+        }
     }
 }

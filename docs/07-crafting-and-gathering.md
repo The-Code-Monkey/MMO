@@ -28,7 +28,9 @@ Like items, recipes self-register. `RecipeData.OnEnable` (`:34`) registers in `R
 named, and `OnDisable` (`:40`) unregisters. `RecipeRegistry`
 (`Assets/Scripts/Crafting/RecipeRegistry.cs:6`) mirrors `ItemDefinitionRegistry`: `Register` (`:12`),
 `Unregister` (`:31`), `Resolve` (`:40`, with a `Resources.Load<RecipeData>` fallback) and `Clear`
-(`:55`).
+(`:55`). `All` (`:63`) returns a snapshot `IReadOnlyList<RecipeData>` of every registered recipe
+(nulls skipped) — the server uses it to build the crafting payload below without ever handing assets
+to a client.
 
 ## 2. Crafting stations
 
@@ -39,13 +41,16 @@ named, and `OnDisable` (`:40`) unregisters. `RecipeRegistry`
 | `None` (0) | Not craftable anywhere. | `:7` |
 | `Furnace` (1) | Refining: ore → bar. | `:8` |
 | `Anvil` (2) | Crafting: bar → gear. | `:9` |
+| `Alchemy` (3) | Brewing: reagents → potions. | `:10` |
 
 `CraftingStation` (`Assets/Scripts/Crafting/CraftingStation.cs:7`) is a `NetworkBehaviour` with a
 replicated station type. The server sets it with `Configure(CraftingStationType)` (`:14`). Clicking
 the station calls `RequestOpenFromLocalPlayer` (`:18`), which finds the local `PlayerCrafting` and
-invokes `RequestOpenStation` — a purely local UI event, no server round-trip.
+invokes `RequestOpenStation` — that now starts a **server round-trip**: the client asks, the server
+decides what the station offers and sends it back (section 5). The client never reads recipes from
+its own registry to render a panel.
 
-## 3. Crafting rules
+## 3. Crafting rules and offers
 
 `CraftingValidator` (`Assets/Scripts/Crafting/CraftingValidator.cs:6`) is pure:
 
@@ -57,6 +62,21 @@ invokes `RequestOpenStation` — a purely local UI event, no server round-trip.
 - `HasIngredients(bag, recipe)` (`:27`) — every ingredient is present in the required count.
 - `Count(bag, itemName)` (`:40`) — how many non-empty instances match a name.
 
+`CraftingOfferRules` (`Assets/Scripts/Crafting/CraftingOfferRules.cs:21`) is the read-only sibling
+the server uses to build the UI payload. It never touches `TryCraft`:
+
+- `Available(recipes, stationType, level, bag)` (`:27`) returns one
+  `RecipeOffer` per recipe that **belongs to this station and is at or below the player's level**.
+  A recipe whose ingredients are missing is still listed, with `IngredientsMet = false` — the panel
+  shows affordances, and the craft path re-validates anyway. A `None` station, a null recipe list, an
+  empty list or an empty registry all yield an empty payload; a null bag is treated as empty.
+- `Available(stationType, level, bag)` (`:62`) is the convenience overload over
+  `RecipeRegistry.All` used by `PlayerCrafting`.
+
+`RecipeOffer` (`Assets/Scripts/Crafting/CraftingOffer.cs:26`) is the wire struct that crosses the
+`[TargetRpc]`: public fields only, so FishNet can serialise it.
+
+
 ## 4. The crafting XP curve
 
 `CraftingXpTable` (`Assets/Scripts/Crafting/CraftingXpTable.cs:5`) defines the curve:
@@ -66,19 +86,41 @@ invokes `RequestOpenStation` — a purely local UI event, no server round-trip.
 - `LevelForXp(xp)` (`:13`) = `floor(sqrt(xp / 100)) + 1`.
 
 (There is a duplicate, unused copy of these formulas in `PlayerCrafting.CraftingXpTableImpl` at
-`PlayerCrafting.cs:105`. It is dead code; the live curve is `CraftingXpTable`.)
+`PlayerCrafting.cs:209`. It is dead code; the live curve is `CraftingXpTable`.)
 
-## 5. PlayerCrafting — the server craft path
+## 5. PlayerCrafting — the server craft path and the offer payload
 
-`PlayerCrafting` (`Assets/Scripts/Crafting/PlayerCrafting.cs:11`) is the `NetworkBehaviour` holding a
-player's crafting XP and running the authoritative craft.
+`PlayerCrafting` (`Assets/Scripts/Crafting/PlayerCrafting.cs:27`) is the `NetworkBehaviour` holding a
+player's crafting XP, running the authoritative craft, and implementing `ICraftingSource` so the
+crafting panel can bind to it.
 
-- `MaxCraftDistance = 3f` (`:13`) — how close the player must stand to the station.
-- `CraftingXp` (`:19`) is replicated; `CraftingLevel` (`:20`) is derived from it via the XP table.
-- `StationOpened` (`:22`) is a local event for the UI.
-- `RequestCraft(station, recipeName)` (`:45`) — owner only; sends `RpcRequestCraft`.
-- `RpcRequestCraft` (`:54`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`.
-- `TryCraft(NetworkObject stationObject, string recipeName)` (`:64`) — the server's full check:
+### Opening a station (server decides what is offered)
+
+- `RequestOpenStation(station)` (`:68`) — owner only; sends `RpcRequestOpen(station.NetworkObject)`.
+- `RpcRequestOpen` (`:81`) — `[ServerRpc]`; re-checks the sender owns the object, then calls
+  `TrySendOffers`.
+- `TrySendOffers(target, stationObject)` (`:96`, `[Server]`) — the server's gate: the station must
+  exist and the player must be within `MaxCraftDistance` (`:29`). Only then does it build the payload
+  and answer **that one client** with `RpcOpenStation`.
+- `BuildOffers(station)` (`:126`, `[Server]`) — `CraftingOfferRules.Available(station.StationType,
+  CraftingLevel, inventory.Items)` copied into a `RecipeOffer[]` for the wire.
+- `RpcOpenStation` (`:111`, `[TargetRpc]`) — runs on the owning client: stores `OpenedStation` and
+  `AvailableRecipes`, then raises `StationOpened(station, offers)`. The panel repaints from this.
+- `AvailableRecipes` (`:43`) and `StationOpened` (`:49`) are the `ICraftingSource` surface;
+  `RecipesChanged` (`:46`) is raised when crafting XP changes client-side, so a level-up can refresh
+  the panel without a new payload.
+
+Stepping too far from the station and clicking it produces **no payload**: the client cannot read a
+station it could not use.
+
+### Crafting
+
+- `MaxCraftDistance = 3f` (`:29`) — how close the player must stand to the station.
+- `RequestCraft(station, recipeName)` (`:138`) — owner only; sends `RpcRequestCraft`.
+- `RpcRequestCraft` (`:147`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`;
+  on success it re-sends the offers (`TrySendOffers`) so the panel is handed the freshly-affordable
+  list rather than a stale one.
+- `TryCraft(NetworkObject stationObject, string recipeName)` (`:160`) — the server's full check:
 
 ```csharp
 if (stationObject == null || !stationObject.TryGetComponent(out CraftingStation station))
@@ -91,13 +133,16 @@ if (inventory == null ||
     !CraftingValidator.CanCraft(inventory.Items, recipe, station.StationType, CraftingLevel))
     return false;
 if (!inventory.TryCraft(recipe)) return false;      // consume + produce (chapter 06)
-AwardCraftingXp(recipe.CraftingXp);                 // :93
+AwardCraftingXp(recipe.CraftingXp);                 // :189
 return true;
 ```
 
 So a craft is: resolve the recipe → be close enough → pass `CraftingValidator` (station type, level,
 ingredients) → `PlayerInventory.TryCraft` consumes the ingredients and adds the output → award XP.
-The client only ever sends a **recipe name**; everything else is decided by the server.
+The client only ever sends a **recipe name**; everything else is decided by the server. Because the
+payload is only a display list, a forged or stale recipe name never authorises anything — `TryCraft`
+re-runs the full validation.
+
 
 ## 6. Gathering data: ResourceNode
 
@@ -182,6 +227,8 @@ SERVER
 - **Add a recipe.** Create the asset (`Assets > Create > MMO > Recipe Data`), set the ingredients,
   output, station type, required level and XP, and save it under `Resources`. It self-registers. Add
   EditMode tests for `CraftingValidator` behaviour.
+- **Change which recipes a station shows.** Edit `CraftingOfferRules.Available`; it is the only thing
+  that decides the panel's list, so the client cannot disagree with the server about it.
 - **Add a new station type.** Add the value to `CraftingStationType` and handle it wherever the
   station is configured (the prefab factory/baker). Recipes reference the enum, so no other code
   changes.

@@ -26,6 +26,7 @@ namespace MMO.UI
         private ActionBarView _actionBar;
         private ChatFeed _chatFeed;
         private GuildBankFrameView _guildBankFrame;
+        private CraftingPanelView _craftingPanel;
 
         /// <summary>The health/mana pair, or null before views were assigned.</summary>
         public PlayerHudView PlayerHud => _playerHud;
@@ -44,6 +45,9 @@ namespace MMO.UI
 
         /// <summary>The guild bank window, or null when the factory was told to omit it.</summary>
         public GuildBankFrameView GuildBankFrame => _guildBankFrame;
+
+        /// <summary>The one unified crafting window, or null before views were assigned.</summary>
+        public CraftingPanelView CraftingPanel => _craftingPanel;
 
         /// <summary>
         /// Hands the assembled screens to the HUD; called by the factory.
@@ -69,6 +73,13 @@ namespace MMO.UI
             _guildBankFrame?.Conceal();
         }
 
+        /// <summary>Gives the HUD the crafting window the factory built; starts concealed.</summary>
+        public void SetCraftingPanel(CraftingPanelView craftingPanel)
+        {
+            _craftingPanel = craftingPanel;
+            _craftingPanel?.Conceal();
+        }
+
         /// <summary>
         /// Connects the chat box to the local player's social components. Both may be null — the
         /// panel simply stays quiet until a later call binds it.
@@ -87,7 +98,8 @@ namespace MMO.UI
         public void BindPlayer(
             IVitalsSource vitals,
             IInventorySource inventory = null,
-            IAbilityBarSource abilities = null)
+            IAbilityBarSource abilities = null,
+            ICraftingSource crafting = null)
         {
             if (_playerHud != null)
                 _playerHud.Bind(vitals);
@@ -97,6 +109,9 @@ namespace MMO.UI
 
             if (_actionBar != null)
                 _actionBar.Bind(abilities);
+
+            if (_craftingPanel != null)
+                _craftingPanel.Bind(crafting);
         }
 
         /// <summary>Shows <paramref name="target"/> in the frame; null hides the frame.</summary>
@@ -131,6 +146,12 @@ namespace MMO.UI
 
             if (_actionBar != null)
                 _actionBar.Unbind();
+
+            if (_craftingPanel != null)
+            {
+                _craftingPanel.Unbind();
+                _craftingPanel.Conceal();
+            }
 
             if (_guildBankFrame != null)
                 _guildBankFrame.Conceal();
