@@ -23,7 +23,7 @@ namespace MMO.Tests
     public sealed class WeaponDataTests
     {
         private const string BroadswordPath = "Assets/Data/Weapons/Broadsword.asset";
-        private const string FireStaffPath = "Assets/Data/Weapons/Fire Staff.asset";
+        private const string FireStaffPath = "Assets/Data/Weapons/Fire_Staff.asset";
 
         private WeaponData _created;
         private readonly List<Object> _scratch = new();

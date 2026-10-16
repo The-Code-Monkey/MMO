@@ -28,11 +28,11 @@ namespace MMO.Editor
 
         /// <summary>Where the saved <see cref="UniversalRenderPipelineAsset"/> ends up.</summary>
         public const string PipelineAssetPath =
-            SettingsFolder + "/MMO Universal Render Pipeline Asset.asset";
+            SettingsFolder + "/MMO_Universal_Render_Pipeline_Asset.asset";
 
         /// <summary>Where the saved <see cref="UniversalRendererData"/> ends up.</summary>
         public const string RendererAssetPath =
-            SettingsFolder + "/MMO Universal Renderer.asset";
+            SettingsFolder + "/MMO_Universal_Renderer.asset";
 
         [MenuItem(MenuPath)]
         public static void ConfigureUrpMenu()

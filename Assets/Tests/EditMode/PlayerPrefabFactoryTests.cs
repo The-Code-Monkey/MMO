@@ -245,19 +245,26 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(11, behaviours.Length,
-                "The player carries stats, combat, inventory, ability slots, gathering, crafting, the save trigger, the party and guild views, the camera script, and the server-authoritative mover.");
+            Assert.AreEqual(18, behaviours.Length,
+                "The player carries stats, combat, inventory, ability slots, gathering, crafting, death, the wallet and auction house, the save trigger, the party/guild/chat/friend/raid surfaces, the camera script, the server-authoritative mover, and the HUD.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
             Assert.IsInstanceOf<PlayerAbilities>(behaviours[3]);
             Assert.IsInstanceOf<PlayerGathering>(behaviours[4]);
             Assert.IsInstanceOf<MMO.Crafting.PlayerCrafting>(behaviours[5]);
-            Assert.IsInstanceOf<MMO.Persistence.PlayerSaveTrigger>(behaviours[6]);
-            Assert.IsInstanceOf<MMO.Social.PlayerParty>(behaviours[7]);
-            Assert.IsInstanceOf<MMO.Social.PlayerGuild>(behaviours[8]);
-            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[9]);
-            Assert.IsInstanceOf<PlayerMover>(behaviours[10]);
+            Assert.IsInstanceOf<PlayerDeath>(behaviours[6]);
+            Assert.IsInstanceOf<MMO.Auction.PlayerWallet>(behaviours[7]);
+            Assert.IsInstanceOf<MMO.Auction.PlayerAuctionHouse>(behaviours[8]);
+            Assert.IsInstanceOf<MMO.Persistence.PlayerSaveTrigger>(behaviours[9]);
+            Assert.IsInstanceOf<MMO.Social.PlayerParty>(behaviours[10]);
+            Assert.IsInstanceOf<MMO.Social.PlayerGuild>(behaviours[11]);
+            Assert.IsInstanceOf<MMO.Social.PlayerChat>(behaviours[12]);
+            Assert.IsInstanceOf<MMO.Social.PlayerFriends>(behaviours[13]);
+            Assert.IsInstanceOf<MMO.Social.PlayerRaid>(behaviours[14]);
+            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[15]);
+            Assert.IsInstanceOf<PlayerMover>(behaviours[16]);
+            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[17]);
 
             foreach (NetworkBehaviour behaviour in behaviours)
             {
@@ -274,6 +281,26 @@ namespace MMO.Tests
 
             // A second script would mean two NetworkBehaviours racing to drive the same camera.
             Assert.AreEqual(1, nob.GetComponents<LocalPlayerCamera>().Length);
+        }
+
+        [Test]
+        public void Create_AddsTheLocalPlayerHudScript()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Assert.IsNotNull(nob.GetComponent<LocalPlayerHud>(),
+                "The owning client only gets a HUD if the prefab carries the script that builds it.");
+        }
+
+        [Test]
+        public void Create_AddsExactlyOneLocalPlayerHudScript()
+        {
+            NetworkObject nob = PlayerPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            // A second script would mean two NetworkBehaviours racing to build the same screen.
+            Assert.AreEqual(1, nob.GetComponents<LocalPlayerHud>().Length);
         }
 
         [Test]

@@ -21,9 +21,9 @@ namespace MMO.Tests
     /// </summary>
     public sealed class TutorialForgeContentTests
     {
-        private const string OreItemPath = "Assets/Resources/Items/Iron Ore.asset";
-        private const string IngotItemPath = "Assets/Resources/Items/Iron Ingot.asset";
-        private const string IngotRecipePath = "Assets/Resources/Recipes/Iron Ingot.asset";
+        private const string OreItemPath = "Assets/Resources/Items/Iron_Ore.asset";
+        private const string IngotItemPath = "Assets/Resources/Items/Iron_Ingot.asset";
+        private const string IngotRecipePath = "Assets/Resources/Recipes/Iron_Ingot.asset";
 
         [TearDown]
         public void TearDown()

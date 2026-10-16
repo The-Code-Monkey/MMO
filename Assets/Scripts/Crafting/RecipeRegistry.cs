@@ -79,7 +79,7 @@ namespace MMO.Crafting
 
         /// <summary>
         /// The <c>Resources</c> subfolder the shipped recipe assets live under — the recipe
-        /// above is <c>Resources/Recipes/Iron Ingot.asset</c>. Both discovery
+        /// above is <c>Resources/Recipes/Iron_Ingot.asset</c>. Both discovery
         /// (<see cref="LoadAllFromResources"/>) and the <see cref="Resolve"/> fallback read from
         /// here, so a shipped recipe's asset path always starts with it.
         /// </summary>

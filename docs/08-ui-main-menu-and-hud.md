@@ -161,6 +161,25 @@ unbinds and conceals it again.
 Input System's UI module, discovering it by reflection (`FindInputSystemModule`, `:296`) and falling
 back to the old `StandaloneInputModule`.
 
+### Who builds the HUD: LocalPlayerHud
+
+`NetworkHudFactory` only builds the object graph; a component has to call it on the client that owns
+the player. That component is `LocalPlayerHud` (`Assets/Scripts/Client/LocalPlayerHud.cs`), which the
+player prefab carries (added by `PlayerPrefabFactory.Create`, mirroring `LocalPlayerCamera`).
+
+- `OnStartNetwork` and `OnOwnershipClient` both route through `TryBuildHud` (`:70`).
+- The ownership guard is the whole MMO logic: every client spawns every player's prefab, so the
+  `if (!IsOwner) return;` (`:75`) is what stops a remote player's copy from stacking a second HUD.
+- `!IsClientStarted` (`:80`) keeps a dedicated server from building a screen it can never see.
+- The HUD is built once and cached; `NetworkHudFactory.Create` is called with this player's own
+  `PlayerStats`/`PlayerInventory`/`PlayerAbilities`/`PlayerCrafting`, then `NetworkHud.BindChat`
+  (`:95`) binds the chat feed to this player's `PlayerChat`/`PlayerFriends`.
+- `OnStopNetwork` (and losing ownership) calls `DestroyHud` (`:104`), which destroys the root and
+  clears the cache.
+
+Because the script travels with the prefab, a baked scene needs no per-instance HUD setup: whichever
+client owns the spawned player gets the screen (carrying the crafting panel) for free.
+
 ## 4. Why interfaces matter here
 
 The HUD never references `PlayerStats`, `PlayerInventory` or `PlayerAbilities` directly. It binds to
@@ -217,3 +236,9 @@ Play MainMenu scene
   `…PanelView` that binds to it, a `…PanelFactory`, and a `Set…`/bind pair on `NetworkHud`.
 - **Change the UI colours or scale.** Edit the `Color`/reference-resolution constants at the top of
   `MainMenuFactory` or `NetworkHudFactory`.
+- **Add a component to the player factory.** Add it to `PlayerPrefabFactory.Create`, then refresh the
+  baked prefab. The scene bakers call `PlayerPrefabBaker.EnsurePlayerPrefab`, which **returns an
+  existing `Assets/Prefabs/Player.prefab` as-is** — it never rebakes — so delete that prefab first,
+  then run `Tools > MMO/Build Zones` and `Tools > MMO/Create Main Menu Scene`. Otherwise every baked
+  scene silently keeps spawning the old component set (which is how `LocalPlayerHud`, and the
+  mover/death/wallet/social components before it, went missing from the committed prefab).

@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8c5789ae7ec84bb8a14692b3abbb9bf2, type: 3}
-  m_Name: Iron Plate
+  m_Name: Iron_Plate
   m_EditorClassIdentifier:
   _armorName: Iron Plate
   _armorValue: 12

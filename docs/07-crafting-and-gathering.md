@@ -42,8 +42,8 @@ any per-recipe wiring.
 ### Shipped recipes
 
 `Assets/Resources/Recipes/` holds the recipe assets the game ships. The first is the tutorials'
-refining step, `Iron Ingot.asset`: two `Assets/Resources/Items/Iron Ore.asset` refine into one
-`Assets/Resources/Items/Iron Ingot.asset` (a 1×1 good) at a `Furnace`, for 5 crafting XP. It is what
+refining step, `Iron_Ingot.asset`: two `Assets/Resources/Items/Iron_Ore.asset` refine into one
+`Assets/Resources/Items/Iron_Ingot.asset` (a 1×1 good) at a `Furnace`, for 5 crafting XP. It is what
 the tutorial furnace marker stands next to, so a brand-new character can gather ore and refine it
 without leaving the starting zone. `TutorialForgeContentTests` asserts each of those facts against
 the real assets.

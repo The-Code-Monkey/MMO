@@ -164,7 +164,7 @@ skill stays serialisable and testable:
 | `SelfHeal` (2) | Heal the caster. Skips the range check. | `:29` |
 
 The existing assets are `Assets/Data/Abilities/Fireball.asset` (`TargetedDamage`),
-`Cleave.asset` (`AreaDamage`) and `Second Wind.asset` (`SelfHeal`).
+`Cleave.asset` (`AreaDamage`) and `Second_Wind.asset` (`SelfHeal`).
 
 ### AbilityCastResult — why a cast was refused
 
