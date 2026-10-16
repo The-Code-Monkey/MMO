@@ -209,6 +209,8 @@ namespace MMO.Net
             if (_manager == null || !_manager.IsServerStarted)
                 return;
 
+            RecipeRegistry.LoadAllFromResources();
+
             WireSpawnPoints();
 
             SpawnFromMarkers(

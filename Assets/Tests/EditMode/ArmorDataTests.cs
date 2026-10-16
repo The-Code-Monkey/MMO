@@ -16,7 +16,7 @@ namespace MMO.Tests
     /// </summary>
     public sealed class ArmorDataTests
     {
-        private const string IronPlatePath = "Assets/Data/Armor/Iron Plate.asset";
+        private const string IronPlatePath = "Assets/Data/Armor/Iron_Plate.asset";
 
         private ArmorData _created;
         private readonly List<Object> _scratch = new();

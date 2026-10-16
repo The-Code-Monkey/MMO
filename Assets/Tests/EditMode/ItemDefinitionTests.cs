@@ -16,7 +16,7 @@ namespace MMO.Tests
     public sealed class ItemDefinitionTests
     {
         private const string BroadswordPath = "Assets/Resources/Items/Broadsword.asset";
-        private const string IronHelmPath = "Assets/Resources/Items/Iron Helm.asset";
+        private const string IronHelmPath = "Assets/Resources/Items/Iron_Helm.asset";
 
         private ItemDefinition _created;
 

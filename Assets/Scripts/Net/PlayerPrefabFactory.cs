@@ -62,8 +62,9 @@ namespace MMO.Net
         /// <see cref="PlayerAbilities"/> that carries this player's ability slots, its
         /// <see cref="PlayerGathering"/> that runs the server-side gathering loop this player
         /// started, and the <see cref="LocalPlayerCamera"/> that gives the owning client
-        /// something to look through. The <see cref="PlayerMover"/> is the server-authoritative
-        /// writer of this player's position.
+        /// something to look through. The <see cref="LocalPlayerHud"/> gives that same client its
+        /// screen (carrying the crafting panel), and the <see cref="PlayerMover"/> is the
+        /// server-authoritative writer of this player's position.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -134,6 +135,13 @@ namespace MMO.Net
 
             // Owner-side input driver for the mover. Added after PlayerMover so it can reference it.
             go.AddComponent<MMO.Input.PlayerMoverInput>();
+
+            // The client HUD: the owning client builds the whole screen (vitals, inventory, action
+            // bar, chat and the crafting panel) and binds it to this player's own sources. Like the
+            // camera script it travels with the prefab, does nothing on a copy this client does not
+            // own, and builds nothing on a dedicated server. Appended last so every behaviour added
+            // before it keeps the NetworkBehaviour and RPC index the baked prefab already uses.
+            go.AddComponent<LocalPlayerHud>();
 
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.

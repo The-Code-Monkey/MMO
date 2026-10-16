@@ -1,25 +1,52 @@
 using System;
+using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.UI;
 using UnityEngine;
 
 namespace MMO.Crafting
 {
-    public sealed class PlayerCrafting : NetworkBehaviour
+    /// <summary>
+    /// The player's crafting: replicated XP, the authoritative craft, and the server-side answer
+    /// to "what does this station have for me".
+    ///
+    /// <para>
+    /// As an <see cref="ICraftingSource"/> this component is also what the crafting panel binds
+    /// to, and the data flow is deliberately one-way. A click on a station sends
+    /// <see cref="RpcRequestOpen"/>; the server checks ownership and proximity, then answers that
+    /// one client with a <c>[TargetRpc]</c> carrying the filtered <see cref="RecipeOffer"/>
+    /// payload. The client never enumerates the recipe registry, and it never decides what is
+    /// craftable — <see cref="TryCraft"/> re-runs <see cref="CraftingValidator"/> before anything
+    /// moves, so a forged or stale offer name fails safely.
+    /// </para>
+    /// </summary>
+    public sealed class PlayerCrafting : NetworkBehaviour, ICraftingSource
     {
         public const float MaxCraftDistance = 3f;
 
         private readonly SyncVar<int> _craftingXp = new();
 
         private PlayerInventory _inventory;
+        private IReadOnlyList<RecipeOffer> _availableRecipes = Array.Empty<RecipeOffer>();
 
         public int CraftingXp => _craftingXp.Value;
         public int CraftingLevel => MMO.Crafting.CraftingXpTable.LevelForXp(_craftingXp.Value);
 
-        public event Action<CraftingStation> StationOpened;
+        /// <summary>The station the last payload came from, or null.</summary>
+        public CraftingStation OpenedStation { get; private set; }
+
+        /// <summary>The offers carried by the last payload; the panel's whole recipe list.</summary>
+        public IReadOnlyList<RecipeOffer> AvailableRecipes => _availableRecipes;
+
+        /// <summary>Raised when crafting XP changes, which can change what a station would offer.</summary>
+        public event Action RecipesChanged;
+
+        /// <summary>Raised client-side when the server answers an open request with a payload.</summary>
+        public event Action<CraftingStation, IReadOnlyList<RecipeOffer>> StationOpened;
 
         private PlayerInventory Inventory =>
             _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
@@ -34,12 +61,78 @@ namespace MMO.Crafting
             _craftingXp.OnChange -= OnCraftingXpChanged;
         }
 
+        /// <summary>
+        /// Asks the server to open <paramref name="station"/>; the panel populates when the
+        /// server's payload arrives, not when this returns.
+        /// </summary>
         public void RequestOpenStation(CraftingStation station)
         {
             if (!IsOwner || station == null)
                 return;
 
-            StationOpened?.Invoke(station);
+            RpcRequestOpen(station.NetworkObject);
+        }
+
+        /// <summary>
+        /// The server side of an open request: ownership was checked by the RPC, proximity is
+        /// checked here, and a station that fails either check simply produces no payload.
+        /// </summary>
+        [ServerRpc]
+        private void RpcRequestOpen(NetworkObject stationObject, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            TrySendOffers(sender, stationObject);
+        }
+
+        /// <summary>
+        /// Builds and sends the offer payload for <paramref name="stationObject"/> to
+        /// <paramref name="target"/>. Returns false (and sends nothing) when the station is gone
+        /// or the player is too far away — the same reach <see cref="TryCraft"/> enforces, so a
+        /// client cannot read a station it could not use.
+        /// </summary>
+        [Server]
+        public bool TrySendOffers(NetworkConnection target, NetworkObject stationObject)
+        {
+            if (target == null ||
+                stationObject == null ||
+                !stationObject.TryGetComponent(out CraftingStation station))
+                return false;
+
+            if (Vector3.Distance(transform.position, station.transform.position) > MaxCraftDistance)
+                return false;
+
+            RpcOpenStation(target, stationObject, BuildOffers(station));
+            return true;
+        }
+
+        [TargetRpc]
+        private void RpcOpenStation(NetworkConnection target, NetworkObject stationObject, RecipeOffer[] offers)
+        {
+            if (!IsOwner || stationObject == null)
+                return;
+
+            CraftingStation station = stationObject.GetComponent<CraftingStation>();
+            if (station == null)
+                return;
+
+            OpenedStation = station;
+            _availableRecipes = offers ?? Array.Empty<RecipeOffer>();
+            StationOpened?.Invoke(station, _availableRecipes);
+        }
+
+        [Server]
+        private RecipeOffer[] BuildOffers(CraftingStation station)
+        {
+            IReadOnlyList<RecipeOffer> offers = CraftingOfferRules.Available(
+                station.StationType, CraftingLevel, Inventory != null ? Inventory.Items : null);
+
+            var payload = new RecipeOffer[offers.Count];
+            for (int i = 0; i < offers.Count; i++)
+                payload[i] = offers[i];
+
+            return payload;
         }
 
         public void RequestCraft(CraftingStation station, string recipeName)
@@ -57,7 +150,10 @@ namespace MMO.Crafting
             if (sender == null || !OwnerMatches(sender))
                 return;
 
-            TryCraft(stationObject, recipeName);
+            // A successful craft changes what the bag can afford, so the panel is handed a fresh
+            // payload instead of a stale one it would have to guess at.
+            if (TryCraft(stationObject, recipeName))
+                TrySendOffers(sender, stationObject);
         }
 
         [Server]
@@ -100,7 +196,15 @@ namespace MMO.Crafting
                 ? combat.GetComponent<PlayerCrafting>()
                 : null;
 
-        private void OnCraftingXpChanged(int previous, int current, bool asServer) { }
+        private void OnCraftingXpChanged(int previous, int current, bool asServer)
+        {
+            if (asServer)
+                return;
+
+            // A level change can only widen what a station offers, but the panel is looking at
+            // the last payload; repainting at least keeps its level readout honest.
+            RecipesChanged?.Invoke();
+        }
 
         public static class CraftingXpTableImpl
         {

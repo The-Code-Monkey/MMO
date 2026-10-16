@@ -113,7 +113,7 @@ inventory grid and action bar. `SetViews(...)` (`:41`) wires them. The useful me
 | `TargetFrameView` | `Assets/Scripts/UI/TargetFrameView.cs:25` | `ITargetSource` | The target's name and health. |
 | `InventoryGridView` | `Assets/Scripts/UI/InventoryGridView.cs:28` | `IInventorySource` | The 8×6 bag grid. |
 | `ActionBarView` | `Assets/Scripts/UI/ActionBarView.cs:31` | `IAbilityBarSource` | Up to 6 ability slots. |
-| `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs:7` | `ICraftingSource` | **Stub** — see below. |
+| `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs:33` | `ICraftingSource` | A scrollable list of the server's recipe offers for the open station. |
 
 How the views work:
 
@@ -129,22 +129,56 @@ How the views work:
   the item's origin cell, so a 2×1 item reads as one item spanning two cells.
 - `TargetFrameView.Repaint` (`:85`) shows or hides the whole frame depending on whether there is a
   target.
-
-`CraftingPanelView` (`CraftingPanelView.cs:7`) is **incomplete scaffolding**: it has a `Bind`/`Unbind`
-and a `StationOpened` handler, but `Repaint` (`:41`) has an empty body and it has no
-`AddComponentMenu`. Treat it as a placeholder to be finished.
+- `CraftingPanelView` is the one unified crafting window (an anvil, an alchemy lab and a loom all
+  open this same component). Its `Bind` (`:109`) subscribes to the source's `RecipesChanged` and
+  `StationOpened` events, copies `AvailableRecipes`/`OpenedStation`, and shows itself only when a
+  station is open. `Repaint` (`:150`) rebuilds one row per offer: the recipe name, an `xN` count when
+  the output is more than one, and a **Craft** button that is disabled when the offer's
+  `IngredientsMet` is false (the row is tinted `LockedRowColor` too). Clicking a row calls
+  `HandleRowClicked` (`:170`), which forwards `source.RequestCraft(station, offer.RecipeName)` —
+  and nothing else. The panel never consults `RecipeRegistry`; its whole list comes from the
+  server's payload, which is the point (see [07](07-crafting-and-gathering.md)).
+- Like every view here, `CraftingPanelView` owns **no `Update`**: it repaints on bind and on the two
+  source events, and is otherwise inert.
 
 ### The HUD factory
 
 `NetworkHudFactory` (`Assets/Scripts/UI/NetworkHudFactory.cs:30`) builds the whole HUD in one call:
-`Create(vitals, inventory, abilities, target, createEventSystem)` (`:63`). It creates the player HUD
-(with health and mana bars), the target frame, the inventory grid (sized from
-`PlayerInventory.GridWidth`/`GridHeight`) and the action bar (sized from `AbilityLoadout.MaxSlots`),
-then adds a `NetworkHud` and binds them.
+`Create(vitals, inventory, abilities, target, createEventSystem, createGuildBankFrame, crafting)`
+(`:68`). It creates the player HUD (with health and mana bars), the target frame, the inventory grid
+(sized from `PlayerInventory.GridWidth`/`GridHeight`), the action bar (sized from
+`AbilityLoadout.MaxSlots`) and the crafting panel (via `CraftingPanelFactory.Create`, built
+concealed), then adds a `NetworkHud` and binds them through `BindPlayer(..., crafting)`.
+
+The crafting panel is built by `CraftingPanelFactory` (`Assets/Scripts/UI/CraftingPanelFactory.cs:17`):
+a titled frame with a **Close** button (`view.Conceal()`), a `ScrollRect` (viewport masked with
+`RectMask2D`, content with a `VerticalLayoutGroup` + `ContentSizeFitter`) and the
+`CraftingPanelView` itself. `NetworkHud.SetCraftingPanel` (`NetworkHud.cs:77`) stores it concealed;
+`NetworkHud.BindPlayer` (`:98`) binds it to the `ICraftingSource`, and `NetworkHud.Unbind` (`:150`)
+unbinds and conceals it again.
 
 `EnsureEventSystem` (`:103`) returns the existing `EventSystem` or creates one. It prefers the new
 Input System's UI module, discovering it by reflection (`FindInputSystemModule`, `:296`) and falling
 back to the old `StandaloneInputModule`.
+
+### Who builds the HUD: LocalPlayerHud
+
+`NetworkHudFactory` only builds the object graph; a component has to call it on the client that owns
+the player. That component is `LocalPlayerHud` (`Assets/Scripts/Client/LocalPlayerHud.cs`), which the
+player prefab carries (added by `PlayerPrefabFactory.Create`, mirroring `LocalPlayerCamera`).
+
+- `OnStartNetwork` and `OnOwnershipClient` both route through `TryBuildHud` (`:70`).
+- The ownership guard is the whole MMO logic: every client spawns every player's prefab, so the
+  `if (!IsOwner) return;` (`:75`) is what stops a remote player's copy from stacking a second HUD.
+- `!IsClientStarted` (`:80`) keeps a dedicated server from building a screen it can never see.
+- The HUD is built once and cached; `NetworkHudFactory.Create` is called with this player's own
+  `PlayerStats`/`PlayerInventory`/`PlayerAbilities`/`PlayerCrafting`, then `NetworkHud.BindChat`
+  (`:95`) binds the chat feed to this player's `PlayerChat`/`PlayerFriends`.
+- `OnStopNetwork` (and losing ownership) calls `DestroyHud` (`:104`), which destroys the root and
+  clears the cache.
+
+Because the script travels with the prefab, a baked scene needs no per-instance HUD setup: whichever
+client owns the spawned player gets the screen (carrying the crafting panel) for free.
 
 ## 4. Why interfaces matter here
 
@@ -157,7 +191,7 @@ the small interfaces:
 | `ITargetSource` | `Assets/Scripts/Gameplay/ITargetSource.cs:16` |
 | `IInventorySource` | `Assets/Scripts/Inventory/IInventorySource.cs:17` |
 | `IAbilityBarSource` | `Assets/Scripts/Gameplay/IAbilityBarSource.cs:19` |
-| `ICraftingSource` | `Assets/Scripts/UI/ICraftingSource.cs:6` |
+| `ICraftingSource` | `Assets/Scripts/UI/ICraftingSource.cs:18` |
 
 This is what makes the UI testable without a network. A test can write a tiny in-memory
 `IVitalsSource`, bind a `VitalBarView`, raise `VitalsChanged`, and assert the fill amount changed.
@@ -195,7 +229,16 @@ Play MainMenu scene
   in `NetworkHudFactory.Create`.
 - **Show a new piece of replicated state.** Add the property/event to the relevant source interface
   (e.g. `IVitalsSource`), implement it on the NetworkBehaviour, and read it in the view's `Repaint`.
-- **Finish the crafting panel.** Implement `CraftingPanelView.Repaint` and wire it in
-  `NetworkHudFactory`. It should read from `ICraftingSource` and list `RecipeRegistry` entries.
+- **Change how a recipe row looks.** Edit `CraftingPanelView.CreateRow` (`:194`) and the
+  `RowHeight`/`RowColor`/`LockedRowColor` constants (`:36`). The row-model and the server payload are
+  untouched.
+- **Add another server-driven window.** Mirror the crafting panel: a `…Source` interface in `UI`, a
+  `…PanelView` that binds to it, a `…PanelFactory`, and a `Set…`/bind pair on `NetworkHud`.
 - **Change the UI colours or scale.** Edit the `Color`/reference-resolution constants at the top of
   `MainMenuFactory` or `NetworkHudFactory`.
+- **Add a component to the player factory.** Add it to `PlayerPrefabFactory.Create`, then refresh the
+  baked prefab. The scene bakers call `PlayerPrefabBaker.EnsurePlayerPrefab`, which **returns an
+  existing `Assets/Prefabs/Player.prefab` as-is** — it never rebakes — so delete that prefab first,
+  then run `Tools > MMO/Build Zones` and `Tools > MMO/Create Main Menu Scene`. Otherwise every baked
+  scene silently keeps spawning the old component set (which is how `LocalPlayerHud`, and the
+  mover/death/wallet/social components before it, went missing from the committed prefab).

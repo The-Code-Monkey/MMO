@@ -78,9 +78,11 @@ If the effect is genuinely new (not just new numbers):
 //    RecipeName "Iron Sword", Ingredients [ Iron Ingot x5 ], Output Broadsword x1,
 //    StationType Anvil, RequiredCraftingLevel 3, CraftingXp 25
 //
-// 2. Recipes self-register in OnEnable (RecipeData.OnEnable → RecipeRegistry.Register),
-//    so there is nothing else to wire. The server-side check before anything is granted is
-//    exactly what PlayerCrafting.TryCraft runs (Assets/Scripts/Crafting/PlayerCrafting.cs:64):
+// 2. Save the asset under Assets/Resources/Recipes so the server finds it: WorldBootstrap
+//    calls RecipeRegistry.LoadAllFromResources() at start-up, and each recipe also self-registers
+//    in OnEnable (RecipeData.OnEnable → RecipeRegistry.Register). The server-side check before
+//    anything is granted is exactly what PlayerCrafting.TryCraft runs
+//    (Assets/Scripts/Crafting/PlayerCrafting.cs:160):
 
 RecipeData recipe = RecipeRegistry.Resolve(recipeName);
 bool ok = recipe != null

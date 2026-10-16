@@ -11,8 +11,8 @@ namespace MMO.UI
 {
     /// <summary>
     /// Builds the whole client HUD in code: a screen-space canvas carrying the health/mana pair,
-    /// the target frame, the inventory grid and the action bar, all wired to whatever sources the
-    /// caller passes.
+    /// the target frame, the inventory grid, the action bar and the unified crafting panel, all
+    /// wired to whatever sources the caller passes.
     ///
     /// <para>
     /// Nothing here loads a prefab or a scene — the project commits neither, and the existing
@@ -60,13 +60,19 @@ namespace MMO.UI
         /// True to ensure a clickable event router exists (one is created only when the scene
         /// has none). Tests that never dispatch a pointer pass false.
         /// </param>
+        /// <param name="createGuildBankFrame">True to also build the guild bank window.</param>
+        /// <param name="crafting">
+        /// The player's crafting, e.g. a spawned <c>PlayerCrafting</c>. The panel is built
+        /// concealed regardless; it shows when the server sends that source an offer payload.
+        /// </param>
         public static NetworkHud Create(
             IVitalsSource vitals = null,
             IInventorySource inventory = null,
             IAbilityBarSource abilities = null,
             ITargetSource target = null,
             bool createEventSystem = true,
-            bool createGuildBankFrame = false)
+            bool createGuildBankFrame = false,
+            ICraftingSource crafting = null)
         {
             GameObject root = new GameObject(HudName, typeof(RectTransform));
 
@@ -87,11 +93,12 @@ namespace MMO.UI
                 CreateInventoryGrid(root.transform),
                 CreateActionBar(root.transform),
                 ChatFeed.Create(root.transform));
+            hud.SetCraftingPanel(CraftingPanelFactory.Create(root.transform));
 
             if (createGuildBankFrame)
                 hud.SetGuildBankFrame(GuildBankFrameFactory.Create(root.transform));
 
-            hud.BindPlayer(vitals, inventory, abilities);
+            hud.BindPlayer(vitals, inventory, abilities, crafting);
             hud.BindTarget(target);
 
             if (createEventSystem)

@@ -174,7 +174,7 @@ namespace MMO.Tests
             // a Broadsword grants Cleave, an Iron Plate grants Second Wind, and both land in
             // the same bar in gear order.
             WeaponData broadsword = LoadWeapon("Assets/Data/Weapons/Broadsword.asset");
-            ArmorData ironPlate = LoadArmor("Assets/Data/Armor/Iron Plate.asset");
+            ArmorData ironPlate = LoadArmor("Assets/Data/Armor/Iron_Plate.asset");
             var loadout = new AbilityLoadout();
 
             loadout.RebuildFromGear(broadsword, ironPlate);

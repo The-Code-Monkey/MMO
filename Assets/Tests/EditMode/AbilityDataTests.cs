@@ -21,7 +21,7 @@ namespace MMO.Tests
     {
         private const string FireballPath = "Assets/Data/Abilities/Fireball.asset";
         private const string CleavePath = "Assets/Data/Abilities/Cleave.asset";
-        private const string SecondWindPath = "Assets/Data/Abilities/Second Wind.asset";
+        private const string SecondWindPath = "Assets/Data/Abilities/Second_Wind.asset";
 
         private static readonly string[] StatFields =
         {

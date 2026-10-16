@@ -90,7 +90,8 @@ The most useful pattern to understand is that almost every gameplay system is sp
 - A **pure core** — plain C# classes and static methods that take all of their inputs as arguments
   and never read a clock (`Time.time`), never touch Unity objects, and never touch the network.
   Examples: `AbilityCastRules`, `AbilityCooldownTracker`, `AbilityEffects`, `AbilityCaster`,
-  `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `GatheringRules`, `JoinPolicy`, and the
+  `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `CraftingOfferRules`, `GatheringRules`,
+  `JoinPolicy`, and the
   anti-cheat rules `MovementRules` and `SightRules` (see [14](14-server-authority-hardening.md)).
 - A **networked shell** — a FishNet `NetworkBehaviour` (a component that can replicate over the
   network) that holds the real clock and world references and calls into the pure core. Examples:

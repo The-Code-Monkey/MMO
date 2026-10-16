@@ -61,7 +61,7 @@ The public `MaxDurability` accessor (`:73`) is a read-through (`Mathf.Max(0, _ma
 than the raw field, so a negative authoring value cannot leak out. It is what `ItemInstance.Create`
 seeds a fresh item with and what `PlayerSaveMapper` clamps a loaded durability against.
 
-Existing items live in `Assets/Resources/Items/` (e.g. `Iron Ore.asset`, `Iron Helm.asset`,
+Existing items live in `Assets/Resources/Items/` (e.g. `Iron_Ore.asset`, `Iron_Helm.asset`,
 `Broadsword.asset`).
 
 ### Self-registration
