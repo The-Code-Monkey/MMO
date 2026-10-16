@@ -27,10 +27,26 @@ and `Count`.
 Like items, recipes self-register. `RecipeData.OnEnable` (`:34`) registers in `RecipeRegistry` when
 named, and `OnDisable` (`:40`) unregisters. `RecipeRegistry`
 (`Assets/Scripts/Crafting/RecipeRegistry.cs:6`) mirrors `ItemDefinitionRegistry`: `Register` (`:12`),
-`Unregister` (`:31`), `Resolve` (`:40`, with a `Resources.Load<RecipeData>` fallback) and `Clear`
-(`:55`). `All` (`:63`) returns a snapshot `IReadOnlyList<RecipeData>` of every registered recipe
-(nulls skipped) — the server uses it to build the crafting payload below without ever handing assets
-to a client.
+`Unregister` (`:31`), `Resolve` (`:40`, falling back to `Resources.Load<RecipeData>` under
+`Resources/Recipes`) and `Clear` (`:57`). `All` (`:65`) returns a snapshot `IReadOnlyList<RecipeData>`
+of every registered recipe (nulls skipped) — the server uses it to build the crafting payload below
+without ever handing assets to a client.
+
+Self-registration alone only fires for a recipe something else has already loaded, so the server
+walks the folder once at start-up: `RecipeRegistry.LoadAllFromResources()` (`:101`) loads every
+`Resources/Recipes/*.asset` (via `Resources.LoadAll`, folder name in `RecipesFolder` at `:86`) and
+registers the set. `WorldBootstrap.SpawnWorld` calls it before materialising the zone, so a shipped
+recipe reaches `All` — and therefore both the offer payload and `PlayerCrafting.TryCraft` — without
+any per-recipe wiring.
+
+### Shipped recipes
+
+`Assets/Resources/Recipes/` holds the recipe assets the game ships. The first is the tutorials'
+refining step, `Iron Ingot.asset`: two `Assets/Resources/Items/Iron Ore.asset` refine into one
+`Assets/Resources/Items/Iron Ingot.asset` (a 1×1 good) at a `Furnace`, for 5 crafting XP. It is what
+the tutorial furnace marker stands next to, so a brand-new character can gather ore and refine it
+without leaving the starting zone. `TutorialForgeContentTests` asserts each of those facts against
+the real assets.
 
 ## 2. Crafting stations
 

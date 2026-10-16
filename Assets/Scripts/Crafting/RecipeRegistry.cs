@@ -46,6 +46,8 @@ namespace MMO.Crafting
                 return definition;
 
             RecipeData loaded = Resources.Load<RecipeData>(recipeName);
+            if (loaded == null)
+                loaded = Resources.Load<RecipeData>($"{RecipesFolder}/{recipeName}");
             if (loaded != null)
                 Registered[recipeName] = loaded;
 
@@ -73,6 +75,33 @@ namespace MMO.Crafting
 
                 return snapshot;
             }
+        }
+
+        /// <summary>
+        /// The <c>Resources</c> subfolder the shipped recipe assets live under — the recipe
+        /// above is <c>Resources/Recipes/Iron Ingot.asset</c>. Both discovery
+        /// (<see cref="LoadAllFromResources"/>) and the <see cref="Resolve"/> fallback read from
+        /// here, so a shipped recipe's asset path always starts with it.
+        /// </summary>
+        public const string RecipesFolder = "Recipes";
+
+        /// <summary>
+        /// Loads every <see cref="RecipeData"/> asset under <c>Resources/Recipes</c>, registering
+        /// the whole set at once.
+        ///
+        /// <para>
+        /// Each asset already registers itself on load, so this only forces the load to happen:
+        /// nothing else in the project walks <c>Resources</c> for recipes, and a recipe nobody
+        /// loads never reaches <see cref="All"/> — which is what the server builds its offer
+        /// payload from, and what <c>PlayerCrafting.TryCraft</c> resolves a craft request against.
+        /// Safe to call repeatedly, since re-registering the same instance just overwrites the
+        /// dictionary entry with itself.
+        /// </para>
+        /// </summary>
+        public static void LoadAllFromResources()
+        {
+            foreach (RecipeData recipe in Resources.LoadAll<RecipeData>(RecipesFolder))
+                Register(recipe);
         }
     }
 }

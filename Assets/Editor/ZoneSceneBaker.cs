@@ -581,8 +581,11 @@ namespace MMO.Editor
                 return;
             }
 
-            // Tutorial: the one dummy a new player learns to hit, a few metres in front of spawn.
+            // Tutorial: the one dummy a new player learns to hit, a few metres in front of spawn,
+            // plus the furnace they refine their first gathered ore at — the furnace is what makes
+            // the iron ore -> iron ingot recipe reachable from a fresh character.
             AddEnemyMarker(markers, 1, new Vector3(0f, enemyY, 4f));
+            AddStationMarker(markers, 1, new Vector3(4f, stationY, 4f), CraftingStationType.Furnace);
         }
 
         private static void AddNodeMarker(Transform parent, int index, Vector3 position)
