@@ -168,7 +168,7 @@ server.x86_64 -zone SafeZone     # listens on 7770
 server.x86_64 -zone Wilderness   # listens on 7771
 ```
 
-The launch is a two-step handshake between two existing components, so no scene needs re-baking:
+The launch is a three-step handshake between existing components, so no scene needs re-baking:
 
 1. `MainMenuBootstrap.TryRedirectToZone` (`Assets/Scripts/Bootstrap/MainMenuBootstrap.cs`) parses the
    switch with `DedicatedServerArgs.ParseZone`, confirms the name is an enabled build scene, calls
@@ -176,6 +176,14 @@ The launch is a two-step handshake between two existing components, so no scene 
    UI or Nakama login is wired. An unknown zone name logs an error and quits with code 1.
 2. The loaded zone scene's `WorldBootstrap.Start` sees `DedicatedServerMode.IsActive` and calls
    `ServerManager.StartConnection()`, which opens the zone's baked port and spawns the world.
+3. Once the server reports `Started`, `WorldBootstrap.RegisterGlobalScene` registers the already
+   loaded zone scene as a FishNet **global scene** via `SceneManager.LoadGlobalScenes`. The launcher
+   loaded the scene with Unity's `SceneManager` directly, which FishNet does not track, so without
+   this call `_globalScenes` stays empty and FishNet tells every admitted client "no start scenes" —
+   stranding it on the offline (main menu) scene. With the scene registered, FishNet broadcasts a
+   load to each admitted client (`ReplaceOption.All`, so the client's main menu is swapped out for
+   the zone) and adds the client to the scene so scene-scoped observers can see it. No zone scene
+   needs re-baking for this; it mirrors FishNet's own `DefaultScene` component.
 
 `DedicatedServerMode` is the process-wide switch that keeps a *client* build honest: a client that
 loads a zone scene (FishNet syncs the scene to clients) never set the flag, so it never opens a

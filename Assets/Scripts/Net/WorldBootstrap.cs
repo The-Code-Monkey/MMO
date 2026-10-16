@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
+using FishNet.Managing.Scened;
 using FishNet.Object;
 using FishNet.Transporting;
 using MMO.Crafting;
@@ -43,6 +44,7 @@ namespace MMO.Net
         private PlayerSpawner _playerSpawner;
         private bool _subscribed;
         private bool _spawnerHooked;
+        private bool _globalSceneRegistered;
 
         // One spawned network object per authored marker, keyed by the marker component. Cleared
         // when the server stops, because FishNet despawns and destroys everything it spawned.
@@ -116,7 +118,10 @@ namespace MMO.Net
             TryHookPlayerSpawner();
 
             if (_manager.IsServerStarted)
+            {
+                RegisterGlobalScene();
                 SpawnWorld();
+            }
         }
 
         private void TryHookPlayerSpawner()
@@ -148,6 +153,7 @@ namespace MMO.Net
         {
             if (args.ConnectionState == LocalConnectionState.Started)
             {
+                RegisterGlobalScene();
                 SpawnWorld();
             }
             else if (args.ConnectionState == LocalConnectionState.Stopped)
@@ -156,7 +162,40 @@ namespace MMO.Net
                 // later restart spawns a fresh world instead of reusing dead references.
                 _spawnedFromMarkers.Clear();
                 _fallbackNodePrefab = null;
+                _globalSceneRegistered = false;
             }
+        }
+
+        /// <summary>
+        /// Dedicated-server-only: registers the already-loaded zone scene as a FishNet <b>global
+        /// scene</b> so every client is told to load it once it is admitted. The launcher loads the
+        /// zone scene with Unity's <c>SceneManager</c> before the listener starts, which FishNet
+        /// does not track — without this call <c>_globalScenes</c> stays empty and FishNet tells each
+        /// admitted client "no start scenes", leaving it stranded on its offline (main menu) scene.
+        /// The scene is already loaded, so FishNet does not load it again on the server; it records
+        /// the name and broadcasts a load to clients, then adds each client to the scene so
+        /// scene-scoped observers can see it. <see cref="ReplaceOption.All"/> makes the load swap the
+        /// client's offline scene out for the zone rather than stacking the two. Only the dedicated
+        /// flow owns a zone server (<see cref="Start"/>), so this stays out of the way of the
+        /// client, host and test processes.
+        /// </summary>
+        private void RegisterGlobalScene()
+        {
+            if (_globalSceneRegistered || !DedicatedServerMode.IsActive)
+                return;
+            if (_manager == null || _manager.SceneManager == null)
+                return;
+
+            string sceneName = DedicatedServerMode.ZoneName;
+            if (string.IsNullOrEmpty(sceneName))
+                return;
+
+            SceneLoadData sceneLoadData = new(sceneName)
+            {
+                ReplaceScenes = ReplaceOption.All
+            };
+            _manager.SceneManager.LoadGlobalScenes(sceneLoadData);
+            _globalSceneRegistered = true;
         }
 
         /// <summary>

@@ -161,13 +161,26 @@ namespace MMO.Bootstrap
         /// </summary>
         private async Task<string> ConnectAndAdmitAsync()
         {
+            Transport transport = _networkManager.TransportManager?.Transport;
+            Debug.Log($"[JoinClient] Starting client connection to " +
+                      $"{(transport != null ? $"{transport.GetClientAddress()}:{transport.GetPort()}" : "<no transport>")}...");
+
             if (_networkManager.ClientManager == null ||
                 !_networkManager.ClientManager.StartConnection())
                 return "Could not start the connection to the zone.";
 
-            return await WaitForAdmissionAsync(_networkManager)
-                ? null
-                : "Could not reach the zone server. Try again.";
+            bool admitted = await WaitForAdmissionAsync(_networkManager);
+            if (admitted)
+            {
+                Debug.Log("[JoinClient] Admitted by the zone.");
+                return null;
+            }
+
+            // Without this the UI can only ever show the generic timeout line, which hides
+            // whether the socket never opened or the gate actively turned us away.
+            Debug.LogWarning("[JoinClient] Not admitted within the handshake window. " +
+                             $"Client state: {(_networkManager.ClientManager.Started ? "Started (socket up)" : "Not started")}.");
+            return "Could not reach the zone server. Try again.";
         }
 
         /// <summary>

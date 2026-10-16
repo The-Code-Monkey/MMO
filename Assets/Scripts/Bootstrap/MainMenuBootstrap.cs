@@ -184,7 +184,13 @@ namespace MMO.Bootstrap
         private void OnJoinResultBroadcast(JoinResultBroadcast message, Channel channel)
         {
             if (!message.Approved)
+            {
+                // The server's refusal reason must reach the log: the disconnect that follows
+                // overwrites the status line with the generic "could not reach" message, so this
+                // is the only place the real cause survives.
+                Debug.LogWarning($"[JoinGate] Zone refused the connection: {message.Reason}");
                 SetStatus(message.Reason ?? "The zone refused the connection.");
+            }
         }
 
         private void SetStatus(string message) => _view?.SetStatus(message);
