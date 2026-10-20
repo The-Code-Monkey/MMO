@@ -33,3 +33,7 @@ crashlytics-build.properties
 
 # Ignore .meta files in Assets
 /Assets/**/*.meta
+
+# opencode agent tooling (local; opencode.json contains an MCP API key)
+/.opencode/
+/opencode.json

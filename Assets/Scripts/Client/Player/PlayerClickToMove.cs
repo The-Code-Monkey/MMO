@@ -1,6 +1,7 @@
 using FishNet.Object;
 using MMO.Gameplay;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.InputSystem;
 
 namespace MMO.Client
@@ -48,9 +49,17 @@ namespace MMO.Client
 
             if (Physics.Raycast(ray, out RaycastHit hit, 1000f, _walkableLayers))
             {
-                _target = hit.point;
-                _mover?.RequestMoveTo(hit.point);
-                ShowMarker(hit.point);
+                // The server accepts a click by sampling the NavMesh within 1 m and walks to the
+                // sampled point, so the client must mark and measure against the same point —
+                // otherwise the arrival check below can miss (the player stops short of the raw
+                // click) and the marker outlives the walk.
+                Vector3 destination = NavMesh.SamplePosition(hit.point, out NavMeshHit navHit, 1f, NavMesh.AllAreas)
+                    ? navHit.position
+                    : hit.point;
+
+                _target = destination;
+                _mover?.RequestMoveTo(destination);
+                ShowMarker(destination);
             }
         }
 
