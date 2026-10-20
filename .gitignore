@@ -37,3 +37,9 @@ crashlytics-build.properties
 # opencode agent tooling (local; opencode.json contains an MCP API key)
 /.opencode/
 /opencode.json
+
+# Generated test/build artifacts
+/Assets/Resources/PerformanceTestRunInfo.json
+/Assets/Resources/PerformanceTestRunSettings.json
+/Assets/packages-merged-link/
+/.ai-game-dev/

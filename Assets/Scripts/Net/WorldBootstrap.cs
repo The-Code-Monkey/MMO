@@ -452,9 +452,12 @@ namespace MMO.Net
         }
 
         /// <summary>
-        /// Server-only: moves a freshly-spawned player to the spawn point chosen for them. Exposed
-        /// so the placement can be exercised without a live backend record: pass a saved position
-        /// and the nearest spawn point wins, pass null and the zone's default wins.
+        /// Server-only: moves a freshly-spawned player to the spawn point chosen for them. A saved
+        /// position is restored verbatim when it lands on the zone NavMesh — a relog returns the
+        /// player to where they logged out — and any save that does not (another map, a resized
+        /// zone, a spot since covered by geometry) clamps to the nearest spawn point. Pass null and
+        /// the zone's default wins. Exposed so the placement can be exercised without a live
+        /// backend record.
         /// </summary>
         public void PlacePlayerAt(NetworkObject player, Vector3? savedPosition)
         {
@@ -462,7 +465,7 @@ namespace MMO.Net
                 return;
 
             PlayerSpawnPoint[] points = FindObjectsByType<PlayerSpawnPoint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            Vector3 position = PlayerSpawnPoint.ChooseSpawn(points, savedPosition);
+            Vector3 position = PlayerSpawnPoint.ChooseSpawn(points, savedPosition, IsOnZoneNavMesh);
 
             PlayerMover mover = player.GetComponent<PlayerMover>();
             if (mover != null)
@@ -470,5 +473,13 @@ namespace MMO.Net
             else
                 player.transform.position = position;
         }
+
+        /// <summary>
+        /// Server-only: whether a restored position is close enough to the zone NavMesh to stand at.
+        /// The 1 m tolerance matches <see cref="PlayerMover"/>'s own click gate, so a position the
+        /// mover would accept for movement is exactly the one a relog restores.
+        /// </summary>
+        private static bool IsOnZoneNavMesh(Vector3 position) =>
+            NavMesh.SamplePosition(position, out _, 1f, NavMesh.AllAreas);
     }
 }

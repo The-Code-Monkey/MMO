@@ -142,6 +142,11 @@ namespace MMO.Net
             // Syncs the server-authoritative transform to clients so movement is visible.
             go.AddComponent<NetworkTransform>();
 
+            // Binds the local camera to this client's own player, by ownership rather than a tag
+            // search, so a second player in the zone cannot steal the view. Clients only; a
+            // dedicated server owns nothing local.
+            go.AddComponent<LocalPlayerCameraTarget>();
+
             // The client HUD: the owning client builds the whole screen (vitals, inventory, action
             // bar, chat and the crafting panel) and binds it to this player's own sources. Does
             // nothing on a copy this client does not own, and builds nothing on a dedicated

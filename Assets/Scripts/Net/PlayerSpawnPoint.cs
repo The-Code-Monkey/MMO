@@ -25,20 +25,31 @@ namespace MMO.Net
         public void SetDefault(bool isDefault) => _isDefault = isDefault;
 
         /// <summary>
-        /// Picks the spawn position for a joining player: the point
-        /// <em>nearest to their saved position</em> — a zone transfer or relog puts them back
-        /// where they left off, and a saved position that falls outside the zone (different
-        /// map, resized zone) clamps to the nearest point instead of dropping them through the
-        /// floor. With no saved position the default point wins; with no points at all the
-        /// origin is returned rather than a null-reference.
+        /// Picks the spawn position for a joining player. A saved position is restored verbatim —
+        /// a relog puts the player back exactly where they logged out — but only when it is
+        /// walkable, so a save from another map or a resized zone lands on the nearest spawn point
+        /// rather than through the floor. With no saved position (fresh character, backend
+        /// unreachable, or an invalid saved spot) the zone's default point wins; with no points at
+        /// all the origin is returned rather than a null-reference.
         /// </summary>
         /// <param name="points">Every spawn point in the zone; may be empty or null.</param>
         /// <param name="savedPosition">
         /// The position from the loaded save record, or null when there is none (fresh
         /// character, or the backend could not be reached).
         /// </param>
-        public static Vector3 ChooseSpawn(IReadOnlyList<PlayerSpawnPoint> points, Vector3? savedPosition)
+        /// <param name="isWalkable">
+        /// Judges whether a restored position is valid to stand at; null means "always accept",
+        /// which keeps this rule pure and engine-free for tests. The live caller passes the zone
+        /// NavMesh sample so a stale or out-of-bounds save cannot drop the player off the mesh.
+        /// </param>
+        public static Vector3 ChooseSpawn(
+            IReadOnlyList<PlayerSpawnPoint> points,
+            Vector3? savedPosition,
+            System.Func<Vector3, bool> isWalkable = null)
         {
+            if (savedPosition.HasValue && (isWalkable == null || isWalkable(savedPosition.Value)))
+                return savedPosition.Value;
+
             if (points == null || points.Count == 0)
                 return Vector3.zero;
 

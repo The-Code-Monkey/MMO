@@ -40,13 +40,26 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void ChooseSpawn_NearestToSavedPosition_Wins()
+        public void ChooseSpawn_WalkableSavedPosition_IsRestoredVerbatim()
         {
             PlayerSpawnPoint a = SpawnAt(Vector3.zero);
             PlayerSpawnPoint b = SpawnAt(new Vector3(100f, 0f, 0f));
 
+            // A relog must put the player back where they logged out, not snap to a marker.
+            var saved = new Vector3(3f, 0f, 4f);
+            Assert.AreEqual(saved, PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, saved));
+        }
+
+        [Test]
+        public void ChooseSpawn_UnwalkableSavedPosition_ClampsToTheNearestPoint()
+        {
+            PlayerSpawnPoint a = SpawnAt(Vector3.zero);
+            PlayerSpawnPoint b = SpawnAt(new Vector3(20f, 0f, 0f));
+
+            // A saved position off the mesh (another map, a resized zone) must land the player at a
+            // real spawn point rather than leave them stranded off the NavMesh.
             Assert.AreEqual(b.transform.position,
-                PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, new Vector3(95f, 0f, 0f)));
+                PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, new Vector3(1000f, 0f, 0f), _ => false));
         }
 
         [Test]
@@ -71,36 +84,44 @@ namespace MMO.Tests
         public void ChooseSpawn_NoPoints_ReturnsOrigin()
         {
             Assert.AreEqual(Vector3.zero, PlayerSpawnPoint.ChooseSpawn(Array.Empty<PlayerSpawnPoint>(), null));
-            Assert.AreEqual(Vector3.zero,
-                PlayerSpawnPoint.ChooseSpawn(Array.Empty<PlayerSpawnPoint>(), new Vector3(3f, 0f, 3f)));
+        }
+
+        [Test]
+        public void ChooseSpawn_NoPoints_SavedPositionStillRestored()
+        {
+            // A relog does not depend on authored markers: a walkable save stands even when the
+            // zone has no spawn points at all.
+            Assert.AreEqual(new Vector3(3f, 0f, 3f),
+                PlayerSpawnPoint.ChooseSpawn(Array.Empty<PlayerSpawnPoint>(), new Vector3(3f, 0f, 3f), _ => true));
         }
 
         [Test]
         public void ChooseSpawn_NullPoints_ReturnsOrigin()
         {
-            Assert.AreEqual(Vector3.zero, PlayerSpawnPoint.ChooseSpawn(null, new Vector3(3f, 0f, 3f)));
+            Assert.AreEqual(Vector3.zero,
+                PlayerSpawnPoint.ChooseSpawn(null, new Vector3(3f, 0f, 3f), _ => false));
         }
 
         [Test]
-        public void ChooseSpawn_SavedPositionOutsideTheZone_ClampsToTheNearestPoint()
+        public void ChooseSpawn_WalkableCheckStatic_ClampsWhenRejected()
         {
             PlayerSpawnPoint a = SpawnAt(Vector3.zero);
-            PlayerSpawnPoint b = SpawnAt(new Vector3(20f, 0f, 0f));
+            PlayerSpawnPoint b = SpawnAt(new Vector3(10f, 0f, 0f));
 
-            // A position from another (or a resized) zone must land the player at a real spawn
-            // point rather than through the floor.
-            Assert.AreEqual(b.transform.position,
-                PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, new Vector3(1000f, 0f, 0f)));
+            // The walkable predicate is the engine boundary: a rejected save falls back to the
+            // nearest point even when a nearby point exists.
+            Assert.AreEqual(a.transform.position,
+                PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, new Vector3(1f, 0f, 0f), _ => false));
         }
 
         [Test]
-        public void ChooseSpawn_Equidistant_PrefersTheDefault()
+        public void ChooseSpawn_EquidistantRejected_PrefersTheDefault()
         {
             PlayerSpawnPoint a = SpawnAt(Vector3.zero, isDefault: true);
             PlayerSpawnPoint b = SpawnAt(new Vector3(10f, 0f, 0f));
 
             Assert.AreEqual(a.transform.position,
-                PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, new Vector3(5f, 0f, 0f)));
+                PlayerSpawnPoint.ChooseSpawn(new[] { a, b }, new Vector3(5f, 0f, 0f), _ => false));
         }
 
         [Test]
@@ -116,7 +137,7 @@ namespace MMO.Tests
         public void ChooseSpawn_AllEntriesNull_ReturnsOrigin()
         {
             Assert.AreEqual(Vector3.zero,
-                PlayerSpawnPoint.ChooseSpawn(new PlayerSpawnPoint[] { null, null }, new Vector3(4f, 0f, 0f)));
+                PlayerSpawnPoint.ChooseSpawn(new PlayerSpawnPoint[] { null, null }, new Vector3(4f, 0f, 0f), _ => false));
         }
 
         [Test]
