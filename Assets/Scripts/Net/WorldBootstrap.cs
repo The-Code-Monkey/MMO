@@ -315,6 +315,13 @@ namespace MMO.Net
                 CraftingStation station = spawned.GetComponent<CraftingStation>();
                 if (station != null)
                     station.Configure(marker.StationType);
+
+                // Ensure the BoxCollider is not a trigger so OnMouseDown() fires and
+                // players cannot walk through the crafting station.
+                if (spawned.TryGetComponent(out BoxCollider boxCollider))
+                {
+                    boxCollider.isTrigger = false;
+                }
             }
 
             return spawned;
