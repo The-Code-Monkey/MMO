@@ -31,7 +31,7 @@ namespace MMO.Gameplay
         public string HolderId => "lootbag_" + (NetworkObject != null ? NetworkObject.ObjectId.ToString() : "unknown_" + System.Guid.NewGuid().ToString("N"));
 
         /// <summary>Gets the ownership registry from the social hub.</summary>
-        internal ItemOwnershipRegistry _registry;
+        public ItemOwnershipRegistry _registry;
         private ItemOwnershipRegistry Registry => IsServer && SocialHubService.Instance != null ? SocialHubService.Instance.OwnershipRegistry : (_registry ??= SocialHubService.Instance?.OwnershipRegistry);
 
         /// <summary>Replicated contents (read-only view; mutation is server-only).</summary>
