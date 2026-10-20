@@ -9,10 +9,12 @@ namespace MMO.Client
     public class PlayerClickToMove : NetworkBehaviour
     {
         [SerializeField] private LayerMask _walkableLayers = ~0;
+
         private Camera _mainCam;
         private PlayerMover _mover;
         private Vector3 _target;
         private GameObject _marker;
+        private readonly ClickToMoveMarkerTracker _tracker = new ClickToMoveMarkerTracker();
 
         private void Awake()
         {
@@ -29,11 +31,34 @@ namespace MMO.Client
                 SetDestinationToMouseClick();
             }
 
-            if (_marker != null && Vector3.Distance(transform.position, _target) < 0.5f)
+            UpdateMarker();
+        }
+
+        /// <summary>
+        /// Clears the destination marker once the walk is over. The decision lives in
+        /// <see cref="ClickToMoveMarkerTracker"/>: a direct arrival clears it at once, and a
+        /// player that has stopped moving clears it too — the server owns the walk and stops on
+        /// its own sampled point, so a distance check alone would leave the marker stuck.
+        /// </summary>
+        private void UpdateMarker()
+        {
+            if (_marker == null)
             {
-                Destroy(_marker);
-                _marker = null;
+                _tracker.Cancel();
+                return;
             }
+
+            if (_tracker.ShouldClear(transform.position))
+                ClearMarker();
+        }
+
+        private void ClearMarker()
+        {
+            if (_marker != null)
+                Destroy(_marker);
+
+            _marker = null;
+            _tracker.Cancel();
         }
 
         private void SetDestinationToMouseClick()
@@ -59,8 +84,7 @@ namespace MMO.Client
 
                 _target = destination;
                 _mover?.RequestMoveTo(destination);
-                ShowMarker(destination);
-            }
+                ShowMarker(destination);            }
         }
 
         private void ShowMarker(Vector3 point)
@@ -70,8 +94,15 @@ namespace MMO.Client
 
             _marker = GameObject.CreatePrimitive(PrimitiveType.Quad);
             _marker.transform.position = point + Vector3.up * 0.02f;
+            _tracker.Begin(point);
             _marker.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             _marker.transform.localScale = Vector3.one * 2f;
+
+            // The marker is a picture of the destination, not a surface: left collidable it
+            // would sit in front of the floor and swallow the next click aimed at it.
+            var collider = _marker.GetComponent<Collider>();
+            if (collider != null)
+                Destroy(collider);
 
             var renderer = _marker.GetComponent<Renderer>();
             if (renderer != null)
