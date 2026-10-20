@@ -1,4 +1,5 @@
 using FishNet.Object;
+using MMO.Crafting;
 using MMO.Gameplay;
 using UnityEngine;
 using UnityEngine.AI;
@@ -74,6 +75,40 @@ namespace MMO.Client
 
             if (Physics.Raycast(ray, out RaycastHit hit, 1000f, _walkableLayers))
             {
+                // If we hit a crafting station, path the player to within 3 units of it,
+                // then the OnMouseDown() interaction will open the UI.
+                if (hit.collider.TryGetComponent(out CraftingStation station))
+                {
+                    // Find a destination on the NavMesh within 3 units of the station.
+                    // We subtract the station forward direction scaled to 3 units so the
+                    // player stops in front of the station rather on top of it.
+                    Vector3 stationPos = station.transform.position;
+                    Vector3 forward = station.transform.forward;
+                    Vector3 dest = stationPos - forward * 3f;
+
+                    if (NavMesh.SamplePosition(dest, out var navHitStation, 3f, NavMesh.AllAreas))
+                    {
+                        dest = navHitStation.position;
+                    }
+                    else
+                    {
+                        // Fallback: sample the original hit point
+                        if (NavMesh.SamplePosition(hit.point, out var navHitOriginal, 1f, NavMesh.AllAreas))
+                        {
+                            dest = navHitOriginal.position;
+                        }
+                        else
+                        {
+                            dest = hit.point;
+                        }
+                    }
+
+                    _target = dest;
+                    _mover?.RequestMoveTo(dest);
+                    ShowMarker(dest);
+                    return;
+                }
+
                 // The server accepts a click by sampling the NavMesh within 1 m and walks to the
                 // sampled point, so the client must mark and measure against the same point —
                 // otherwise the arrival check below can miss (the player stops short of the raw
@@ -84,7 +119,8 @@ namespace MMO.Client
 
                 _target = destination;
                 _mover?.RequestMoveTo(destination);
-                ShowMarker(destination);            }
+                ShowMarker(destination);
+            }
         }
 
         private void ShowMarker(Vector3 point)

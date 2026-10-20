@@ -6,6 +6,7 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Crafting;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 namespace MMO.Net
@@ -34,6 +35,18 @@ namespace MMO.Net
             go.AddComponent<CraftingStation>();
 
             ApplyBrownMaterial(go);
+
+            // Ensure the BoxCollider is not a trigger so OnMouseDown() fires and players
+            // cannot walk through the crafting station.
+            if (go.TryGetComponent(out BoxCollider boxCollider))
+            {
+                boxCollider.isTrigger = false;
+            }
+
+            // Add NavMeshObstacle so the NavMesh is carved around the crafting station,
+            // preventing players from walking through its location when clicking elsewhere.
+            go.AddComponent<NavMeshObstacle>();
+
             return networkObject;
         }
 
