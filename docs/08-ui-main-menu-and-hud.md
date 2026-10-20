@@ -165,7 +165,7 @@ back to the old `StandaloneInputModule`.
 
 `NetworkHudFactory` only builds the object graph; a component has to call it on the client that owns
 the player. That component is `LocalPlayerHud` (`Assets/Scripts/Client/LocalPlayerHud.cs`), which the
-player prefab carries (added by `PlayerPrefabFactory.Create`, mirroring `LocalPlayerCamera`).
+player prefab carries (added by `PlayerPrefabFactory.Create`).
 
 - `OnStartNetwork` and `OnOwnershipClient` both route through `TryBuildHud` (`:70`).
 - The ownership guard is the whole MMO logic: every client spawns every player's prefab, so the

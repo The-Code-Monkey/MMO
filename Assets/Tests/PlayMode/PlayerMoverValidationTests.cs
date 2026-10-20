@@ -13,7 +13,7 @@ namespace MMO.Tests
     /// Tests that PlayerMover integrates input on the server and rejects implausible positions.
     /// Uses the same host-only pattern as the existing PlayerMoverPlayModeTests.
     /// </summary>
-    public sealed class PlayerMoverInputValidationTests
+    public sealed class PlayerMoverValidationTests
     {
         private NetworkManager _manager;
         private NetworkObject _player;
@@ -124,15 +124,12 @@ namespace MMO.Tests
         }
 
         [UnityTest]
-        public IEnumerator PlayerPrefab_CarriesTheMoverAndInputDriver()
+        public IEnumerator PlayerPrefab_CarriesTheMover()
         {
             yield return StartHostWithPlayer();
 
             Assert.IsNotNull(_mover, "PlayerPrefabFactory must put PlayerMover on the player.");
             Assert.IsTrue(_player.IsServer, "The host owns the server half of the player object.");
-
-            var inputDriver = _player.GetComponent<MMO.Input.PlayerMoverInput>();
-            Assert.IsNotNull(inputDriver, "PlayerPrefabFactory must put PlayerMoverInput on the player.");
         }
 
         private IEnumerator StartHostWithPlayer()

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FishNet.Component.Spawning;
+using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
@@ -8,7 +10,6 @@ using MMO.Auction;
 using MMO.Client;
 using MMO.Crafting;
 using MMO.Gameplay;
-using MMO.Input;
 using MMO.Inventory;
 using MMO.Persistence;
 using MMO.Social;
@@ -59,12 +60,16 @@ namespace MMO.Net
         /// Builds the player object: a capsule at the origin with a <see cref="NetworkObject"/>,
         /// the project's own networked <see cref="PlayerStats"/>, <see cref="PlayerCombat"/>, its
         /// <see cref="PlayerInventory"/> that owns this player's bag and equipment containers, its
-        /// <see cref="PlayerAbilities"/> that carries this player's ability slots, its
+        /// <see cref="PlayerAbilities"/> that carries this player's ability slots, and
         /// <see cref="PlayerGathering"/> that runs the server-side gathering loop this player
-        /// started, and the <see cref="LocalPlayerCamera"/> that gives the owning client
-        /// something to look through. The <see cref="LocalPlayerHud"/> gives that same client its
-        /// screen (carrying the crafting panel), and the <see cref="PlayerMover"/> is the
-        /// server-authoritative writer of this player's position.
+        /// started. The <see cref="LocalPlayerHud"/> gives the owning client its screen (carrying
+        /// the crafting panel), and the <see cref="PlayerMover"/> is the server-authoritative
+        /// writer of this player's position.
+        ///
+        /// The camera deliberately does <em>not</em> travel with the prefab: the one rig a client
+        /// looks through is the scene's <c>CameraRig</c>, claimed by tag rather than by a
+        /// per-player script, so a prefab carrying a camera claimer would race every other
+        /// player's copy for it.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -123,24 +128,25 @@ namespace MMO.Net
             go.AddComponent<PlayerFriends>();
             go.AddComponent<PlayerRaid>();
 
-            // Travels with the prefab so a client that receives its player object has something to
-            // look through. It decides whether it may drive the camera by asking IsOwner, which is
-            // why it is safe for every client's copy of this prefab to carry it.
-            go.AddComponent<LocalPlayerCamera>();
-
             // The server-authoritative mover: the only thing allowed to write this player's
-            // position. Appended last so every behaviour added before it keeps the NetworkBehaviour
-            // and RPC index it was assigned (and the baked prefab's existing indices stay valid).
+            // position. The input drivers that submit to it come after it, so they can resolve it
+            // from the same GameObject.
             go.AddComponent<PlayerMover>();
 
-            // Owner-side input driver for the mover. Added after PlayerMover so it can reference it.
-            go.AddComponent<MMO.Input.PlayerMoverInput>();
+            // Owner-side click-to-move: turns a mouse click into an intent through
+            // PlayerMover.RequestMoveTo, where the server does the NavMesh validation. After
+            // PlayerMover so it can reference it, and before NetworkTransform and the HUD so
+            // neither of those shifts an index the baked prefab already uses.
+            go.AddComponent<PlayerClickToMove>();
+
+            // Syncs the server-authoritative transform to clients so movement is visible.
+            go.AddComponent<NetworkTransform>();
 
             // The client HUD: the owning client builds the whole screen (vitals, inventory, action
-            // bar, chat and the crafting panel) and binds it to this player's own sources. Like the
-            // camera script it travels with the prefab, does nothing on a copy this client does not
-            // own, and builds nothing on a dedicated server. Appended last so every behaviour added
-            // before it keeps the NetworkBehaviour and RPC index the baked prefab already uses.
+            // bar, chat and the crafting panel) and binds it to this player's own sources. Does
+            // nothing on a copy this client does not own, and builds nothing on a dedicated
+            // server. Appended last so every behaviour added before it keeps the NetworkBehaviour
+            // and RPC index the baked prefab already uses.
             go.AddComponent<LocalPlayerHud>();
 
             // The material swap is shared with the other primitive factories, so a player and a
@@ -169,19 +175,79 @@ namespace MMO.Net
         /// client agree on a prefab id for it. FishNet derives prefab ids from list order, so
         /// both ends must register the prefabs in the same order.
         /// </summary>
-        /// <returns>True when this call added the prefab, false when it was a no-op.</returns>
+        /// <remarks>
+        /// A collection serialized by an earlier bake can hold null or destroyed entries, or can
+        /// have the player somewhere other than index 0. Either desyncs the ids the two ends hand
+        /// out (and FishNet logs "Prefab on id N is null"), so <see cref="SinglePrefabObjects"/>
+        /// is rebuilt in place: <c>Clear()</c> then the player first, then the surviving prefabs
+        /// in their original relative order. There is no surgical removal — the class exposes
+        /// only <c>Clear()</c> — and re-adding is what keeps both ends canonical.
+        /// </remarks>
+        /// <returns>
+        /// True when this call added or re-ordered the prefab, false when it was a no-op.
+        /// </returns>
         public static bool Register(PrefabObjects prefabs, NetworkObject playerPrefab)
         {
             if (prefabs == null)
                 throw new ArgumentNullException(nameof(prefabs));
 
-            if (playerPrefab == null || Contains(prefabs, playerPrefab))
+            if (playerPrefab == null)
+                return false;
+
+            if (prefabs is SinglePrefabObjects single && NeedsRewire(single, playerPrefab))
+            {
+                Rewire(single, playerPrefab);
+                return true;
+            }
+
+            if (Contains(prefabs, playerPrefab))
                 return false;
 
             // initializeAdded: false leaves prefab id assignment to NetworkManager.Awake, which is
             // the only place that knows the final list order and whether the game is playing.
             prefabs.AddObject(playerPrefab, checkForDuplicates: true, initializeAdded: false);
             return true;
+        }
+
+        /// <summary>
+        /// True when the collection is not already canonical: it holds a null (or destroyed)
+        /// entry, or does not have <paramref name="playerPrefab"/> at index 0.
+        /// </summary>
+        private static bool NeedsRewire(SinglePrefabObjects prefabs, NetworkObject playerPrefab)
+        {
+            IReadOnlyList<NetworkObject> list = prefabs.Prefabs;
+
+            if (list.Count == 0)
+                return false;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i] == null)
+                    return true;
+            }
+
+            return list[0] != playerPrefab;
+        }
+
+        /// <summary>
+        /// Rebuilds the collection: <c>Clear()</c>, the player, then every surviving prefab in
+        /// its original relative order.
+        /// </summary>
+        private static void Rewire(SinglePrefabObjects prefabs, NetworkObject playerPrefab)
+        {
+            var survivors = new List<NetworkObject>();
+            foreach (NetworkObject existing in prefabs.Prefabs)
+            {
+                if (existing != null && existing != playerPrefab)
+                    survivors.Add(existing);
+            }
+
+            prefabs.Clear();
+
+            // checkForDuplicates: false — the list was just cleared, so nothing can collide.
+            prefabs.AddObject(playerPrefab, checkForDuplicates: false, initializeAdded: false);
+            if (survivors.Count > 0)
+                prefabs.AddObjects(survivors, checkForDuplicates: false, initializeAdded: false);
         }
 
         /// <summary>

@@ -4,9 +4,9 @@
     "references": [
         "MMO.Runtime",
         "FishNet.Runtime",
-        "Unity.Cinemachine",
         "Unity.RenderPipelines.Universal.Runtime",
-        "Unity.RenderPipelines.Core.Runtime"
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.AI.Navigation"
     ],
     "includePlatforms": [
         "Editor"

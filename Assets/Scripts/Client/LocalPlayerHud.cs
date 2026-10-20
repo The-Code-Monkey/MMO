@@ -40,8 +40,26 @@ namespace MMO.Client
         /// <summary>
         /// Builds the HUD when the object starts and is ours. Runs on every client, for every
         /// player, which is exactly why the ownership check inside matters.
+        ///
+        /// <para>
+        /// A HUD failure must never escape this callback: FishNet invokes <c>OnStartNetwork</c>
+        /// for every behaviour <em>before</em> invoking <c>OnStartClient</c>, so an exception
+        /// here aborts the whole spawn chain — including <c>NetworkTransform.OnStartClient</c>,
+        /// which leaves the transform unable to apply server updates and the player frozen.
+        /// The HUD is cosmetic; the spawn chain is not.
+        /// </para>
         /// </summary>
-        public override void OnStartNetwork() => TryBuildHud();
+        public override void OnStartNetwork()
+        {
+            try
+            {
+                TryBuildHud();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[LocalPlayerHud] HUD build failed (non-fatal): {e}");
+            }
+        }
 
         /// <summary>
         /// Re-evaluates the HUD when ownership moves. FishNet raises this on the client that gains

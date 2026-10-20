@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using FishNet.Component.Spawning;
+using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
@@ -225,13 +227,14 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Create_AddsTheLocalPlayerCameraScript()
+        public void Create_CarriesTheClickToMoveDriver()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
 
-            Assert.IsNotNull(nob.GetComponent<LocalPlayerCamera>(),
-                "The owning client only gets a camera if the prefab carries the script that claims it.");
+            Assert.IsNotNull(nob.GetComponent<PlayerClickToMove>(),
+                "The owning client drives the player with the mouse, and this is the only thing " +
+                "that turns a click into an intent the server will validate.");
         }
 
         [Test]
@@ -245,8 +248,12 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(18, behaviours.Length,
-                "The player carries stats, combat, inventory, ability slots, gathering, crafting, death, the wallet and auction house, the save trigger, the party/guild/chat/friend/raid surfaces, the camera script, the server-authoritative mover, and the HUD.");
+            Assert.AreEqual(19, behaviours.Length,
+                "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
+                "death, the wallet and auction house, the save trigger, the party/guild/chat/friend/" +
+                "raid surfaces, the server-authoritative mover, click-to-move, the NetworkTransform " +
+                "and the HUD — and nothing else. The camera is deliberately not one of them: the " +
+                "scene's CameraRig is claimed by tag, not from the prefab.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -262,25 +269,17 @@ namespace MMO.Tests
             Assert.IsInstanceOf<MMO.Social.PlayerChat>(behaviours[12]);
             Assert.IsInstanceOf<MMO.Social.PlayerFriends>(behaviours[13]);
             Assert.IsInstanceOf<MMO.Social.PlayerRaid>(behaviours[14]);
-            Assert.IsInstanceOf<LocalPlayerCamera>(behaviours[15]);
-            Assert.IsInstanceOf<PlayerMover>(behaviours[16]);
-            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[17]);
+            Assert.IsInstanceOf<PlayerMover>(behaviours[15]);
+            Assert.IsInstanceOf<PlayerClickToMove>(behaviours[16]);
+            Assert.IsInstanceOf<NetworkTransform>(behaviours[17]);
+            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[18],
+                "The HUD is appended last, so anything added after it would shift its index.");
 
             foreach (NetworkBehaviour behaviour in behaviours)
             {
                 Assert.AreSame(nob.gameObject, behaviour.gameObject,
                     $"{behaviour.GetType().Name} and the NetworkObject must be on the same object.");
             }
-        }
-
-        [Test]
-        public void Create_AddsExactlyOneLocalPlayerCameraScript()
-        {
-            NetworkObject nob = PlayerPrefabFactory.Create();
-            Track(nob.gameObject);
-
-            // A second script would mean two NetworkBehaviours racing to drive the same camera.
-            Assert.AreEqual(1, nob.GetComponents<LocalPlayerCamera>().Length);
         }
 
         [Test]
@@ -424,8 +423,69 @@ namespace MMO.Tests
             PlayerPrefabFactory.Register(prefabs, playerPrefab);
 
             Assert.AreEqual(2, prefabs.Prefabs.Count);
-            Assert.AreSame(other, prefabs.Prefabs[0]);
-            Assert.AreSame(playerPrefab, prefabs.Prefabs[1]);
+            Assert.AreSame(playerPrefab, prefabs.Prefabs[0],
+                "FishNet derives prefab ids from list order, so the player has to end up id 0.");
+            Assert.AreSame(other, prefabs.Prefabs[1],
+                "Rewiring must move the player, never drop the prefabs that were already there.");
+        }
+
+        [Test]
+        public void Register_RebuildsACollectionThatHoldsAStaleNullEntry()
+        {
+            // A scene baked against an older prefab file leaves a null behind in the serialized
+            // SpawnablePrefabs list — exactly the "Prefab on id 0 is null" failure at runtime.
+            SinglePrefabObjects prefabs = NewSpawnables();
+            NetworkObject other = NewPlayerPrefab();
+            Track(other.gameObject);
+            NetworkObject playerPrefab = NewPlayerPrefab();
+            Track(playerPrefab.gameObject);
+
+            PlayerPrefabFactory.Register(prefabs, other);
+            prefabs.AddObject(null, checkForDuplicates: false, initializeAdded: false);
+
+            Assert.IsTrue(PlayerPrefabFactory.Register(prefabs, playerPrefab));
+
+            Assert.AreEqual(2, prefabs.Prefabs.Count,
+                "The rebuild drops the dead entry and keeps the live ones.");
+            Assert.AreSame(playerPrefab, prefabs.Prefabs[0]);
+            Assert.AreSame(other, prefabs.Prefabs[1]);
+            Assert.IsFalse(prefabs.Prefabs.Contains(null),
+                "A null left in the list is what FishNet reports as 'Prefab on id N is null'.");
+        }
+
+        [Test]
+        public void Register_RebuildsAroundADestroyedPrefab()
+        {
+            // The other flavour of staleness: the entry still serializes as a reference but the
+            // object behind it was destroyed, so it compares equal to null.
+            SinglePrefabObjects prefabs = NewSpawnables();
+            NetworkObject stale = NewPlayerPrefab();
+            NetworkObject playerPrefab = NewPlayerPrefab();
+            Track(playerPrefab.gameObject);
+
+            PlayerPrefabFactory.Register(prefabs, stale);
+            Object.DestroyImmediate(stale.gameObject);
+            Assert.IsTrue(prefabs.Prefabs[0] == null,
+                "A destroyed prefab must read as null, which is the state under test.");
+
+            Assert.IsTrue(PlayerPrefabFactory.Register(prefabs, playerPrefab));
+
+            Assert.AreEqual(1, prefabs.Prefabs.Count);
+            Assert.AreSame(playerPrefab, prefabs.Prefabs[0]);
+        }
+
+        [Test]
+        public void Register_DoesNothingWhenThePlayerIsAlreadyFirstAndTheListIsClean()
+        {
+            SinglePrefabObjects prefabs = NewSpawnables();
+            NetworkObject playerPrefab = NewPlayerPrefab();
+            Track(playerPrefab.gameObject);
+
+            PlayerPrefabFactory.Register(prefabs, playerPrefab);
+
+            Assert.IsFalse(PlayerPrefabFactory.Register(prefabs, playerPrefab),
+                "An already-canonical list must be left untouched so prefab ids stay stable.");
+            Assert.AreEqual(1, prefabs.Prefabs.Count);
         }
 
         [Test]

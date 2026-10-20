@@ -10,6 +10,7 @@ using MMO.Net;
 using MMO.Social;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using Unity.AI.Navigation; // Add at top of ZoneSceneBaker.cs
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -188,8 +189,12 @@ namespace MMO.Editor
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             CreateSun();
-            LocalCameraBaker.EnsureInActiveScene();
 
+            // The one camera a client looks through. Authored in the zone (rather than on the
+            // player prefab) so the menu never gets one and the rig survives scene loads. Every
+            // zone scene needs its own: DontDestroyOnLoad keeps the first one alive, but a client
+            // that joins a zone directly has nothing to look through without it.
+            LocalCameraBaker.EnsureInActiveScene();
             // Token auth on: the join gate validates the session the backend issued, and a
             // cross-zone handoff carries both that session and the transfer token (see #67).
             var settings = new MMOConnectionSettings(
@@ -239,6 +244,25 @@ namespace MMO.Editor
 
             CreateRiskConfig(zoneRoot.transform, risk);
             CreatePortal(zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName);
+
+            // --- INJECT NAVMESH BAKING HERE ---
+            // Create the NavMeshSurface object as a child of ZoneRoot
+            var navMeshGo = new GameObject("NavMeshSurface");
+            navMeshGo.transform.SetParent(zoneRoot.transform, false);
+            var surface = navMeshGo.AddComponent<Unity.AI.Navigation.NavMeshSurface>();
+
+            // Configure it to scan all generated geometry and bake the mesh
+            surface.collectObjects = Unity.AI.Navigation.CollectObjects.All;
+            surface.BuildNavMesh();
+
+            // BuildNavMesh() only creates in-memory NavMeshData. SaveScene cannot persist a
+            // reference to a non-asset object, so the scene would save with a null m_NavMeshData
+            // and the runtime NavMesh would never load (NavMesh.SamplePosition fails everywhere).
+            // Persist the data as an asset at a deterministic path — the same layout the AI
+            // Navigation editor uses — deleting any prior bake so re-baking does not accumulate
+            // orphans.
+            SaveNavMeshAsset(surface, scenePath);
+            // ----------------------------------
 
             SaveScene(scene, scenePath);
         }
@@ -495,12 +519,13 @@ namespace MMO.Editor
         {
             Transform parent = CreateChild(SpawnPointsName, zoneRoot).transform;
 
+            // Y is set to 1.0f so a 2-unit tall capsule with a center pivot rests on top of the floor (Y = 0)
             Vector3[] positions =
             {
-                new Vector3(0f, 0.1f, 0f),
-                new Vector3(3f, 0.1f, 0f),
-                new Vector3(-3f, 0.1f, 0f),
-                new Vector3(0f, 0.1f, 3f),
+                new Vector3(0f, 1.0f, 0f),
+                new Vector3(3f, 1.0f, 0f),
+                new Vector3(-3f, 1.0f, 0f),
+                new Vector3(0f, 1.0f, 3f),
             };
 
             count = Mathf.Clamp(count, 1, positions.Length);
@@ -700,6 +725,36 @@ namespace MMO.Editor
         {
             if (!EditorSceneManager.SaveScene(scene, path))
                 throw new InvalidOperationException($"Could not save zone scene to '{path}'.");
+        }
+
+        /// <summary>
+        /// Persists <paramref name="surface"/>'s baked <c>NavMeshData</c> as an asset next to the
+        /// zone scene, mirroring the AI Navigation editor's own layout
+        /// (<c>Assets/Scenes/&lt;Zone&gt;/NavMesh-&lt;SurfaceName&gt;.asset</c>). Without this the
+        /// scene saves with a null data reference and no NavMesh exists at runtime.
+        /// </summary>
+        private static void SaveNavMeshAsset(NavMeshSurface surface, string scenePath)
+        {
+            if (surface == null || surface.navMeshData == null)
+                throw new InvalidOperationException(
+                    $"NavMeshSurface on '{surface?.name}' has no baked data to save.");
+
+            // Same folder the AI Navigation editor uses: a directory named after the scene,
+            // beside the scene file.
+            string sceneDir = Path.GetDirectoryName(scenePath);
+            string sceneName = Path.GetFileNameWithoutExtension(scenePath);
+            string assetDir = Path.Combine(sceneDir ?? "Assets", sceneName);
+            if (!Directory.Exists(assetDir))
+                Directory.CreateDirectory(assetDir);
+
+            string assetPath = Path.Combine(assetDir, "NavMesh-" + surface.name + ".asset");
+
+            // Delete any prior bake so re-baking overwrites rather than accumulating orphans.
+            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) != null)
+                AssetDatabase.DeleteAsset(assetPath);
+
+            AssetDatabase.CreateAsset(surface.navMeshData, assetPath);
+            AssetDatabase.SaveAssets();
         }
 
         /// <summary>Adds the scenes to the build list (enabled) unless they are already there.</summary>

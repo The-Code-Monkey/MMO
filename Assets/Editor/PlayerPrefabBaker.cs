@@ -1,4 +1,6 @@
 using System.IO;
+using System.Text;
+using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
@@ -56,12 +58,15 @@ namespace MMO.Editor
 
         /// <summary>
         /// Returns the player prefab asset, creating it on the first call.
-        /// Idempotent: a second call loads the asset that is already on disk.
+        /// Idempotent: a call over a prefab that already matches the factory reuses it. A prefab
+        /// that has drifted from the factory — a component added or removed there since it was last
+        /// baked — is rebuilt, because the asset is what every client is spawned from and FishNet
+        /// wires SyncTypes by NetworkBehaviour index.
         /// </summary>
         public static NetworkObject EnsurePlayerPrefab()
         {
             NetworkObject existing = LoadPlayerPrefab();
-            if (existing != null)
+            if (existing != null && MatchesFactory(existing))
                 return existing;
 
             EnsureFolder();
@@ -71,7 +76,12 @@ namespace MMO.Editor
             try
             {
                 EquipDefaultWeapon(built);
+                MakeNetworkTransformServerAuthoritative(built);
+
+                // SaveAsPrefabAsset overwrites any asset already at this path, keeping its GUID —
+                // so every scene that references the player prefab stays valid across a rebake.
                 GameObject asset = PrefabUtility.SaveAsPrefabAsset(built.gameObject, PrefabAssetPath);
+
                 if (asset == null)
                 {
                     Debug.LogError(
@@ -87,6 +97,57 @@ namespace MMO.Editor
             {
                 Object.DestroyImmediate(built.gameObject);
             }
+        }
+
+        /// <summary>
+        /// True when the saved prefab carries exactly the NetworkBehaviours the runtime factory
+        /// builds, in the same order. The comparison is on types, not instances, so it needs no
+        /// reference to the built object beyond building one to read.
+        /// </summary>
+        private static bool MatchesFactory(NetworkObject saved)
+        {
+            NetworkObject built = PlayerPrefabFactory.Create();
+            try
+            {
+                return Describe(built) == Describe(saved);
+            }
+            finally
+            {
+                Object.DestroyImmediate(built.gameObject);
+            }
+        }
+
+        private static string Describe(NetworkObject player)
+        {
+            var builder = new StringBuilder();
+            foreach (NetworkBehaviour behaviour in player.GetComponents<NetworkBehaviour>())
+            {
+                if (builder.Length > 0)
+                    builder.Append(',');
+
+                builder.Append(behaviour.GetType().FullName);
+            }
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Marks the player's <see cref="NetworkTransform"/> server-authoritative: the server is
+        /// the writer of the position, so the owning client must not be. Writing the private field
+        /// through a <see cref="SerializedObject"/> is the only handle FishNet exposes.
+        /// </summary>
+        private static void MakeNetworkTransformServerAuthoritative(NetworkObject player)
+        {
+            if (player == null)
+                return;
+
+            NetworkTransform netTransform = player.GetComponent<NetworkTransform>();
+            if (netTransform == null)
+                return;
+
+            var serialized = new SerializedObject(netTransform);
+            serialized.FindProperty("_clientAuthoritative").boolValue = false;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /// <summary>
