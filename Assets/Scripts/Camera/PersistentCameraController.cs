@@ -6,7 +6,9 @@ public class PersistentCameraController : MonoBehaviour
 
     [Header("Targeting")]
     public Transform target;
-    public string playerTag = "Player"; // Used to auto-find the player in new scenes
+    public string playerTag = "Player"; // Legacy fallback: only used until a local player registers
+
+    private Transform _localTarget;
 
     [Header("Zoom Settings (Scroll Wheel)")]
     public float zoomSpeed = 5f;
@@ -104,7 +106,17 @@ public class PersistentCameraController : MonoBehaviour
 
     void FindTargetIfNeeded()
     {
-        // If the scene changes or target is destroyed, automatically find the new player
+        // The authoritative answer: the local owner's player registers itself here (see
+        // LocalPlayerCameraTarget). It wins outright, so a second player in the zone can never
+        // steal the camera.
+        if (_localTarget != null)
+        {
+            target = _localTarget;
+            return;
+        }
+
+        // Fallback for a scene with no local player yet (offline main menu, a spectator). A tag
+        // search can return any player, so it is a last resort rather than the primary path.
         if (target == null)
         {
             GameObject player = GameObject.FindGameObjectWithTag(playerTag);
@@ -113,5 +125,30 @@ public class PersistentCameraController : MonoBehaviour
                 target = player.transform;
             }
         }
+    }
+
+    /// <summary>
+    /// Binds the camera to <paramref name="player"/> — the local owner's transform — overriding the
+    /// tag fallback. Called by the player prefab's <c>LocalPlayerCameraTarget</c> when this client
+    /// owns the player.
+    /// </summary>
+    public void SetLocalTarget(Transform player)
+    {
+        _localTarget = player;
+        target = player;
+    }
+
+    /// <summary>
+    /// Clears a local binding, e.g. when this client stops owning a player. The camera then falls
+    /// back to whatever the scene offers rather than following a stale transform.
+    /// </summary>
+    public void ClearLocalTarget()
+    {
+        // Drop the tracked target too: leaving it set would let the destroyed player's transform
+        // linger, and UnbindCamera runs before the object is gone so target would point at a
+        // soon-to-die transform.
+        if (target == _localTarget)
+            target = null;
+        _localTarget = null;
     }
 }

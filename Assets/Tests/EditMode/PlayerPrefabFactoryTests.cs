@@ -248,12 +248,11 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(19, behaviours.Length,
+            Assert.AreEqual(20, behaviours.Length,
                 "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
                 "death, the wallet and auction house, the save trigger, the party/guild/chat/friend/" +
                 "raid surfaces, the server-authoritative mover, click-to-move, the NetworkTransform " +
-                "and the HUD — and nothing else. The camera is deliberately not one of them: the " +
-                "scene's CameraRig is claimed by tag, not from the prefab.");
+                "and the HUD — and nothing else.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -272,7 +271,9 @@ namespace MMO.Tests
             Assert.IsInstanceOf<PlayerMover>(behaviours[15]);
             Assert.IsInstanceOf<PlayerClickToMove>(behaviours[16]);
             Assert.IsInstanceOf<NetworkTransform>(behaviours[17]);
-            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[18],
+            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[18],
+                "The local-camera binding rides the prefab so it registers by ownership, not by tag.");
+            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[19],
                 "The HUD is appended last, so anything added after it would shift its index.");
 
             foreach (NetworkBehaviour behaviour in behaviours)
