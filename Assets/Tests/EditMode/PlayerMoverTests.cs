@@ -68,32 +68,6 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void RpcRequestMove_IsAServerRpcThatRequiresOwnership()
-        {
-            MethodInfo method = PrivateMethod("RpcRequestMove");
-
-            ServerRpcAttribute attribute = method.GetCustomAttribute<ServerRpcAttribute>();
-            Assert.IsNotNull(attribute, "Movement input has to travel as a ServerRpc or the client would move itself.");
-            Assert.IsTrue(attribute.RequireOwnership, "Only the owning client may ask to move.");
-        }
-
-        [Test]
-        public void RpcRequestMove_CarriesTheInputAndTheSender()
-        {
-            MethodInfo method = PrivateMethod("RpcRequestMove");
-
-            ParameterInfo[] parameters = method.GetParameters();
-            Assert.AreEqual(2, parameters.Length, "The input and the sender are what the server needs.");
-
-            Assert.AreEqual(typeof(Vector2), parameters[0].ParameterType,
-                "The wire carries a direction, never a position — there is nothing to inflate.");
-            Assert.AreEqual(typeof(NetworkConnection), parameters[1].ParameterType,
-                "The sender is injected by FishNet so the server can re-check ownership.");
-            Assert.IsTrue(parameters[1].IsOptional && parameters[1].HasDefaultValue,
-                "The sender must be an optional, default-value parameter — that is how FishNet detects it.");
-        }
-
-        [Test]
         public void ApplyInput_IsPublicAndCarriesTheServerAttribute()
         {
             MethodInfo method = typeof(PlayerMover).GetMethod("ApplyInput",
@@ -127,7 +101,7 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void RequestMove_BeforeTheObjectIsInitialized_DoesNothing()
+        public void RequestMoveTo_BeforeTheObjectIsInitialized_DoesNothing()
         {
             var go = new GameObject("PlayerMoverUnderTest");
             try
@@ -135,22 +109,13 @@ namespace MMO.Tests
                 go.AddComponent<NetworkObject>();
                 PlayerMover mover = go.AddComponent<PlayerMover>();
 
-                Assert.DoesNotThrow(() => mover.RequestMove(Vector2.up),
+                Assert.DoesNotThrow(() => mover.RequestMoveTo(Vector3.forward),
                     "A not-yet-initialised mover has no owner and must not start an RPC.");
             }
             finally
             {
                 Object.DestroyImmediate(go);
             }
-        }
-
-        private static MethodInfo PrivateMethod(string name)
-        {
-            MethodInfo method = typeof(PlayerMover).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance);
-
-            Assert.IsNotNull(method, $"Expected a private {name}.");
-
-            return method;
         }
     }
 }

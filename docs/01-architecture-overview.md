@@ -41,7 +41,7 @@ Assets/
 ├── Resources/       items that must load by name at runtime
 ├── Prefabs/         prefabs produced by the editor bakers
 └── Scenes/          the Main Menu scene and zone scenes
-Packages/            Unity package manifest (FishNet, URP, Cinemachine, ...)
+Packages/            Unity package manifest (FishNet, URP, ...)
 ProjectSettings/     Unity project settings (includes the exact editor version)
 docker-compose.yml   the local Nakama + PostgreSQL backend
 ```
@@ -57,7 +57,7 @@ code into assemblies keeps compile times low and enforces boundaries. This proje
 
 | Assembly file | Name | Purpose | Platforms |
 |---|---|---|---|
-| `Assets/Scripts/MMO.Runtime.asmdef` | `MMO.Runtime` | All runtime game code. References FishNet, Unity UI and Cinemachine. | all |
+| `Assets/Scripts/MMO.Runtime.asmdef` | `MMO.Runtime` | All runtime game code. References FishNet, Unity UI and the Input System. | all |
 | `Assets/Editor/MMO.Editor.asmdef` | `MMO.Editor` | Editor-only bakers, URP setup and the build guard. References `MMO.Runtime`. | Editor only |
 | `Assets/Tests/EditMode/MMO.Tests.EditMode.asmdef` | `MMO.Tests.EditMode` | Fast unit tests. Also references `MMO.Editor` so it can test bakers. | Editor only |
 | `Assets/Tests/PlayMode/MMO.Tests.PlayMode.asmdef` | `MMO.Tests.PlayMode` | Tests that need the real game loop and a real socket. Does **not** reference `MMO.Editor`. | Editor only |

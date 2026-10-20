@@ -205,10 +205,14 @@ baker *and* by tests:
 capsule and adds its components in a deliberate order: `NetworkObject`, then `PlayerStats`,
 `PlayerCombat`, `PlayerInventory`, `PlayerAbilities`, `PlayerGathering`, `PlayerCrafting`,
 `PlayerDeath` (the risk-tier resolver — it must come after the stats and inventory it reads),
-`PlayerSaveTrigger`, `PlayerParty`, `PlayerGuild`, and `LocalPlayerCamera`. The
-`PlayerMover` is appended **last** (`:132`) so no earlier behaviour's NetworkBehaviour/RPC index
-shifts; it is the sole writer of the player's position (see [§7](#7-server-authoritative-movement)
-and [14](14-server-authority-hardening.md)).
+`PlayerSaveTrigger`, `PlayerParty`, `PlayerGuild`, `PlayerRaid`, then `PlayerMover`,
+`PlayerClickToMove` and the `NetworkTransform`. The `PlayerMover` is the sole writer of the
+player's position (see [§7](#7-server-authoritative-movement)
+and [14](14-server-authority-hardening.md)); `PlayerClickToMove` is the owner-side driver that
+submits movement intents to it, and the `NetworkTransform` (owner-authoritative **off**) ships the
+server's result to clients. The camera deliberately does **not** travel with the prefab — the scene's
+single `PersistentCameraController` rig is claimed by tag instead (see
+[09](09-editor-tooling-and-scenes.md)).
 `PlayerPrefabFactory.Attach` (`:187`) installs a FishNet `PlayerSpawner`, which is what actually
 instantiates the player when the gate admits a connection.
 

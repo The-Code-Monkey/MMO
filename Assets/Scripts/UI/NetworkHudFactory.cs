@@ -294,6 +294,9 @@ namespace MMO.UI
 
         private static void ApplyLabel(Text label, int fontSize, TextAnchor alignment)
         {
+            if (label == null)
+                return;
+
             label.font = UIFont.Default;
             label.fontSize = fontSize;
             label.alignment = alignment;

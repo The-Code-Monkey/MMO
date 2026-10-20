@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using FishNet.Component.Spawning;
+using FishNet.Component.Transforming;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
@@ -110,6 +112,23 @@ namespace MMO.Tests
             return count;
         }
 
+        /// <summary>
+        /// A readable list of the NetworkBehaviour types on an object, so a mismatch names the
+        /// offending component instead of only saying the lists differ.
+        /// </summary>
+        private static string Describe(IReadOnlyList<NetworkBehaviour> behaviours)
+        {
+            var builder = new StringBuilder();
+            foreach (NetworkBehaviour behaviour in behaviours)
+            {
+                if (builder.Length > 0)
+                    builder.Append(", ");
+                builder.Append(behaviour.GetType().Name);
+            }
+
+            return builder.ToString();
+        }
+
         #region Saving the prefab.
         [Test]
         public void EnsurePlayerPrefab_WritesTheAssetToDisk()
@@ -209,14 +228,66 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void EnsurePlayerPrefab_ProducesThePlayerObjectWithTheCameraScript()
+        public void EnsurePlayerPrefab_LeavesTheFactoryComponentSetIntact()
         {
             NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
 
-            // The camera script has to survive the bake: the prefab asset, not the scene copy, is
-            // what every client receives.
-            Assert.IsNotNull(prefab.GetComponent<LocalPlayerCamera>(),
-                "Without the script on the prefab, the owning client never gets a camera.");
+            // The bake's only job is to arm the player and make its NetworkTransform
+            // server-authoritative; it must not add or strip components of its own. Anything
+            // else on this prefab shifts the NetworkBehaviour indices every SyncType is wired to.
+            NetworkObject built = PlayerPrefabFactory.Create();
+            try
+            {
+                Assert.AreEqual(
+                    Describe(built.GetComponents<NetworkBehaviour>()),
+                    Describe(prefab.GetComponents<NetworkBehaviour>()));
+            }
+            finally
+            {
+                Object.DestroyImmediate(built.gameObject);
+            }
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_MakesTheNetworkTransformServerAuthoritative()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            var netTransform = prefab.GetComponent<NetworkTransform>();
+            Assert.IsNotNull(netTransform,
+                "Without a NetworkTransform the server's movement never reaches the client.");
+
+            SerializedProperty clientAuthoritative = new SerializedObject(netTransform)
+                .FindProperty("_clientAuthoritative");
+            Assert.IsNotNull(clientAuthoritative,
+                "FishNet renamed NetworkTransform's _clientAuthoritative; update PlayerPrefabBaker.");
+            Assert.IsFalse(clientAuthoritative.boolValue,
+                "The server writes the transform, so the owner (client) must not be authoritative.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_RefreshesAPrefabThatDriftedFromTheFactory()
+        {
+            PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            // Overwrite the asset with a deliberately incomplete copy: a prefab baked before the
+            // factory grew click-to-move would look fine on disk but spawn players that cannot
+            // move, so the baker has to notice and rebuild rather than reuse it.
+            NetworkObject stale = PlayerPrefabFactory.Create();
+            try
+            {
+                Object.DestroyImmediate(stale.GetComponent<PlayerClickToMove>());
+                PrefabUtility.SaveAsPrefabAsset(stale.gameObject, PlayerPrefabBaker.PrefabAssetPath);
+            }
+            finally
+            {
+                Object.DestroyImmediate(stale.gameObject);
+            }
+
+            NetworkObject refreshed = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Assert.IsNotNull(refreshed.GetComponent<PlayerClickToMove>(),
+                "A prefab that has drifted from the factory must be rebuilt, not reused.");
         }
 
         [Test]
@@ -226,7 +297,8 @@ namespace MMO.Tests
             NetworkObject second = PlayerPrefabBaker.EnsurePlayerPrefab();
 
             Assert.AreSame(first, second);
-            Assert.AreEqual(1, CountSceneObjectsNamed(PlayerPrefabFactory.PrefabName));
+            Assert.AreEqual(0, CountSceneObjectsNamed(PlayerPrefabFactory.PrefabName),
+                "Re-baking must reuse the same asset and must not leave a scene copy behind.");
         }
 
         [Test]

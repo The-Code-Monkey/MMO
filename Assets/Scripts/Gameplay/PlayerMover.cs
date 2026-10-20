@@ -2,14 +2,16 @@ using System;
 using FishNet.Connection;
 using FishNet.Object;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace MMO.Gameplay
 {
     /// <summary>
     /// The server-authoritative mover: the sole writer of a player's position. A client never sends
-    /// a position it believes it stands at — it sends an <em>input</em> vector (<see cref="RequestMove"/>)
-    /// and the server integrates it at <see cref="MaxSpeed"/> itself. The client cannot therefore
-    /// teleport by lying, because there is no field in the input path for a lie to live in.
+    /// a position it believes it stands at — it sends a <em>destination</em> (<see cref="RequestMoveTo"/>)
+    /// and the server validates it against the zone NavMesh and walks the player there itself. The
+    /// client cannot therefore teleport by lying, because the only thing it may request is "walk
+    /// towards this point", and the server decides how the player gets there.
     ///
     /// <para>
     /// Any message that <em>does</em> carry a position — a future teleport, a correction, a bug —
@@ -35,6 +37,7 @@ namespace MMO.Gameplay
         private CharacterController _controller;
         private Vector3 _lastAuthoritativePosition;
         private bool _hasAuthoritativePosition;
+        private Vector3? _moveTarget;
 
         /// <summary>The speed the server integrates at. Never negative.</summary>
         public float MaxSpeed => Mathf.Max(0f, _maxSpeed);
@@ -53,32 +56,51 @@ namespace MMO.Gameplay
         }
 
         /// <summary>
-        /// Owner-side intent: the input direction for this tick (x = strafe, y = forward), already
-        /// clamped to the unit circle by the caller or by this method. Ownership is checked locally
-        /// first and again on the server; a non-owner gets no RPC at all.
+        /// Owner-side intent: walk to a world position. The destination is validated on the server
+        /// (it must land on the baked NavMesh) and the server drives the movement, so a client
+        /// cannot teleport by lying about the target.
         /// </summary>
-        public void RequestMove(Vector2 input)
+        public void RequestMoveTo(Vector3 destination)
         {
             NetworkObject self = NetworkObject;
             if (self == null || !self.IsOwner)
                 return;
 
-            RpcRequestMove(input);
+            RpcRequestMoveTo(destination);
         }
 
-        /// <summary>
-        /// The input path. It carries a direction, never a position, so there is nothing here for a
-        /// cheating client to inflate — the server decides how far that input carries them.
-        /// </summary>
         [ServerRpc]
-        private void RpcRequestMove(Vector2 input, NetworkConnection sender = null)
+        private void RpcRequestMoveTo(Vector3 destination, NetworkConnection sender = null)
         {
-            // Belt and braces: FishNet already drops ServerRpcs from non-owners (RequireOwnership
-            // is on), but the extra check documents that the server re-validates the intent.
             if (sender == null || !OwnerMatches(sender))
+            {
+                Debug.LogWarning($"[PlayerMover] RpcRequestMoveTo rejected: sender mismatch (sender={sender}, owner={Owner} on '{name}').");
+                return;
+            }
+
+            if (!NavMesh.SamplePosition(destination, out NavMeshHit hit, 1f, NavMesh.AllAreas))
+            {
+                Debug.LogWarning($"[PlayerMover] RpcRequestMoveTo: NavMesh.SamplePosition failed for {destination} (player at {transform.position}). The zone NavMesh is not loaded.");
+                return;
+            }
+
+            _moveTarget = hit.position;
+        }
+
+        private void Update()
+        {
+            if (!IsServer || !_moveTarget.HasValue)
                 return;
 
-            ApplyInput(input, Time.deltaTime);
+            Vector3 toTarget = _moveTarget.Value - transform.position;
+            toTarget.y = 0f;
+            if (toTarget.magnitude < 0.1f)
+            {
+                _moveTarget = null;
+                return;
+            }
+
+            ApplyInput(new Vector2(toTarget.x, toTarget.z).normalized, Time.deltaTime);
         }
 
         /// <summary>

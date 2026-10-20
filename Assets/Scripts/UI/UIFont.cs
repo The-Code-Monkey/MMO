@@ -27,17 +27,28 @@ namespace MMO.UI
                 {
                     _resolved = true;
 
-                    try
-                    {
-                        _default = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                    }
-                    catch (System.Exception)
-                    {
-                        _default = null;
-                    }
+                    // Unity 6 renamed/shipped built-in fonts differently across versions; try the
+                    // known names rather than assuming one exists. A missing builtin is swallowed
+                    // rather than thrown: labels degrading to invisible is bad, but a factory that
+                    // takes down the screen it was building is worse.
+                    _default = TryLoad("LegacyRuntime.ttf")
+                               ?? TryLoad("Arial.ttf")
+                               ?? TryLoad("Inter-Regular.ttf");
                 }
 
                 return _default;
+            }
+        }
+
+        private static Font TryLoad(string resourceName)
+        {
+            try
+            {
+                return Resources.GetBuiltinResource<Font>(resourceName);
+            }
+            catch (System.Exception)
+            {
+                return null;
             }
         }
     }

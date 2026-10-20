@@ -11,6 +11,7 @@ using MMO.Social;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using Unity.AI.Navigation;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -91,12 +92,43 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void BothZoneScenes_HaveAnAuthoredCameraRig()
+        public void AllZoneScenes_HaveAnAuthoredCameraRig()
         {
-            InScene(ZoneSceneBaker.SafeZonePath, scene =>
-                Assert.IsTrue(LocalCameraBaker.Validate(scene, out string error), error));
-            InScene(ZoneSceneBaker.WildernessZonePath, scene =>
-                Assert.IsTrue(LocalCameraBaker.Validate(scene, out string error), error));
+            // The rig is deliberately authored in the zone rather than carried on the player
+            // prefab, so a zone without one has no camera at all. Validate also checks the rig
+            // still has its child camera tagged MainCamera, which is what click-to-move raycasts
+            // through.
+            foreach (string path in new[]
+                     {
+                         ZoneSceneBaker.SafeZonePath,
+                         ZoneSceneBaker.WildernessZonePath,
+                         ZoneSceneBaker.TutorialZonePath
+                     })
+            {
+                InScene(path, scene =>
+                    Assert.IsTrue(LocalCameraBaker.Validate(scene, out string error), error));
+            }
+        }
+
+        [Test]
+        public void MainMenuScene_HasNoCameraRig()
+        {
+            // The menu deliberately ships without one: PersistentCameraController survives scene
+            // loads, so a menu copy would race the zone's for the singleton slot. This is also the
+            // forcing function that keeps a stale rig out of the shipped menu — it fails until
+            // 'Create Main Menu Scene' has been re-run over a scene that carries one.
+            InScene(MainMenuSceneBaker.ScenePath, scene =>
+            {
+                foreach (GameObject root in scene.GetRootGameObjects())
+                {
+                    Assert.IsFalse(
+                        root.name == "LocalCameraRig"
+                        || (root.name == LocalCameraBaker.GameObjectName
+                            && root.GetComponent<PersistentCameraController>() != null),
+                        $"Scene '{scene.name}' must not carry a '{root.name}'; the zone scenes own " +
+                        "the camera.");
+                }
+            });
         }
 
         // ---- Two servers, not two rooms -----------------------------------
@@ -281,6 +313,48 @@ namespace MMO.Tests
                         "Only this zone's own spawn points, never a leftover from another scene.");
                 }
             });
+        }
+
+        // ---- NavMesh -------------------------------------------------------
+
+        [Test]
+        public void ZoneBakedNavMeshData_IsPersistedAsAnAsset()
+        {
+            // Regression: BuildNavMesh() only creates in-memory NavMeshData; SaveScene cannot
+            // persist a reference to a non-asset object, so the scene used to save with a null
+            // m_NavMeshData and no NavMesh existed at runtime — NavMesh.SamplePosition failed
+            // everywhere and click-to-move never moved the player. The data must be saved as an
+            // asset so the reference survives the save.
+            foreach (string path in new[]
+                     {
+                         ZoneSceneBaker.SafeZonePath,
+                         ZoneSceneBaker.WildernessZonePath
+                     })
+            {
+                InScene(path, scene =>
+                {
+                    NavMeshSurface surface = FindNavMeshSurface(scene);
+                    Assert.IsNotNull(surface, $"Scene '{scene.name}' has no NavMeshSurface.");
+                    Assert.IsNotNull(surface.navMeshData,
+                        $"Scene '{scene.name}': NavMeshSurface has no baked data — SamplePosition would fail at runtime.");
+
+                    string assetPath = AssetDatabase.GetAssetPath(surface.navMeshData);
+                    Assert.IsFalse(string.IsNullOrEmpty(assetPath),
+                        $"Scene '{scene.name}': NavMeshData is not persisted as an asset, so SaveScene cannot keep the reference.");
+                });
+            }
+        }
+
+        private static NavMeshSurface FindNavMeshSurface(Scene scene)
+        {
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                NavMeshSurface surface = root.GetComponentInChildren<NavMeshSurface>(true);
+                if (surface != null)
+                    return surface;
+            }
+
+            return null;
         }
 
         // ---- Idempotency ---------------------------------------------------
