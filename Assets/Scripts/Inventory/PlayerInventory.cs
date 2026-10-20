@@ -88,7 +88,8 @@ namespace MMO.Inventory
         private PlayerStats Stats => _stats != null ? _stats : _stats = GetComponent<PlayerStats>();
 
         /// <summary>Server-wide item ownership registry for dupe protection; null in tests or on clients.</summary>
-        private ItemOwnershipRegistry Registry => IsServer && SocialHubService.Instance != null ? SocialHubService.Instance.OwnershipRegistry : null;
+        internal ItemOwnershipRegistry _registry;
+        private ItemOwnershipRegistry Registry => IsServer && SocialHubService.Instance != null ? SocialHubService.Instance.OwnershipRegistry : (_registry ??= SocialHubService.Instance?.OwnershipRegistry);
 
         private string _holderId;
 
