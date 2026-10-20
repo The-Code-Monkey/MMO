@@ -24,17 +24,11 @@ namespace MMO.Tests.EditMode
 
             _lootBag = new GameObject("LootBag").AddComponent<LootBag>();
             _lootBag.SetInteractRange(10f);
-
-            // Inject registry into LootBag
-            var lootRegistryField = typeof(LootBag).GetField("Registry", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            lootRegistryField.SetValue(_lootBag, _registry);
+            _lootBag._registry = _registry;
 
             _inventory = new GameObject("Player").AddComponent<PlayerInventory>();
             _inventory.SetHolderId(_playerHolderId);
-
-            // Inject registry into PlayerInventory
-            var invRegistryField = typeof(PlayerInventory).GetField("Registry", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            invRegistryField.SetValue(_inventory, _registry);
+            _inventory._registry = _registry;
         }
 
         [TearDown]

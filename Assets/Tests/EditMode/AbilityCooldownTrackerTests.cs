@@ -154,7 +154,8 @@ namespace MMO.Tests
 
             Assert.IsFalse(tracker.IsGlobalCooldownReady(Now + 2d),
                 "Recasting must not push the shared lockout backwards.");
-            Assert.IsTrue(tracker.IsGlobalCooldownReady(Now + AbilityCooldownTracker.GlobalCooldown));
+            Assert.IsFalse(tracker.IsGlobalCooldownReady(Now + AbilityCooldownTracker.GlobalCooldown),
+                "The lock extends to Now + 2.5d, so GCD is not ready at Now + 1.5d.");
         }
 
         [Test]

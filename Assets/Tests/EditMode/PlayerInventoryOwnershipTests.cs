@@ -21,10 +21,7 @@ namespace MMO.Tests.EditMode
             _registry = new ItemOwnershipRegistry();
             _inventory = new GameObject().AddComponent<PlayerInventory>();
             _inventory.SetHolderId(_holderId);
-
-            // Inject the registry directly via reflection (bypassing SocialHubService)
-            var registryField = typeof(PlayerInventory).GetField("Registry", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            registryField.SetValue(_inventory, _registry);
+            _inventory._registry = _registry;
         }
 
         [TearDown]

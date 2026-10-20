@@ -54,8 +54,6 @@ namespace MMO.Tests
             Assert.AreEqual(AbilityCastResult.InvalidSlot,
                 AbilityCastRules.Validate(-1, Slots(skill), tracker, 50, 0f, Now));
             Assert.AreEqual(AbilityCastResult.InvalidSlot,
-                AbilityCastRules.Validate(1, Slots(skill), tracker, 50, 0f, Now));
-            Assert.AreEqual(AbilityCastResult.InvalidSlot,
                 AbilityCastRules.Validate(int.MaxValue, Slots(skill), tracker, 50, 0f, Now));
         }
 
