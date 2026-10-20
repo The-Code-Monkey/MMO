@@ -8,7 +8,9 @@ using FishNet.Transporting;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Persistence;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace MMO.Net
 {
@@ -45,6 +47,7 @@ namespace MMO.Net
         private bool _subscribed;
         private bool _spawnerHooked;
         private bool _globalSceneRegistered;
+        private bool _navMeshDiagnosticsLogged;
 
         // One spawned network object per authored marker, keyed by the marker component. Cleared
         // when the server stops, because FishNet despawns and destroys everything it spawned.
@@ -199,6 +202,30 @@ namespace MMO.Net
         }
 
         /// <summary>
+        /// Server: logs the zone NavMesh's state once per server start. Click-to-move rejects a
+        /// destination at <see cref="PlayerMover"/>'s <c>NavMesh.SamplePosition</c> gate, and that
+        /// single line distinguishes the three ways it fails at runtime: no surface in the loaded
+        /// scene, a surface whose baked data never resolved, and a live mesh that simply does not
+        /// cover the spawn area.
+        /// </summary>
+        private void LogNavMeshDiagnostics()
+        {
+            if (_navMeshDiagnosticsLogged)
+                return;
+            _navMeshDiagnosticsLogged = true;
+
+            NavMeshSurface surface = FindFirstObjectByType<NavMeshSurface>();
+            int vertices = NavMesh.CalculateTriangulation().vertices.Length;
+            bool sampled = NavMesh.SamplePosition(
+                new Vector3(0f, 0.05f, 0f), out NavMeshHit hit, 5f, NavMesh.AllAreas);
+
+            Debug.Log($"[NavMeshDiag] surface={(surface == null ? "MISSING" : "ok")} " +
+                      $"data={(surface != null && surface.navMeshData != null ? "ok" : "NULL")} " +
+                      $"vertices={vertices} " +
+                      $"sampleSpawn={(sampled ? hit.position.ToString() : "no hit")}");
+        }
+
+        /// <summary>
         /// Server-only: materialises every authored marker into a networked object and points
         /// FishNet's <see cref="PlayerSpawner"/> at the zone's spawn points. Idempotent — a marker
         /// whose object is still alive is left alone, so a double start cannot duplicate the world,
@@ -208,6 +235,8 @@ namespace MMO.Net
         {
             if (_manager == null || !_manager.IsServerStarted)
                 return;
+
+            LogNavMeshDiagnostics();
 
             RecipeRegistry.LoadAllFromResources();
 
