@@ -15,6 +15,10 @@ namespace MMO.Editor
             PlayerPrefabBaker.EnsurePlayerPrefab();
             TargetDummyBaker.EnsureTargetDummyPrefab();
 
+            // Rebuild the crafting station prefab so it includes the NavMeshObstacle
+            // with correct carving dimensions (fixes walk-through issue).
+            CraftingStationBaker.EnsureCraftingStationPrefab();
+
             // Rebuild scenes in an order that matches the expected startup flow.
             // MainMenu references the prefabs above and must be camera-free.
             MainMenuSceneBaker.CreateMainMenuScene();

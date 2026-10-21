@@ -66,6 +66,14 @@ invokes `RequestOpenStation` — that now starts a **server round-trip**: the cl
 decides what the station offers and sends it back (section 5). The client never reads recipes from
 its own registry to render a panel.
 
+A station is also **solid ground**: the prefab carries a `NavMeshObstacle` that carves a hole in
+the zone NavMesh around the station's body, so a click-to-move route planned by the server bends
+around the workbench instead of running through it (see
+[14](14-server-authority-hardening.md#click-to-move--the-server-owns-the-route-not-just-the-direction)).
+The obstacle's size is set in the station's **local** space (`CraftingStationPrefabFactory.ObstacleLocalSize`),
+because `NavMeshObstacle.size` is scaled by the transform — the station's root is scaled to
+`DefaultScale`, so a unit local size carves the same 2x1x2 world footprint as the body.
+
 ## 3. Crafting rules and offers
 
 `CraftingValidator` (`Assets/Scripts/Crafting/CraftingValidator.cs:6`) is pure:

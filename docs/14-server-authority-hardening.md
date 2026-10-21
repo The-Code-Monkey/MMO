@@ -46,7 +46,9 @@ so every behaviour before it keeps the NetworkBehaviour and RPC index it was ass
 |---|---|---|
 | `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:40` |
 | `RequestMove(Vector2)` | Owner-side intent: sends the input direction. A non-owner gets no RPC. | `:60` |
+| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:64` |
 | `RpcRequestMove(Vector2, sender)` | The `[ServerRpc]`; re-checks the sender owns the object. | `:74` |
+| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:74` |
 | `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:89` |
 | `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:106` |
 | `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:125` |
@@ -70,6 +72,25 @@ client                                   server (PlayerMover)
 `ApplyReportedPosition` exists as the **belt** to `ApplyInput`'s braces: any future message that
 carries a position (a correction, a buggy RPC) is still judged by `MovementRules`, so a rogue RPC
 cannot smuggle movement past the budget.
+
+### Click-to-move — the server owns the route, not just the direction
+
+A click-to-move request carries a **destination**, not a direction, so the server has to decide
+*how* the player gets there. `RpcRequestMoveTo` samples the destination onto the zone NavMesh
+(a destination off the mesh is refused) and then plans a route over that mesh with
+`NavMesh.CalculatePath`. The route's corners are walked one at a time by the same
+`ApplyInput`/`MoveBy` pair, so the movement rules above still apply to every step.
+
+Planning the route is what makes solid objects solid: a crafting station carries a
+`NavMeshObstacle` that carves a hole in the NavMesh, and a route planned over a holed mesh
+**bends around the hole** instead of running through the workbench. The client never gets to
+choose that line — it only says where the player wants to stand, and the server walks them
+around whatever is in the way. If no complete route exists (no mesh, unreachable target), the
+mover falls back to walking straight at the destination, exactly as it did before.
+
+The route bookkeeping itself is pure arithmetic over positions and lives in `WalkPath`
+(`Assets/Scripts/Gameplay/WalkPath.cs`), so it is unit-testable without an engine, a clock or a
+network.
 
 ## 2. Line of sight
 

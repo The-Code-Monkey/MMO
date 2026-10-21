@@ -23,6 +23,14 @@ namespace MMO.Net
 
         public static Vector3 DefaultScale => new(DefaultWidth, DefaultHeight, DefaultDepth);
 
+        /// <summary>
+        /// The carving obstacle's size in the station's <em>local</em> space.
+        /// <see cref="NavMeshObstacle.size"/> is scaled by the transform, and the station's root
+        /// is scaled to <see cref="DefaultScale"/>, so a unit local size carves the very same
+        /// 2x1x2 world footprint as the body.
+        /// </summary>
+        public static Vector3 ObstacleLocalSize => Vector3.one;
+
         public static Vector3 DefaultSpawnPosition => new(2f, DefaultHeight / 2f, 5f);
 
         public static NetworkObject Create()
@@ -45,7 +53,10 @@ namespace MMO.Net
 
             // Add NavMeshObstacle so the NavMesh is carved around the crafting station,
             // preventing players from walking through its location when clicking elsewhere.
-            go.AddComponent<NavMeshObstacle>();
+            var obstacle = go.AddComponent<NavMeshObstacle>();
+            obstacle.carving = true;
+            obstacle.size = ObstacleLocalSize;
+            obstacle.center = Vector3.zero;
 
             return networkObject;
         }

@@ -354,6 +354,15 @@ members: `RequestMove` (`:60`), `RpcRequestMove` (`:74`), `ApplyInput` (`:89`),
 `CharacterController`. See [14](14-server-authority-hardening.md#1-movement-is-server-authoritative)
 for the rules and the tests.
 
+### Click-to-move
+
+A click is a **destination**, not a direction, so the server plans the route: `RpcRequestMoveTo`
+samples the destination onto the zone NavMesh, plans a route over that mesh with
+`NavMesh.CalculatePath`, and walks the route's corners through the same `ApplyInput` path. Because
+the route is planned on the NavMesh, it bends around the holes that solid objects carve into it —
+a crafting station's `NavMeshObstacle` makes the route go around the workbench instead of through
+it. The client only says where the player wants to stand; the server decides the way there.
+
 ## Common tasks
 
 - **Add a new zone server.** Copy an existing zone scene, or bake a fresh one with

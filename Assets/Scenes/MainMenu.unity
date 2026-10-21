@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &146401136
+--- !u!1 &1037597168
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,117 +127,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 146401139}
-  - component: {fileID: 146401138}
-  - component: {fileID: 146401137}
-  m_Layer: 0
-  m_Name: Main Camera
-  m_TagString: MainCamera
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!81 &146401137
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 146401136}
-  m_Enabled: 1
---- !u!20 &146401138
-Camera:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 146401136}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
-  m_projectionMatrixMode: 1
-  m_GateFitMode: 2
-  m_FOVAxisMode: 0
-  m_Iso: 200
-  m_ShutterSpeed: 0.005
-  m_Aperture: 16
-  m_FocusDistance: 10
-  m_FocalLength: 50
-  m_BladeCount: 5
-  m_Curvature: {x: 2, y: 11}
-  m_BarrelClipping: 0.25
-  m_Anamorphism: 0
-  m_SensorSize: {x: 36, y: 24}
-  m_LensShift: {x: 0, y: 0}
-  m_NormalizedViewPortRect:
-    serializedVersion: 2
-    x: 0
-    y: 0
-    width: 1
-    height: 1
-  near clip plane: 0.3
-  far clip plane: 1000
-  field of view: 60
-  orthographic: 0
-  orthographic size: 5
-  m_Depth: -1
-  m_CullingMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_RenderingPath: -1
-  m_TargetTexture: {fileID: 0}
-  m_TargetDisplay: 0
-  m_TargetEye: 3
-  m_HDR: 1
-  m_AllowMSAA: 1
-  m_AllowDynamicResolution: 0
-  m_ForceIntoRT: 0
-  m_OcclusionCulling: 1
-  m_StereoConvergence: 10
-  m_StereoSeparation: 0.022
---- !u!4 &146401139
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 146401136}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &297818140
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4489d77032a81ef42b0067acf2737d4d, type: 3}
-  m_Name: MMOSpawnablePrefabs
-  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Managing.Object.SinglePrefabObjects
-  _prefabs:
-  - {fileID: 1111661374931549951, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
-  - {fileID: 2694481054996333352, guid: 599f70a9751a0c8e4b4a2ea62b911e46, type: 3}
-  - {fileID: 644279290277083091, guid: fa38e3e1000cc85269c7c98d611d72f9, type: 3}
-  - {fileID: 53440267552716857, guid: 5fdf8c61728429dd18c766e3e1df6411, type: 3}
---- !u!1 &919991973
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 919991975}
-  - component: {fileID: 919991974}
+  - component: {fileID: 1037597170}
+  - component: {fileID: 1037597169}
   m_Layer: 0
   m_Name: MainMenuBootstrap
   m_TagString: Untagged
@@ -245,28 +136,28 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &919991974
+--- !u!114 &1037597169
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 919991973}
+  m_GameObject: {fileID: 1037597168}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8fa74585e8663a7df88adf307e6039f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Bootstrap.MainMenuBootstrap
-  _networkManager: {fileID: 1424782641}
+  _networkManager: {fileID: 1427178733}
   _defaultZoneIp: 127.0.0.1
   _defaultZonePort: 7772
---- !u!4 &919991975
+--- !u!4 &1037597170
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 919991973}
+  m_GameObject: {fileID: 1037597168}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -275,7 +166,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1424782640
+--- !u!1 &1057055062
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -283,250 +174,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1424782653}
-  - component: {fileID: 1424782652}
-  - component: {fileID: 1424782641}
-  - component: {fileID: 1424782651}
-  - component: {fileID: 1424782650}
-  - component: {fileID: 1424782649}
-  - component: {fileID: 1424782648}
-  - component: {fileID: 1424782647}
-  - component: {fileID: 1424782646}
-  - component: {fileID: 1424782645}
-  - component: {fileID: 1424782644}
-  - component: {fileID: 1424782643}
-  - component: {fileID: 1424782642}
-  m_Layer: 0
-  m_Name: NetworkManager
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1424782641
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2c95dfde7d73b54dbbdc23155d35d36, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Managing.NetworkManager
-  _logging: {fileID: 0}
-  _spawnablePrefabs: {fileID: 297818140}
-  _refreshDefaultPrefabs: 0
-  _runInBackground: 1
-  _dontDestroyOnLoad: 1
-  _objectPool: {fileID: 0}
-  _persistence: 0
---- !u!114 &1424782642
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 02f172a5ea534a0abca9b07b29c643d0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.CraftingStationSpawner
-  _prefab: {fileID: 644279290277083091, guid: fa38e3e1000cc85269c7c98d611d72f9, type: 3}
-  _spawnPosition: {x: 2, y: 0.5, z: 5}
---- !u!114 &1424782643
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d39ee8856dec1be538b545cf96def1b8, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.TargetDummySpawner
-  _prefab: {fileID: 2694481054996333352, guid: 599f70a9751a0c8e4b4a2ea62b911e46, type: 3}
-  _spawnPosition: {x: 0, y: 1, z: 5}
---- !u!114 &1424782644
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 211a9f6ec51ddc14f908f5acc0cd0423, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Spawning.PlayerSpawner
-  _playerPrefab: {fileID: 1111661374931549951, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
-  _addToDefaultScene: 1
-  Spawns: []
---- !u!114 &1424782645
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ca12d034a56e5233096f91ba355d3f14, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.ZoneTransferClient
-  _networkManager: {fileID: 0}
-  _joinRequestClient: {fileID: 0}
-  _loadingScreen: {fileID: 0}
-  _retargetTimeoutSeconds: 5
---- !u!114 &1424782646
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fab02632fa2c0062893a3f3066006ff3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.ZoneTransferTokenService
-  _secretKey: defaultkey
-  _tokenTtlSeconds: 30
---- !u!114 &1424782647
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 68e0ae55d5c7413daa6a312e27793963, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Social.SocialHubService
-  _syncInterval: 2
-  _casRetries: 5
-  _presenceInterval: 30
-  _friendRefreshInterval: 10
-  _connectRetrySeconds: 10
-  _zoneId: local
-  _instanceHostAddress: 127.0.0.1
-  _instanceHostPort: 0
-  _zoneTemplateId: default
-  _maxInstances: 100
-  _auctionHouseZoneConfig: {fileID: 0}
-  _orchestratorUrl: http://127.0.0.1:8080
-  _orchestratorEnabled: 1
-  _orchestratorHealthTimeoutSeconds: 90
---- !u!114 &1424782648
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 07c1368e0c17d6c08bf37042f8624629, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Persistence.PlayerPersistenceService
-  _autosaveInterval: 30
-  _saveDebounce: 2
---- !u!114 &1424782649
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4f4321ee7f888f0d5bbd2d3ca2cb80c4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Persistence.TokenAuthBootstrap
---- !u!114 &1424782650
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 81ace7195e1186ca9af4ec31084d9054, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.JoinRequestClient
-  _networkManager: {fileID: 0}
-  _playerName: Player
---- !u!114 &1424782651
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 338f04227a22b4ec08f899fa763ef34a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.MMOConnectionGate
-  _settings:
-    _port: 7777
-    _maxClients: 64
-    _handshakeTimeoutSeconds: 5
-    _maintenanceMode: 0
-    _allowedPlayers: []
-    _blockedPlayers: []
-    _useTokenAuth: 1
---- !u!114 &1424782652
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6f48f002b825cbd45a19bd96d90f9edb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Transporting.Tugboat.Tugboat
-  _stopSocketsOnThread: 0
-  _dontRoute: 0
-  _reuseAddress: 0
-  _ipv4BindAddress: 
-  _enableIpv6: 1
-  _ipv6BindAddress: 
-  _port: 7777
-  _maximumClients: 64
-  _clientAddress: localhost
---- !u!4 &1424782653
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1424782640}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1824526882
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1824526884}
-  - component: {fileID: 1824526883}
+  - component: {fileID: 1057055064}
+  - component: {fileID: 1057055063}
   m_Layer: 0
   m_Name: Directional Light
   m_TagString: Untagged
@@ -534,13 +183,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!108 &1824526883
+--- !u!108 &1057055063
 Light:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1824526882}
+  m_GameObject: {fileID: 1057055062}
   m_Enabled: 1
   serializedVersion: 13
   m_Type: 1
@@ -599,13 +248,13 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
---- !u!4 &1824526884
+--- !u!4 &1057055064
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1824526882}
+  m_GameObject: {fileID: 1057055062}
   serializedVersion: 2
   m_LocalRotation: {x: 0.40821788, y: -0.23456968, z: 0.10938163, w: 0.8754261}
   m_LocalPosition: {x: 0, y: 3, z: 0}
@@ -614,11 +263,362 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+--- !u!114 &1061421499
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4489d77032a81ef42b0067acf2737d4d, type: 3}
+  m_Name: MMOSpawnablePrefabs
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Managing.Object.SinglePrefabObjects
+  _prefabs:
+  - {fileID: 1248092469509279395, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
+  - {fileID: 3212296777553377136, guid: 599f70a9751a0c8e4b4a2ea62b911e46, type: 3}
+  - {fileID: 716579080863088202, guid: fa38e3e1000cc85269c7c98d611d72f9, type: 3}
+  - {fileID: 53440267552716857, guid: 5fdf8c61728429dd18c766e3e1df6411, type: 3}
+--- !u!1 &1093527447
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1093527450}
+  - component: {fileID: 1093527449}
+  - component: {fileID: 1093527448}
+  m_Layer: 0
+  m_Name: Main Camera
+  m_TagString: MainCamera
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!81 &1093527448
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1093527447}
+  m_Enabled: 1
+--- !u!20 &1093527449
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1093527447}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.3
+  far clip plane: 1000
+  field of view: 60
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: -1
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 1
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!4 &1093527450
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1093527447}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1427178732
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1427178745}
+  - component: {fileID: 1427178744}
+  - component: {fileID: 1427178733}
+  - component: {fileID: 1427178743}
+  - component: {fileID: 1427178742}
+  - component: {fileID: 1427178741}
+  - component: {fileID: 1427178740}
+  - component: {fileID: 1427178739}
+  - component: {fileID: 1427178738}
+  - component: {fileID: 1427178737}
+  - component: {fileID: 1427178736}
+  - component: {fileID: 1427178735}
+  - component: {fileID: 1427178734}
+  m_Layer: 0
+  m_Name: NetworkManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1427178733
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2c95dfde7d73b54dbbdc23155d35d36, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Managing.NetworkManager
+  _logging: {fileID: 0}
+  _spawnablePrefabs: {fileID: 1061421499}
+  _refreshDefaultPrefabs: 0
+  _runInBackground: 1
+  _dontDestroyOnLoad: 1
+  _objectPool: {fileID: 0}
+  _persistence: 0
+--- !u!114 &1427178734
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02f172a5ea534a0abca9b07b29c643d0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.CraftingStationSpawner
+  _prefab: {fileID: 716579080863088202, guid: fa38e3e1000cc85269c7c98d611d72f9, type: 3}
+  _spawnPosition: {x: 2, y: 0.5, z: 5}
+--- !u!114 &1427178735
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d39ee8856dec1be538b545cf96def1b8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.TargetDummySpawner
+  _prefab: {fileID: 3212296777553377136, guid: 599f70a9751a0c8e4b4a2ea62b911e46, type: 3}
+  _spawnPosition: {x: 0, y: 1, z: 5}
+--- !u!114 &1427178736
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 211a9f6ec51ddc14f908f5acc0cd0423, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Spawning.PlayerSpawner
+  _playerPrefab: {fileID: 1248092469509279395, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
+  _addToDefaultScene: 1
+  Spawns: []
+--- !u!114 &1427178737
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca12d034a56e5233096f91ba355d3f14, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.ZoneTransferClient
+  _networkManager: {fileID: 0}
+  _joinRequestClient: {fileID: 0}
+  _loadingScreen: {fileID: 0}
+  _retargetTimeoutSeconds: 5
+--- !u!114 &1427178738
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fab02632fa2c0062893a3f3066006ff3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.ZoneTransferTokenService
+  _secretKey: defaultkey
+  _tokenTtlSeconds: 30
+--- !u!114 &1427178739
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68e0ae55d5c7413daa6a312e27793963, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Social.SocialHubService
+  _syncInterval: 2
+  _casRetries: 5
+  _presenceInterval: 30
+  _friendRefreshInterval: 10
+  _connectRetrySeconds: 10
+  _zoneId: local
+  _instanceHostAddress: 127.0.0.1
+  _instanceHostPort: 0
+  _zoneTemplateId: default
+  _maxInstances: 100
+  _auctionHouseZoneConfig: {fileID: 0}
+  _orchestratorUrl: http://127.0.0.1:8080
+  _orchestratorEnabled: 1
+  _orchestratorHealthTimeoutSeconds: 90
+--- !u!114 &1427178740
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07c1368e0c17d6c08bf37042f8624629, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Persistence.PlayerPersistenceService
+  _autosaveInterval: 30
+  _saveDebounce: 2
+--- !u!114 &1427178741
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f4321ee7f888f0d5bbd2d3ca2cb80c4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Persistence.TokenAuthBootstrap
+--- !u!114 &1427178742
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81ace7195e1186ca9af4ec31084d9054, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.JoinRequestClient
+  _networkManager: {fileID: 0}
+  _playerName: Player
+--- !u!114 &1427178743
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 338f04227a22b4ec08f899fa763ef34a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.MMOConnectionGate
+  _settings:
+    _port: 7777
+    _maxClients: 64
+    _handshakeTimeoutSeconds: 5
+    _maintenanceMode: 0
+    _allowedPlayers: []
+    _blockedPlayers: []
+    _useTokenAuth: 1
+--- !u!114 &1427178744
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f48f002b825cbd45a19bd96d90f9edb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: FishNet.Runtime::FishNet.Transporting.Tugboat.Tugboat
+  _stopSocketsOnThread: 0
+  _dontRoute: 0
+  _reuseAddress: 0
+  _ipv4BindAddress: 
+  _enableIpv6: 1
+  _ipv6BindAddress: 
+  _port: 7777
+  _maximumClients: 64
+  _clientAddress: localhost
+--- !u!4 &1427178745
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1427178732}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 146401139}
-  - {fileID: 1824526884}
-  - {fileID: 1424782653}
-  - {fileID: 919991975}
+  - {fileID: 1093527450}
+  - {fileID: 1057055064}
+  - {fileID: 1427178745}
+  - {fileID: 1037597170}

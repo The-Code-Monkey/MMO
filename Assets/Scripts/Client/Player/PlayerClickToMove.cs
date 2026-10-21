@@ -87,21 +87,7 @@ namespace MMO.Client
                     Vector3 dest = stationPos - forward * 3f;
 
                     if (NavMesh.SamplePosition(dest, out var navHitStation, 3f, NavMesh.AllAreas))
-                    {
                         dest = navHitStation.position;
-                    }
-                    else
-                    {
-                        // Fallback: sample the original hit point
-                        if (NavMesh.SamplePosition(hit.point, out var navHitOriginal, 1f, NavMesh.AllAreas))
-                        {
-                            dest = navHitOriginal.position;
-                        }
-                        else
-                        {
-                            dest = hit.point;
-                        }
-                    }
 
                     _target = dest;
                     _mover?.RequestMoveTo(dest);

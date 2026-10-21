@@ -38,6 +38,7 @@ namespace MMO.Gameplay
         private Vector3 _lastAuthoritativePosition;
         private bool _hasAuthoritativePosition;
         private Vector3? _moveTarget;
+        private readonly WalkPath _walk = new();
 
         /// <summary>The speed the server integrates at. Never negative.</summary>
         public float MaxSpeed => Mathf.Max(0f, _maxSpeed);
@@ -85,6 +86,34 @@ namespace MMO.Gameplay
             }
 
             _moveTarget = hit.position;
+            BuildWalkPath(hit.position);
+        }
+
+        /// <summary>
+        /// Server: work out the route to the destination across the zone NavMesh.
+        ///
+        /// <para>
+        /// The route is what makes a crafting station solid: the station carves a hole in that
+        /// NavMesh, and a route planned over a holed mesh bends around the hole instead of
+        /// running through it. Without a complete route — no mesh, or an unreachable
+        /// destination — the mover keeps walking straight, exactly as it did before.
+        /// </para>
+        /// </summary>
+        private void BuildWalkPath(Vector3 destination)
+        {
+            _walk.Clear();
+
+            // The player's transform sits at the capsule's middle, well above the mesh, so the
+            // start has to be sampled onto the NavMesh before a route can be planned.
+            if (!NavMesh.SamplePosition(transform.position, out NavMeshHit start, 2f, NavMesh.AllAreas))
+                return;
+
+            var path = new NavMeshPath();
+            if (!NavMesh.CalculatePath(start.position, destination, NavMesh.AllAreas, path) ||
+                path.status != NavMeshPathStatus.PathComplete)
+                return;
+
+            _walk.SetCorners(path.corners);
         }
 
         private void Update()
@@ -92,15 +121,27 @@ namespace MMO.Gameplay
             if (!IsServer || !_moveTarget.HasValue)
                 return;
 
-            Vector3 toTarget = _moveTarget.Value - transform.position;
-            toTarget.y = 0f;
-            if (toTarget.magnitude < 0.1f)
+            Vector3 waypoint = _walk.IsEmpty ? _moveTarget.Value : _walk.NextWaypoint(transform.position);
+            Vector3 toWaypoint = waypoint - transform.position;
+            toWaypoint.y = 0f;
+
+            float distance = toWaypoint.magnitude;
+            if (distance <= 0.01f)
             {
+                // Standing on the waypoint: the last corner of a route is the destination.
                 _moveTarget = null;
                 return;
             }
 
-            ApplyInput(new Vector2(toTarget.x, toTarget.z).normalized, Time.deltaTime);
+            // The step never overshoots the waypoint, so the player lands on a corner instead
+            // of cutting it — a cut corner would put the capsule inside the hole a station
+            // carves, which is the very thing the route exists to avoid.
+            double delta = Time.deltaTime;
+            float maxStep = MaxSpeed * (float)delta;
+            if (maxStep > distance)
+                delta *= distance / maxStep;
+
+            ApplyInput(new Vector2(toWaypoint.x, toWaypoint.z).normalized, delta);
         }
 
         /// <summary>
