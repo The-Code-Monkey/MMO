@@ -246,6 +246,11 @@ namespace MMO.Editor
             CreatePortal(zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName);
 
             // --- INJECT NAVMESH BAKING HERE ---
+            // No obstacle is placed here: the crafting station carries its own NavMeshObstacle
+            // and is spawned at the marker, so the hole in the NavMesh is carved around the
+            // station wherever it appears — a second copy baked into the scene would only
+            // duplicate that hole.
+
             // Create the NavMeshSurface object as a child of ZoneRoot
             var navMeshGo = new GameObject("NavMeshSurface");
             navMeshGo.transform.SetParent(zoneRoot.transform, false);
