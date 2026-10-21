@@ -181,7 +181,7 @@ namespace MMO.UI
             GameObject nameRow = CreateRow(
                 frame.transform, "Name", 1f, new Vector2(0.5f, 1f),
                 new Vector2(0f, -4f), new Vector2(-20f, 26f));
-            Text nameText = nameRow.AddComponent<Text>();
+            Text nameText = CreateLabel(nameRow.transform);
             ApplyLabel(nameText, 14, TextAnchor.MiddleCenter);
 
             GameObject fillRow = CreateRow(
@@ -195,7 +195,7 @@ namespace MMO.UI
             GameObject valueRow = CreateRow(
                 frame.transform, "HealthValue", 0f, new Vector2(0.5f, 0f),
                 new Vector2(0f, 6f), new Vector2(-20f, 26f));
-            Text healthText = valueRow.AddComponent<Text>();
+            Text healthText = CreateLabel(valueRow.transform);
             ApplyLabel(healthText, 13, TextAnchor.MiddleCenter);
 
             TargetFrameView view = frame.AddComponent<TargetFrameView>();
@@ -290,6 +290,23 @@ namespace MMO.UI
             background.raycastTarget = false;
 
             return rowObject;
+        }
+
+        /// <summary>
+        /// A stretched text child of a row. A GameObject can carry only one Graphic, so a row
+        /// that already holds its background Image cannot hold the label as well — the label
+        /// needs a child of its own, which draws on top of that background.
+        /// </summary>
+        private static Text CreateLabel(Transform parent)
+        {
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            RectTransform rect = (RectTransform)labelObject.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            return labelObject.AddComponent<Text>();
         }
 
         private static void ApplyLabel(Text label, int fontSize, TextAnchor alignment)
