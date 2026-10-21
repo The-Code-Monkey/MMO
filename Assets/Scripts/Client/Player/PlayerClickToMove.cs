@@ -20,6 +20,11 @@ namespace MMO.Client
         private CraftingStation _pendingStation;
         private readonly ClickToMoveMarkerTracker _tracker = new ClickToMoveMarkerTracker();
         private CraftingPanelView _craftingPanel;
+
+        /// <summary>
+        /// The crafting panel the local HUD built, or null when there is none. It is found once
+        /// and kept: a concealed panel is inactive, so it is only ever found while it is open.
+        /// </summary>
         private CraftingPanelView CraftingPanel
         {
             get
@@ -30,12 +35,14 @@ namespace MMO.Client
             }
         }
 
-        private bool IsPointerOverUi()
+        /// <summary>
+        /// True when the mouse is over a UI element. The world click has to yield to the UI:
+        /// without this a click on the crafting panel also sends the player walking.
+        /// </summary>
+        private static bool IsPointerOverUi()
         {
-            if (EventSystem.current == null) return false;
-            if (Mouse.current == null) return false;
-            if (EventSystem.current.IsPointerOverGameObject()) return true;
-            return false;
+            EventSystem system = EventSystem.current;
+            return system != null && system.IsPointerOverGameObject();
         }
 
         private void Awake()
@@ -48,13 +55,10 @@ namespace MMO.Client
             if (!IsOwner)
                 return;
 
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-            {
-                if (IsPointerOverUi())
-                    return;
-
+            // A click on the UI is a click on the UI: the panel swallows it and the player does
+            // not walk off. Only a click on the world becomes a destination.
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && !IsPointerOverUi())
                 SetDestinationToMouseClick();
-            }
 
             if (UpdateMarker())
                 OpenPendingStation();
@@ -118,12 +122,10 @@ namespace MMO.Client
                 }
 
                 // A click on anything else is just a destination: the pending station is dropped,
-                // because the walk this click starts is not towards a station.
+                // because the walk this click starts is not towards a station, and the panel goes
+                // with it — the player is walking away from the station it was showing.
                 _pendingStation = null;
-
-                CraftingPanelView panel = CraftingPanel;
-                if (panel != null && panel.IsOpen)
-                    panel.Conceal();
+                CloseCraftingPanel();
 
                 // The server accepts a click by sampling the NavMesh within 1 m and walks to the
                 // sampled point, so the client must mark and measure against the same point —
@@ -137,6 +139,17 @@ namespace MMO.Client
                 _mover?.RequestMoveTo(destination);
                 ShowMarker(destination);
             }
+        }
+
+        /// <summary>
+        /// Closes the crafting panel, if one is open. A click on the world means the player is
+        /// done with the station they were standing at, so the window goes with them.
+        /// </summary>
+        public void CloseCraftingPanel()
+        {
+            CraftingPanelView panel = CraftingPanel;
+            if (panel != null && panel.IsOpen)
+                panel.Conceal();
         }
 
         /// <summary>

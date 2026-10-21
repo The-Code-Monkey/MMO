@@ -85,6 +85,12 @@ does that in three steps:
    ended up within reach: a walk that stopped short leaves the panel closed, because the server
    would have refused anyway.
 
+A click on the crafting panel is swallowed by the UI: `PlayerClickToMove` checks
+`EventSystem.current.IsPointerOverGameObject()` before turning a mouse click into a walk, so
+clicking a recipe row never sends the player moving. A click on the world while the panel is open
+closes it and starts a walk to the clicked point.
+
+
 The panel itself is still opened by the **server's** payload — the client never decides what a
 station offers, it only asks. The client-side reach check exists to avoid asking for a refusal,
 not to bypass one.
