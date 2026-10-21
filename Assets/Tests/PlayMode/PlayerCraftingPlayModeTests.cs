@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Client;
 using MMO.Crafting;
+using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Net;
 using NUnit.Framework;
@@ -32,6 +34,8 @@ namespace MMO.Tests
         private NetworkManager _manager;
         private PlayerCrafting _crafting;
         private PlayerInventory _inventory;
+        private PlayerClickToMove _clickToMove;
+        private PlayerMover _mover;
         private readonly List<GameObject> _spawned = new();
         private readonly List<Object> _assets = new();
 
@@ -148,6 +152,56 @@ namespace MMO.Tests
         }
 
         [UnityTest]
+        public IEnumerator ApproachToAStationWithinReach_OpensThePanelAtOnce()
+        {
+            yield return StartHostAndPlayer();
+
+            CraftingStation anvil = SpawnStation(CraftingStationType.Anvil, NearPlayer(new Vector3(0f, 0f, 2f)));
+            RegisterRecipe("Iron Sword", CraftingStationType.Anvil, requiredLevel: 1);
+
+            List<RecipeOffer> offers = null;
+            _crafting.StationOpened += (_, payload) => offers = new List<RecipeOffer>(payload);
+
+            _clickToMove.BeginStationApproach(anvil);
+
+            yield return WaitUntil(() => offers != null, 300);
+
+            Assert.IsNotNull(offers, "A station already within reach needs no walk: its panel must open at once.");
+            Assert.AreEqual(1, offers.Count);
+            Assert.AreEqual("Iron Sword", offers[0].RecipeName);
+        }
+
+        [UnityTest]
+        public IEnumerator ApproachToAStationOutOfReach_OpensThePanelOnlyWhenTheWalkEnds()
+        {
+            yield return StartHostAndPlayer();
+
+            CraftingStation anvil = SpawnStation(CraftingStationType.Anvil, NearPlayer(new Vector3(0f, 0f, 8f)));
+            RegisterRecipe("Iron Sword", CraftingStationType.Anvil, requiredLevel: 1);
+
+            List<RecipeOffer> offers = null;
+            _crafting.StationOpened += (_, payload) => offers = new List<RecipeOffer>(payload);
+
+            _clickToMove.BeginStationApproach(anvil);
+
+            // The station is out of reach, so the server would refuse the request outright: the
+            // panel must stay shut while the player is still walking.
+            for (int i = 0; i < 30; i++)
+                yield return null;
+
+            Assert.IsNull(offers, "The panel must not open before the walk has brought the player to the station.");
+
+            // The walk ends: the player is standing on the station's stand-off point.
+            _mover.Teleport(anvil.StandOffPosition);
+
+            yield return WaitUntil(() => offers != null, 300);
+
+            Assert.IsNotNull(offers, "The walk ended next to the station: the panel must open now.");
+            Assert.AreEqual(1, offers.Count);
+            Assert.AreEqual("Iron Sword", offers[0].RecipeName);
+        }
+
+        [UnityTest]
         public IEnumerator CraftRequest_ForAnOfferThePayloadCalledUnaffordable_IsRefused()
         {
             yield return StartHostAndPlayer();
@@ -228,6 +282,10 @@ namespace MMO.Tests
             Assert.IsNotNull(_crafting, "The prefab's crafting component has to travel with it.");
             _inventory = player.GetComponent<PlayerInventory>();
             Assert.IsNotNull(_inventory, "The prefab's inventory has to travel with it.");
+            _clickToMove = player.GetComponent<PlayerClickToMove>();
+            Assert.IsNotNull(_clickToMove, "The prefab's click-to-move component has to travel with it.");
+            _mover = player.GetComponent<PlayerMover>();
+            Assert.IsNotNull(_mover, "The prefab's mover has to travel with it.");
         }
 
         private Vector3 NearPlayer(Vector3 offset) => _crafting.transform.position + offset;
