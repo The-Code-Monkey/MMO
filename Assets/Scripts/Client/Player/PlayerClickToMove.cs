@@ -1,8 +1,10 @@
 using FishNet.Object;
 using MMO.Crafting;
 using MMO.Gameplay;
+using MMO.UI;
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 namespace MMO.Client
@@ -17,6 +19,24 @@ namespace MMO.Client
         private GameObject _marker;
         private CraftingStation _pendingStation;
         private readonly ClickToMoveMarkerTracker _tracker = new ClickToMoveMarkerTracker();
+        private CraftingPanelView _craftingPanel;
+        private CraftingPanelView CraftingPanel
+        {
+            get
+            {
+                if (_craftingPanel != null) return _craftingPanel;
+                _craftingPanel = FindFirstObjectByType<CraftingPanelView>();
+                return _craftingPanel;
+            }
+        }
+
+        private bool IsPointerOverUi()
+        {
+            if (EventSystem.current == null) return false;
+            if (Mouse.current == null) return false;
+            if (EventSystem.current.IsPointerOverGameObject()) return true;
+            return false;
+        }
 
         private void Awake()
         {
@@ -30,6 +50,9 @@ namespace MMO.Client
 
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
+                if (IsPointerOverUi())
+                    return;
+
                 SetDestinationToMouseClick();
             }
 
@@ -97,6 +120,10 @@ namespace MMO.Client
                 // A click on anything else is just a destination: the pending station is dropped,
                 // because the walk this click starts is not towards a station.
                 _pendingStation = null;
+
+                CraftingPanelView panel = CraftingPanel;
+                if (panel != null && panel.IsOpen)
+                    panel.Conceal();
 
                 // The server accepts a click by sampling the NavMesh within 1 m and walks to the
                 // sampled point, so the client must mark and measure against the same point —
