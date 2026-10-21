@@ -30,6 +30,20 @@ namespace MMO.Crafting
 
         private readonly SyncVar<int> _craftingXp = new();
 
+        /// <summary>
+        /// Whether a player standing at <paramref name="playerPosition"/> is close enough to a
+        /// station at <paramref name="stationPosition"/> to use it.
+        ///
+        /// <para>
+        /// One rule, shared: the server enforces it when it answers an open request and when it
+        /// accepts a craft, and the client uses it to decide whether a station needs a walk before
+        /// it can be opened. If the two ends measured reach differently, the client would ask for a
+        /// station the server refuses — the walk would end and no panel would ever appear.
+        /// </para>
+        /// </summary>
+        public static bool IsWithinReach(Vector3 playerPosition, Vector3 stationPosition)
+            => Vector3.Distance(playerPosition, stationPosition) <= MaxCraftDistance;
+
         private PlayerInventory _inventory;
         private IReadOnlyList<RecipeOffer> _availableRecipes = Array.Empty<RecipeOffer>();
 
@@ -100,7 +114,7 @@ namespace MMO.Crafting
                 !stationObject.TryGetComponent(out CraftingStation station))
                 return false;
 
-            if (Vector3.Distance(transform.position, station.transform.position) > MaxCraftDistance)
+            if (!IsWithinReach(transform.position, station.transform.position))
                 return false;
 
             RpcOpenStation(target, stationObject, BuildOffers(station));
@@ -170,7 +184,7 @@ namespace MMO.Crafting
                 return false;
             }
 
-            if (Vector3.Distance(transform.position, station.transform.position) > MaxCraftDistance)
+            if (!IsWithinReach(transform.position, station.transform.position))
                 return false;
 
             PlayerInventory inventory = Inventory;

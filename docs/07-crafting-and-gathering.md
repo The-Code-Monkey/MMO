@@ -60,11 +60,40 @@ the real assets.
 | `Alchemy` (3) | Brewing: reagents → potions. | `:10` |
 
 `CraftingStation` (`Assets/Scripts/Crafting/CraftingStation.cs:7`) is a `NetworkBehaviour` with a
-replicated station type. The server sets it with `Configure(CraftingStationType)` (`:14`). Clicking
-the station calls `RequestOpenFromLocalPlayer` (`:18`), which finds the local `PlayerCrafting` and
+replicated station type. The server sets it with `Configure(CraftingStationType)` (`:32`). Clicking
+the station calls `RequestOpenFromLocalPlayer` (`:36`), which finds the local `PlayerCrafting` and
 invokes `RequestOpenStation` — that now starts a **server round-trip**: the client asks, the server
 decides what the station offers and sends it back (section 5). The client never reads recipes from
 its own registry to render a panel.
+
+### Clicking a station: walk first, then open
+
+A click on a station is not a request to open a panel from wherever the player happens to stand —
+the server refuses an open request from outside the crafting reach, so a far-away click has to
+become a walk. `PlayerClickToMove.BeginStationApproach` (`Assets/Scripts/Client/Player/PlayerClickToMove.cs:126`)
+does that in three steps:
+
+1. **Already in reach** — `PlayerCrafting.IsWithinReach` says yes, so the panel opens at once. No
+   walk, no marker.
+2. **Too far** — the station is remembered as the *pending* station and the player is asked to walk
+   to `CraftingStation.StandOffPosition` (`:29`): two metres in front of the station. Two metres,
+   not three, because the player and the station do not share a pivot height — a stand-off equal to
+   the 3 m reach measures further than the reach once the player is standing on it, and the server
+   would refuse the open.
+3. **The walk ends** — the click-to-move marker clearing is the signal that the walk is over
+   (`UpdateMarker` → `OpenPendingStation`). The panel opens then, and only if the player really
+   ended up within reach: a walk that stopped short leaves the panel closed, because the server
+   would have refused anyway.
+
+A click on the crafting panel is swallowed by the UI: `PlayerClickToMove` checks
+`EventSystem.current.IsPointerOverGameObject()` before turning a mouse click into a walk, so
+clicking a recipe row never sends the player moving. A click on the world while the panel is open
+closes it and starts a walk to the clicked point.
+
+
+The panel itself is still opened by the **server's** payload — the client never decides what a
+station offers, it only asks. The client-side reach check exists to avoid asking for a refusal,
+not to bypass one.
 
 A station is also **solid ground**: the prefab carries a `NavMeshObstacle` that carves a hole in
 the zone NavMesh around the station's body, so a click-to-move route planned by the server bends
@@ -110,7 +139,7 @@ the server uses to build the UI payload. It never touches `TryCraft`:
 - `LevelForXp(xp)` (`:13`) = `floor(sqrt(xp / 100)) + 1`.
 
 (There is a duplicate, unused copy of these formulas in `PlayerCrafting.CraftingXpTableImpl` at
-`PlayerCrafting.cs:209`. It is dead code; the live curve is `CraftingXpTable`.)
+`PlayerCrafting.cs:223`. It is dead code; the live curve is `CraftingXpTable`.)
 
 ## 5. PlayerCrafting — the server craft path and the offer payload
 
@@ -120,44 +149,52 @@ crafting panel can bind to it.
 
 ### Opening a station (server decides what is offered)
 
-- `RequestOpenStation(station)` (`:68`) — owner only; sends `RpcRequestOpen(station.NetworkObject)`.
-- `RpcRequestOpen` (`:81`) — `[ServerRpc]`; re-checks the sender owns the object, then calls
+- `RequestOpenStation(station)` (`:82`) — owner only; sends `RpcRequestOpen(station.NetworkObject)`.
+- `RpcRequestOpen` (`:95`) — `[ServerRpc]`; re-checks the sender owns the object, then calls
   `TrySendOffers`.
-- `TrySendOffers(target, stationObject)` (`:96`, `[Server]`) — the server's gate: the station must
+- `TrySendOffers(target, stationObject)` (`:110`, `[Server]`) — the server's gate: the station must
   exist and the player must be within `MaxCraftDistance` (`:29`). Only then does it build the payload
   and answer **that one client** with `RpcOpenStation`.
-- `BuildOffers(station)` (`:126`, `[Server]`) — `CraftingOfferRules.Available(station.StationType,
+- `BuildOffers(station)` (`:140`, `[Server]`) — `CraftingOfferRules.Available(station.StationType,
   CraftingLevel, inventory.Items)` copied into a `RecipeOffer[]` for the wire.
-- `RpcOpenStation` (`:111`, `[TargetRpc]`) — runs on the owning client: stores `OpenedStation` and
+- `RpcOpenStation` (`:125`, `[TargetRpc]`) — runs on the owning client: stores `OpenedStation` and
   `AvailableRecipes`, then raises `StationOpened(station, offers)`. The panel repaints from this.
-- `AvailableRecipes` (`:43`) and `StationOpened` (`:49`) are the `ICraftingSource` surface;
-  `RecipesChanged` (`:46`) is raised when crafting XP changes client-side, so a level-up can refresh
+- `AvailableRecipes` (`:57`) and `StationOpened` (`:63`) are the `ICraftingSource` surface;
+  `RecipesChanged` (`:60`) is raised when crafting XP changes client-side, so a level-up can refresh
   the panel without a new payload.
 
 Stepping too far from the station and clicking it produces **no payload**: the client cannot read a
 station it could not use.
 
+### One reach rule for both ends
+
+`PlayerCrafting.IsWithinReach(playerPosition, stationPosition)` (`:44`) is the single definition of
+"close enough to use a station", and **both** ends use it: the server when it answers an open
+request and when it accepts a craft, and the client when it decides whether a station needs a walk
+first. If the two ends measured reach differently, the client would ask for a station the server
+refuses — the walk would end and no panel would ever appear.
+
 ### Crafting
 
 - `MaxCraftDistance = 3f` (`:29`) — how close the player must stand to the station.
-- `RequestCraft(station, recipeName)` (`:138`) — owner only; sends `RpcRequestCraft`.
-- `RpcRequestCraft` (`:147`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`;
+- `RequestCraft(station, recipeName)` (`:152`) — owner only; sends `RpcRequestCraft`.
+- `RpcRequestCraft` (`:161`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`;
   on success it re-sends the offers (`TrySendOffers`) so the panel is handed the freshly-affordable
   list rather than a stale one.
-- `TryCraft(NetworkObject stationObject, string recipeName)` (`:160`) — the server's full check:
+- `TryCraft(NetworkObject stationObject, string recipeName)` (`:174`) — the server's full check:
 
 ```csharp
 if (stationObject == null || !stationObject.TryGetComponent(out CraftingStation station))
     return false;
 RecipeData recipe = RecipeRegistry.Resolve(recipeName);
 if (recipe == null) return false;
-if (Vector3.Distance(transform.position, station.transform.position) > MaxCraftDistance)
+if (!IsWithinReach(transform.position, station.transform.position))
     return false;
 if (inventory == null ||
     !CraftingValidator.CanCraft(inventory.Items, recipe, station.StationType, CraftingLevel))
     return false;
 if (!inventory.TryCraft(recipe)) return false;      // consume + produce (chapter 06)
-AwardCraftingXp(recipe.CraftingXp);                 // :189
+AwardCraftingXp(recipe.CraftingXp);                 // :203
 return true;
 ```
 

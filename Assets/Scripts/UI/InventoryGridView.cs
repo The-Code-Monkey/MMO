@@ -172,10 +172,10 @@ namespace MMO.UI
 
         private Cell CreateCell(int gridX, int gridY)
         {
-            // Image before Text on the same GameObject: graphics on one transform draw in
-            // component order, so the label lands on top of its own background.
+            // A GameObject can carry only one Graphic, so the background Image and the label
+            // cannot share this transform — the label gets its own child, which draws on top.
             var cellObject = new GameObject(
-                $"Cell {gridX},{gridY}", typeof(RectTransform), typeof(Image), typeof(Text));
+                $"Cell {gridX},{gridY}", typeof(RectTransform), typeof(Image));
 
             RectTransform rect = (RectTransform)cellObject.transform;
             rect.SetParent(_cellContainer != null ? _cellContainer : transform, false);
@@ -187,7 +187,15 @@ namespace MMO.UI
             Image background = cellObject.GetComponent<Image>();
             background.color = EmptyCellColor;
 
-            Text label = cellObject.GetComponent<Text>();
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            RectTransform labelRect = (RectTransform)labelObject.transform;
+            labelRect.SetParent(cellObject.transform, false);
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            Text label = labelObject.AddComponent<Text>();
             label.font = UIFont.Default;
             label.fontSize = 10;
             label.alignment = TextAnchor.MiddleCenter;

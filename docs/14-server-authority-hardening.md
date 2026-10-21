@@ -92,6 +92,19 @@ The route bookkeeping itself is pure arithmetic over positions and lives in `Wal
 (`Assets/Scripts/Gameplay/WalkPath.cs`), so it is unit-testable without an engine, a clock or a
 network.
 
+### Walking to a station before it can be used
+
+A click on a crafting station is a **destination request**, not a "open this now" request: the server
+refuses a station outside the crafting reach, so a far-away click has to become a walk.
+`PlayerClickToMove.BeginStationApproach` asks the server to walk to the station's stand-off point
+(two metres in front of it), remembers the station as pending, and opens it only once the walk is
+over — the click-to-move marker clearing is the "the walk ended" signal.
+
+The client checks the reach on its own side too (`PlayerCrafting.IsWithinReach`, the same rule the
+server applies), but only to avoid asking for a request the server would refuse. The panel still
+opens from the server's payload: the client cannot open a station it may not use, and the server
+re-checks the distance when it answers.
+
 ## 2. Line of sight
 
 An attack or ability must not reach what a wall is hiding. The decision is pure arithmetic; only the
