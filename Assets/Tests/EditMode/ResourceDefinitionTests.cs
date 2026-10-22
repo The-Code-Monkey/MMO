@@ -35,7 +35,10 @@ namespace MMO.Tests
         [Test]
         public void Defaults_AreTheDocumentedOnes()
         {
-            ResourceDefinition definition = Definition();
+            // A raw instance, not the fixture: this test is about what a designer gets before
+            // touching anything in the Inspector.
+            ResourceDefinition definition = ScriptableObject.CreateInstance<ResourceDefinition>();
+            _scratch.Add(definition);
 
             Assert.AreEqual(ResourceType.None, definition.Type);
             Assert.IsNull(definition.Drop);
@@ -81,7 +84,8 @@ namespace MMO.Tests
         [Test]
         public void RequiredTool_DefaultsToNone()
         {
-            ResourceDefinition definition = Definition();
+            ResourceDefinition definition = ScriptableObject.CreateInstance<ResourceDefinition>();
+            _scratch.Add(definition);
 
             Assert.AreEqual(ToolKind.None, definition.RequiredTool,
                 "A resource names no tool by default, so bare hands work until a designer says otherwise.");

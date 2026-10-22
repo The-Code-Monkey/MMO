@@ -613,7 +613,10 @@ namespace MMO.Editor
 
             // Tutorial: the one dummy a new player learns to hit, a few metres in front of spawn,
             // plus the furnace they refine their first gathered ore at — the furnace is what makes
-            // the iron ore -> iron ingot recipe reachable from a fresh character.
+            // the iron ore -> iron ingot recipe reachable from a fresh character. The vein is
+            // bare-handed (the shipped definition asks for no tool), so the first ore needs no
+            // gear the player has not been given yet.
+            AddNodeMarker(markers, 1, new Vector3(-3f, nodeY, 3f));
             AddEnemyMarker(markers, 1, new Vector3(0f, enemyY, 4f));
             AddStationMarker(markers, 1, new Vector3(4f, stationY, 4f), CraftingStationType.Furnace);
         }
