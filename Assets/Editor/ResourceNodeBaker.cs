@@ -1,4 +1,6 @@
 using System.IO;
+using FishNet.Managing;
+using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Net;
 using UnityEditor;
@@ -99,6 +101,28 @@ namespace MMO.Editor
             // DeleteAsset answers false when there is nothing there, so there is no need to test
             // the filesystem first — and no way for the two to disagree.
             return AssetDatabase.DeleteAsset(PrefabAssetPath);
+        }
+
+        /// <summary>
+        /// Registers the resource node as a spawnable on the scene's NetworkManager so every end agrees
+        /// on its prefab id.
+        /// </summary>
+        /// <returns>The resource node prefab that is now wired up, or null when it could not be loaded.</returns>
+        public static NetworkObject WireResourceNode(NetworkManager manager)
+        {
+            if (manager == null)
+                return null;
+            NetworkObject resourceNode = EnsureResourceNodePrefab();
+            if (resourceNode == null)
+                return null;
+            if (manager.SpawnablePrefabs == null)
+            {
+                var prefabs = ScriptableObject.CreateInstance<SinglePrefabObjects>();
+                prefabs.name = NetworkManagerFactory.SpawnablePrefabsName;
+                manager.SpawnablePrefabs = prefabs;
+            }
+            ResourceNodePrefabFactory.Register(manager.SpawnablePrefabs, resourceNode);
+            return resourceNode;
         }
 
         /// <summary>

@@ -385,7 +385,7 @@ namespace MMO.Net
             if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
                 return prefab;
 
-            ResourceNodePrefabFactory.Register(_manager.SpawnablePrefabs, prefab);
+            ResourceNodePrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
             return prefab;
         }
 

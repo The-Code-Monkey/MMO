@@ -118,15 +118,14 @@ namespace MMO.Net
         /// behaviours are assigned right here instead of waiting for a second Awake. While not
         /// playing this is a no-op and <c>NetworkManager.Awake</c> assigns the ids later.
         /// </remarks>
-        public static bool Register(PrefabObjects prefabs, NetworkObject nodePrefab)
+        public static bool Register(PrefabObjects prefabs, NetworkObject nodePrefab, bool initializeAdded = false)
         {
             if (prefabs == null)
                 throw new ArgumentNullException(nameof(prefabs));
-
             if (nodePrefab == null || Contains(prefabs, nodePrefab))
                 return false;
 
-            prefabs.AddObject(nodePrefab, checkForDuplicates: true, initializeAdded: true);
+            prefabs.AddObject(nodePrefab, checkForDuplicates: true, initializeAdded: initializeAdded);
             return true;
         }
 

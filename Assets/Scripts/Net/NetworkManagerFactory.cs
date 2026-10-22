@@ -44,7 +44,8 @@ namespace MMO.Net
             NetworkObject playerPrefab = null,
             NetworkObject targetDummyPrefab = null,
             NetworkObject craftingStationPrefab = null,
-            NetworkObject lootBagPrefab = null)
+            NetworkObject lootBagPrefab = null,
+            NetworkObject resourceNodePrefab = null)
         {
             settings ??= new MMOConnectionSettings();
 
@@ -59,6 +60,7 @@ namespace MMO.Net
             NetworkObject builtTargetDummyPrefab = null;
             NetworkObject builtCraftingStationPrefab = null;
             NetworkObject builtLootBagPrefab = null;
+            NetworkObject builtResourceNodePrefab = null;
 
             try
             {
@@ -104,6 +106,13 @@ namespace MMO.Net
                     lootBagPrefab.gameObject.SetActive(false);
                 }
 
+                if (resourceNodePrefab == null)
+                {
+                    builtResourceNodePrefab = ResourceNodePrefabFactory.Create();
+                    resourceNodePrefab = builtResourceNodePrefab;
+                    resourceNodePrefab.gameObject.SetActive(false);
+                }
+
                 // Before activation, so the prefabs are in the collection when Awake hands out
                 // prefab ids from the list order. Both ends build through this same factory, so
                 // the player is always id 0, the target dummy id 1, the crafting station id 2 and
@@ -112,6 +121,7 @@ namespace MMO.Net
                 TargetDummyPrefabFactory.Register(prefabs, targetDummyPrefab);
                 CraftingStationPrefabFactory.Register(prefabs, craftingStationPrefab);
                 LootBagPrefabFactory.Register(prefabs, lootBagPrefab);
+                ResourceNodePrefabFactory.Register(prefabs, resourceNodePrefab);
 
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
@@ -187,6 +197,9 @@ namespace MMO.Net
 
                 if (builtLootBagPrefab != null)
                     Object.DestroyImmediate(builtLootBagPrefab.gameObject);
+
+                if (builtResourceNodePrefab != null)
+                    Object.DestroyImmediate(builtResourceNodePrefab.gameObject);
 
                 Object.DestroyImmediate(go);
                 throw;
