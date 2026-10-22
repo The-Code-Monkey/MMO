@@ -27,6 +27,8 @@ namespace MMO.Tests
             int maxHealthBonus = 0,
             int maxManaBonus = 0,
             int maxDurability = 0,
+            ToolKind toolKind = ToolKind.None,
+            int toolTier = 0,
             bool register = true)
         {
             var inspector = new SerializedObject(definition);
@@ -38,6 +40,8 @@ namespace MMO.Tests
             inspector.FindProperty("_maxHealthBonus").intValue = maxHealthBonus;
             inspector.FindProperty("_maxManaBonus").intValue = maxManaBonus;
             inspector.FindProperty("_maxDurability").intValue = maxDurability;
+            inspector.FindProperty("_toolKind").intValue = (int)toolKind;
+            inspector.FindProperty("_toolTier").intValue = toolTier;
             inspector.ApplyModifiedPropertiesWithoutUndo();
 
             if (register)
@@ -55,7 +59,9 @@ namespace MMO.Tests
             int requiredLevel = 0,
             int maxHealthBonus = 0,
             int maxManaBonus = 0,
-            int maxDurability = 0)
+            int maxDurability = 0,
+            ToolKind toolKind = ToolKind.None,
+            int toolTier = 0)
         {
             return Write(
                 ScriptableObject.CreateInstance<ItemDefinition>(),
@@ -66,7 +72,9 @@ namespace MMO.Tests
                 requiredLevel,
                 maxHealthBonus,
                 maxManaBonus,
-                maxDurability);
+                maxDurability,
+                toolKind,
+                toolTier);
         }
     }
 }

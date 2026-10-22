@@ -44,7 +44,7 @@ assigning one only to a legacy instance that has none (see
 
 ## 3. ItemDefinition — what an item is
 
-`ItemDefinition` (`Assets/Scripts/Inventory/ItemDefinition.cs:24`) is a `ScriptableObject` created
+`ItemDefinition` (`Assets/Scripts/Inventory/ItemDefinition.cs:25`) is a `ScriptableObject` created
 with `Assets > Create > MMO > Item Definition`. Fields:
 
 | Field | Meaning | Line |
@@ -56,18 +56,26 @@ with `Assets > Create > MMO > Item Definition`. Fields:
 | `MaxHealthBonus` | Health cap bonus when equipped. | `:31` |
 | `MaxManaBonus` | Mana cap bonus when equipped. | `:32` |
 | `MaxDurability` | Wear ceiling; `0` (the default) means indestructible. | `:33` |
+| `ToolKind` | What kind of tool this is (`None` = not a tool). | `:38` |
+| `ToolTier` | The tier the tool reaches (`0` = unranked). | `:39` |
 
-The public `MaxDurability` accessor (`:73`) is a read-through (`Mathf.Max(0, _maxDurability)`) rather
+The public `MaxDurability` accessor (`:76`) is a read-through (`Mathf.Max(0, _maxDurability)`) rather
 than the raw field, so a negative authoring value cannot leak out. It is what `ItemInstance.Create`
 seeds a fresh item with and what `PlayerSaveMapper` clamps a loaded durability against.
+
+The two tool fields are what a resource node's tool requirement is checked against: a node names a
+`ToolKind` and a tier floor, and a player satisfies it by holding a tool of that kind that reaches
+that tier (see [07](07-crafting-and-gathering.md#71-the-tool-gate-toolrules)). A tool's name is
+free — "Bronze Pickaxe" and "Iron Pickaxe" are two items of one kind at two tiers — and the tier
+lives on the item, never in the resource.
 
 Existing items live in `Assets/Resources/Items/` (e.g. `Iron_Ore.asset`, `Iron_Helm.asset`,
 `Broadsword.asset`).
 
 ### Self-registration
 
-`ItemDefinition.OnEnable` (`ItemDefinition.cs:85`) registers the definition in
-`ItemDefinitionRegistry` if it has a name, and `OnDisable` (`:91`) unregisters it. Assets loaded
+`ItemDefinition.OnEnable` (`ItemDefinition.cs:100`) registers the definition in
+`ItemDefinitionRegistry` if it has a name, and `OnDisable` (`:106`) unregisters it. Assets loaded
 from disk register on load; assets created in code register once named. This means you normally do
 not have to wire anything up — drop a named asset in `Resources/Items` and it is findable.
 
@@ -79,6 +87,10 @@ name → definition map:
 - `Resolve` (`:81`) looks in the dictionary and, on a miss, falls back to
   `Resources.Load<ItemDefinition>(itemName)` and caches the result.
 - `Clear` (`:102`) empties the map (tests use this).
+- `LoadAllFromResources` (`:123`) loads every asset under `Resources/Items` and registers the set.
+  `WorldBootstrap` calls it on server start, so a shipped tool item is always resolvable by name —
+  the tool gate reads a tool's kind and tier from its definition, and it finds that definition by
+  the item's name.
 
 ## 4. The grid geometry
 

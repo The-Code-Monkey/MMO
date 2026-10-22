@@ -113,5 +113,20 @@ namespace MMO.Tests
 
             Assert.AreEqual(0, ItemDefinitionRegistry.Count);
         }
+
+        [Test]
+        public void Registry_LoadAllFromResources_RegistersTheShippedItems()
+        {
+            // The tool gate resolves a tool's kind and tier from its definition, and it does that
+            // by the item's name — so the shipped item assets have to be loaded and registered,
+            // not merely present in the project.
+            ItemDefinitionRegistry.LoadAllFromResources();
+
+            ItemDefinition ironOre = ItemDefinitionRegistry.Resolve("Iron Ore");
+
+            Assert.IsNotNull(ironOre, "The shipped item assets have to load and register themselves.");
+            Assert.AreEqual(ToolKind.None, ironOre.ToolKind,
+                "None of the shipped items is a tool yet; a tool item is what carries a kind and a tier.");
+        }
     }
 }

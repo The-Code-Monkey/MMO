@@ -7,6 +7,7 @@ using FishNet.Object;
 using FishNet.Transporting;
 using MMO.Crafting;
 using MMO.Gameplay;
+using MMO.Inventory;
 using MMO.Persistence;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -239,6 +240,11 @@ namespace MMO.Net
             LogNavMeshDiagnostics();
 
             RecipeRegistry.LoadAllFromResources();
+
+            // The item assets too: the tool gate reads a tool's kind and tier from its
+            // definition, and it resolves that definition by the item's name — so an item
+            // nobody loads is a tool the server cannot recognise.
+            ItemDefinitionRegistry.LoadAllFromResources();
 
             WireSpawnPoints();
 

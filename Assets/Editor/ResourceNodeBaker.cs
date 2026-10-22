@@ -13,8 +13,9 @@ namespace MMO.Editor
     ///
     /// The asset is what a level places iron veins from and what a resource spawner (or a test)
     /// instantiates and hands to <see cref="ResourceNodePrefabFactory.Register"/>; the node's
-    /// yield, tool, interval and respawn live as serialized configuration on that template, so
-    /// re-baking is how a designer retunes a node.
+    /// kind, yield, tool requirement, interval and respawn live on the
+    /// <see cref="ResourceDefinition"/> the template carries, so re-baking is how a designer
+    /// retunes a node.
     /// </summary>
     public static class ResourceNodeBaker
     {

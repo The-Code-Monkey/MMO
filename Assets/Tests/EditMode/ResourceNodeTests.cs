@@ -12,9 +12,9 @@ namespace MMO.Tests
 {
     /// <summary>
     /// The networked vein: a <see cref="NetworkBehaviour"/> whose durability and depleted flag
-    /// are server-owned <see cref="SyncVar{T}"/>s, whose six configuration fields are serialized
-    /// prefab data with no setters, and whose depleted state repaints the collider and renderer
-    /// on every client.
+    /// are server-owned <see cref="SyncVar{T}"/>s, whose configuration comes from the
+    /// <see cref="ResourceDefinition"/> asset it carries, and whose depleted state repaints the
+    /// collider and renderer on every client.
     ///
     /// As with <see cref="TargetDummyTests"/>, the arithmetic sits in static, NetworkBehaviour-free
     /// helpers and the attributes are asserted by reflection — FishNet injects the actual runtime
@@ -99,12 +99,7 @@ namespace MMO.Tests
             // The baker and the Inspector write through SerializedObject — the exact path the
             // project uses for every other asset-backed configuration — which only reaches a
             // private [SerializeField]. A public field would be a programmer-facing back door.
-            AssertSerializedField("_itemId", typeof(string));
-            AssertSerializedField("_requiredTool", typeof(string));
-            AssertSerializedField("_maxYield", typeof(int));
-            AssertSerializedField("_respawnSeconds", typeof(float));
-            AssertSerializedField("_gatherIntervalSeconds", typeof(float));
-            AssertSerializedField("_interactRange", typeof(float));
+            AssertSerializedField("_definition", typeof(ResourceDefinition));
         }
 
         [Test]
@@ -112,8 +107,9 @@ namespace MMO.Tests
         {
             foreach (string propertyName in new[]
             {
-                nameof(ResourceNode.ItemId), nameof(ResourceNode.RequiredTool), nameof(ResourceNode.MaxYield),
-                nameof(ResourceNode.RespawnSeconds), nameof(ResourceNode.GatherIntervalSeconds),
+                nameof(ResourceNode.Type), nameof(ResourceNode.Drop), nameof(ResourceNode.DropAmount),
+                nameof(ResourceNode.GatheringTier), nameof(ResourceNode.RequiredTool),
+                nameof(ResourceNode.ResetTime), nameof(ResourceNode.GatherIntervalSeconds),
                 nameof(ResourceNode.InteractRange),
             })
             {
@@ -127,52 +123,47 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Configuration_DefaultsToTheIronOreVein()
+        public void Configuration_WithoutADefinition_FallsBackToTheDocumentedDefaults()
         {
             ResourceNode node = AttachNode();
 
-            Assert.AreEqual(ResourceNode.DefaultItemId, node.ItemId);
-            Assert.AreEqual("Iron Ore", node.ItemId,
-                "The shipped Resources item is what a default vein awards, so the loop works out of the box.");
-            Assert.AreEqual(string.Empty, node.RequiredTool,
-                "The default vein is bare-handed; a designer tightens it to e.g. 'Pickaxe'.");
-            Assert.AreEqual(ResourceNode.DefaultMaxYield, node.MaxYield);
-            Assert.AreEqual(ResourceNode.DefaultRespawnSeconds, node.RespawnSeconds, 0.0001f);
-            Assert.AreEqual(ResourceNode.DefaultGatherIntervalSeconds, node.GatherIntervalSeconds, 0.0001f);
-            Assert.AreEqual(ResourceNode.DefaultInteractRange, node.InteractRange, 0.0001f);
+            // A node with no definition is inert, not broken: it answers every question with the
+            // documented default instead of throwing in the gather loop.
+            Assert.IsNull(node.Definition);
+            Assert.AreEqual(ResourceType.None, node.Type);
+            Assert.IsNull(node.Drop);
+            Assert.AreEqual(ResourceDefinition.DefaultDropAmount, node.DropAmount);
+            Assert.AreEqual(0, node.GatheringTier);
+            Assert.AreEqual(ToolKind.None, node.RequiredTool);
+            Assert.AreEqual(ResourceDefinition.DefaultResetTime, node.ResetTime, 0.0001f);
+            Assert.AreEqual(ResourceDefinition.DefaultGatherIntervalSeconds, node.GatherIntervalSeconds, 0.0001f);
+            Assert.AreEqual(ResourceDefinition.DefaultInteractRange, node.InteractRange, 0.0001f);
         }
 
         [Test]
-        public void MaxYield_FloorsAtAOneHarvestVein()
+        public void Configuration_ReadsThroughTheDefinition()
         {
             ResourceNode node = AttachNode();
-            WriteField(node, "_maxYield", 0);
 
-            Assert.AreEqual(1, node.MaxYield,
-                "A zero-yield vein could never be depleted, because there is nothing to take.");
-        }
+            ResourceDefinition definition = TestResourceDefinitions.Create(
+                TestResourceDefinitions.IronVein,
+                dropAmount: 5,
+                gatheringTier: 2,
+                requiredTool: ToolKind.Pickaxe,
+                resetTime: 45f,
+                gatherIntervalSeconds: 2f,
+                interactRange: 4f);
 
-        [Test]
-        public void RespawnAndIntervalAndReach_FloorAtZero()
-        {
-            ResourceNode node = AttachNode();
-            WriteField(node, "_respawnSeconds", -5f);
-            WriteField(node, "_gatherIntervalSeconds", -1f);
-            WriteField(node, "_interactRange", -2f);
+            node.SetDefinition(definition);
 
-            Assert.AreEqual(0f, node.RespawnSeconds);
-            Assert.AreEqual(0f, node.GatherIntervalSeconds);
-            Assert.AreEqual(0f, node.InteractRange);
-        }
-
-        [Test]
-        public void RequiredTool_ReadsNullAsEmpty()
-        {
-            ResourceNode node = AttachNode();
-            WriteField(node, "_requiredTool", null);
-
-            Assert.AreEqual(string.Empty, node.RequiredTool,
-                "A null requirement must not reach string.IsNullOrEmpty callers as an exception.");
+            Assert.AreSame(definition, node.Definition);
+            Assert.AreEqual(ResourceType.Ore, node.Type);
+            Assert.AreEqual(5, node.DropAmount);
+            Assert.AreEqual(2, node.GatheringTier);
+            Assert.AreEqual(ToolKind.Pickaxe, node.RequiredTool);
+            Assert.AreEqual(45f, node.ResetTime, 0.0001f);
+            Assert.AreEqual(2f, node.GatherIntervalSeconds, 0.0001f);
+            Assert.AreEqual(4f, node.InteractRange, 0.0001f);
         }
         #endregion
 
@@ -284,17 +275,7 @@ namespace MMO.Tests
                 $"{fieldName} must be a [SerializeField] so the baker and the Inspector can write it.");
         }
 
-        private static void WriteField(ResourceNode node, string fieldName, object value)
-        {
-            FieldInfo field = typeof(ResourceNode).GetField(
-                fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-
-            Assert.IsNotNull(field, $"Expected a private {fieldName} on the node.");
-            field.SetValue(node, value);
-        }
-
-        private ResourceNode AttachNode()
-        {
+        private ResourceNode AttachNode()        {
             GameObject go = Track(new GameObject("ResourceNodeUnderTest"));
             go.AddComponent<NetworkObject>();
             return go.AddComponent<ResourceNode>();

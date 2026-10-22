@@ -186,9 +186,4 @@ MonoBehaviour:
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 2341980686118000731}
   _networkObjectCache: {fileID: 0}
-  _itemId: Iron Ore
-  _requiredTool: 
-  _maxYield: 5
-  _respawnSeconds: 30
-  _gatherIntervalSeconds: 1.2
-  _interactRange: 3
+  _definition: {fileID: 11400000, guid: d4f7b0c5eb60a18c2d9e3f504b1c0689, type: 2}
