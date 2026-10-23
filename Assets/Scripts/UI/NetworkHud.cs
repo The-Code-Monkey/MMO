@@ -27,6 +27,10 @@ namespace MMO.UI
         private ChatFeed _chatFeed;
         private GuildBankFrameView _guildBankFrame;
         private CraftingPanelView _craftingPanel;
+        private CollapsiblePanelView _inventoryWindow;
+        private CollapsiblePanelView _equipmentWindow;
+        private EquipmentPanelView _equipmentPanel;
+        private MountCastBarView _mountCastBar;
 
         /// <summary>The health/mana pair, or null before views were assigned.</summary>
         public PlayerHudView PlayerHud => _playerHud;
@@ -49,6 +53,18 @@ namespace MMO.UI
         /// <summary>The one unified crafting window, or null before views were assigned.</summary>
         public CraftingPanelView CraftingPanel => _craftingPanel;
 
+        /// <summary>The bag window's collapse controller, or null before views were assigned.</summary>
+        public CollapsiblePanelView InventoryWindow => _inventoryWindow;
+
+        /// <summary>The equipment window's collapse controller, or null before views were assigned.</summary>
+        public CollapsiblePanelView EquipmentWindow => _equipmentWindow;
+
+        /// <summary>The worn-gear panel, or null before views were assigned.</summary>
+        public EquipmentPanelView EquipmentPanel => _equipmentPanel;
+
+        /// <summary>The centre-screen mount cast bar, or null before views were assigned.</summary>
+        public MountCastBarView MountCastBar => _mountCastBar;
+
         /// <summary>
         /// Hands the assembled screens to the HUD; called by the factory.
         /// </summary>
@@ -57,13 +73,21 @@ namespace MMO.UI
             TargetFrameView targetFrame,
             InventoryGridView inventoryGrid,
             ActionBarView actionBar,
-            ChatFeed chatFeed = null)
+            ChatFeed chatFeed = null,
+            CollapsiblePanelView inventoryWindow = null,
+            CollapsiblePanelView equipmentWindow = null,
+            EquipmentPanelView equipmentPanel = null,
+            MountCastBarView mountCastBar = null)
         {
             _playerHud = playerHud;
             _targetFrame = targetFrame;
             _inventoryGrid = inventoryGrid;
             _actionBar = actionBar;
             _chatFeed = chatFeed;
+            _inventoryWindow = inventoryWindow;
+            _equipmentWindow = equipmentWindow;
+            _equipmentPanel = equipmentPanel;
+            _mountCastBar = mountCastBar;
         }
 
         /// <summary>Gives the HUD the guild bank window the factory built; starts concealed.</summary>
@@ -99,13 +123,20 @@ namespace MMO.UI
             IVitalsSource vitals,
             IInventorySource inventory = null,
             IAbilityBarSource abilities = null,
-            ICraftingSource crafting = null)
+            ICraftingSource crafting = null,
+            IMountSource mount = null)
         {
             if (_playerHud != null)
                 _playerHud.Bind(vitals);
 
             if (_inventoryGrid != null)
                 _inventoryGrid.Bind(inventory);
+
+            if (_equipmentPanel != null)
+                _equipmentPanel.Bind(inventory as IEquipmentSource);
+
+            if (_mountCastBar != null)
+                _mountCastBar.Bind(mount);
 
             if (_actionBar != null)
                 _actionBar.Bind(abilities);
@@ -143,6 +174,12 @@ namespace MMO.UI
 
             if (_inventoryGrid != null)
                 _inventoryGrid.Unbind();
+
+            if (_equipmentPanel != null)
+                _equipmentPanel.Unbind();
+
+            if (_mountCastBar != null)
+                _mountCastBar.Unbind();
 
             if (_actionBar != null)
                 _actionBar.Unbind();

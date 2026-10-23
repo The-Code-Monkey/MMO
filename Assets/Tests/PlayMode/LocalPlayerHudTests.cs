@@ -120,6 +120,14 @@ namespace MMO.Tests
             Assert.IsNotNull(hud.PlayerHud, "The vitals bars are bound to our own PlayerStats.");
             Assert.IsNotNull(hud.InventoryGrid, "The bag grid is bound to our own PlayerInventory.");
             Assert.IsNotNull(hud.ActionBar, "The action bar is bound to our own PlayerAbilities.");
+            Assert.IsNotNull(hud.EquipmentPanel, "The paper doll ships with the HUD.");
+            Assert.IsNotNull(hud.InventoryWindow, "The bag window collapses to its icon.");
+            Assert.IsNotNull(hud.EquipmentWindow, "The equipment window collapses to its icon.");
+            Assert.IsNotNull(hud.MountCastBar, "The mount progress bar ships with the HUD.");
+            Assert.IsFalse(hud.MountCastBar.gameObject.activeSelf,
+                "The mount bar stays hidden until a cast starts.");
+            Assert.IsFalse(hud.InventoryWindow.IsExpanded, "The bag starts collapsed.");
+            Assert.IsFalse(hud.EquipmentWindow.IsExpanded, "The equipment window starts collapsed.");
             Assert.IsNotNull(hud.CraftingPanel, "The crafting window ships with the HUD, concealed.");
             Assert.IsFalse(hud.CraftingPanel.IsOpen,
                 "The crafting panel stays hidden until the server sends this player an offer.");

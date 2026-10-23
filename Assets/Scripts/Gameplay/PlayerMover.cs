@@ -39,9 +39,14 @@ namespace MMO.Gameplay
         private bool _hasAuthoritativePosition;
         private Vector3? _moveTarget;
         private readonly WalkPath _walk = new();
+        private float _speedMultiplier = 1f;
+        private bool _flying;
 
-        /// <summary>The speed the server integrates at. Never negative.</summary>
-        public float MaxSpeed => Mathf.Max(0f, _maxSpeed);
+        /// <summary>
+        /// The speed the server integrates at: the baked base speed scaled by whatever a mount
+        /// currently asks for. Never negative.
+        /// </summary>
+        public float MaxSpeed => Mathf.Max(0f, _maxSpeed) * Mathf.Max(0f, _speedMultiplier);
 
         /// <summary>
         /// The last position the server itself observed. Before the first server tick this reads
@@ -76,6 +81,17 @@ namespace MMO.Gameplay
             if (sender == null || !OwnerMatches(sender))
             {
                 Debug.LogWarning($"[PlayerMover] RpcRequestMoveTo rejected: sender mismatch (sender={sender}, owner={Owner} on '{name}').");
+                return;
+            }
+
+            // A flying mount paths through the air, where there is no NavMesh to sample: the
+            // destination is the point itself, and the server still integrates the walk.
+            // shortcut: flight ignores obstacles (no 3D NavMesh); add volume pathing if flight
+            // must avoid walls.
+            if (_flying)
+            {
+                _moveTarget = destination;
+                _walk.Clear();
                 return;
             }
 
@@ -123,7 +139,8 @@ namespace MMO.Gameplay
 
             Vector3 waypoint = _walk.IsEmpty ? _moveTarget.Value : _walk.NextWaypoint(transform.position);
             Vector3 toWaypoint = waypoint - transform.position;
-            toWaypoint.y = 0f;
+            if (!_flying)
+                toWaypoint.y = 0f;
 
             float distance = toWaypoint.magnitude;
             if (distance <= 0.01f)
@@ -141,6 +158,13 @@ namespace MMO.Gameplay
             if (maxStep > distance)
                 delta *= distance / maxStep;
 
+            // Flight integrates the full 3D vector; ApplyInput is the ground path and is X/Z only.
+            if (_flying)
+            {
+                MoveBy(toWaypoint.normalized * (MaxSpeed * (float)delta));
+                return;
+            }
+
             ApplyInput(new Vector2(toWaypoint.x, toWaypoint.z).normalized, delta);
         }
 
@@ -157,6 +181,32 @@ namespace MMO.Gameplay
 
             float step = MaxSpeed * (float)Math.Max(0d, deltaSeconds);
             MoveBy(direction * step);
+        }
+
+        /// <summary>
+        /// Server: scale the mover's speed, the way a mount's ground or flight multiplier does.
+        /// The client never calls this, so a mount cannot make itself faster.
+        /// </summary>
+        [Server]
+        public void SetSpeedMultiplier(float multiplier)
+        {
+            _speedMultiplier = Mathf.Max(0f, multiplier);
+        }
+
+        /// <summary>
+        /// Server: switch between ground movement (X/Z, NavMesh-pathed) and volumetric movement
+        /// (X/Y/Z, straight to the destination). There is no gravity simulation to toggle; flight
+        /// simply stops clamping the vertical axis.
+        /// </summary>
+        [Server]
+        public void SetFlight(bool flying)
+        {
+            if (_flying == flying)
+                return;
+
+            _flying = flying;
+            _moveTarget = null;
+            _walk.Clear();
         }
 
         /// <summary>

@@ -23,12 +23,14 @@ GameObject:
   - component: {fileID: 6344316905428052550}
   - component: {fileID: 6561559964275652801}
   - component: {fileID: 6901790986073579184}
+  - component: {fileID: 2380682821765895201}
   - component: {fileID: 506150388635910153}
   - component: {fileID: 6553894488594121888}
   - component: {fileID: 1014251427847557135}
   - component: {fileID: 4586285628545302314}
   - component: {fileID: 5417282396660200929}
   - component: {fileID: 6183399494757744168}
+  - component: {fileID: 5554675490262176391}
   - component: {fileID: 7972816330282042749}
   - component: {fileID: 4776461223201602675}
   - component: {fileID: 4262900348515514802}
@@ -346,6 +348,21 @@ MonoBehaviour:
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 1248092469509279395}
   _networkObjectCache: {fileID: 0}
+--- !u!114 &2380682821765895201
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8673228683051736043}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63a4b77de2d85611daaa6c7b0c63d893, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerStartingItems
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1248092469509279395}
+  _networkObjectCache: {fileID: 0}
 --- !u!114 &506150388635910153
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -437,6 +454,21 @@ MonoBehaviour:
   _addedNetworkObject: {fileID: 1248092469509279395}
   _networkObjectCache: {fileID: 0}
   _maxSpeed: 6
+--- !u!114 &5554675490262176391
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8673228683051736043}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f9074dc0b106de5fa384bbef6b22ad6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerMount
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1248092469509279395}
+  _networkObjectCache: {fileID: 0}
 --- !u!114 &7972816330282042749
 MonoBehaviour:
   m_ObjectHideFlags: 0

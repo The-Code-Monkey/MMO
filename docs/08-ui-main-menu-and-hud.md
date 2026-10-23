@@ -96,24 +96,29 @@ The HUD is a set of independent views under a coordinating component, all create
 
 ### NetworkHud (the coordinator)
 
-`NetworkHud` (`Assets/Scripts/UI/NetworkHud.cs:19`) holds references to the player HUD, target frame,
-inventory grid and action bar. `SetViews(...)` (`:41`) wires them. The useful methods are:
+`NetworkHud` (`Assets/Scripts/UI/NetworkHud.cs`) holds references to the player HUD, target frame,
+bag grid, action bar, the two collapsible windows and the equipment panel. `SetViews(...)` wires
+them. The useful methods are:
 
-- `BindPlayer(vitals, inventory = null, abilities = null)` (`:58`) — binds the player-facing views to
-  the live sources. Any argument may be null; that screen just stays quiet.
-- `BindTarget(target)` (`:74`) — binds the target frame.
-- `Unbind()` (`:81`) — disconnects everything.
+- `BindPlayer(vitals, inventory = null, abilities = null)` — binds the player-facing views to
+  the live sources. Any argument may be null; that screen just stays quiet. The equipment panel
+  binds when the inventory also implements `IEquipmentSource` (the real `PlayerInventory` does).
+- `BindTarget(target)` — binds the target frame.
+- `Unbind()` — disconnects everything.
 
 ### The views
 
 | View | File | Binds to | Renders |
 |---|---|---|---|
-| `PlayerHudView` | `Assets/Scripts/UI/PlayerHudView.cs:17` | `IVitalsSource` | Health and mana bars. |
-| `VitalBarView` | `Assets/Scripts/UI/VitalBarView.cs:27` | `IVitalsSource` | One bar (health or mana). `VitalKind` (`VitalKind.cs:7`) selects which. |
-| `TargetFrameView` | `Assets/Scripts/UI/TargetFrameView.cs:25` | `ITargetSource` | The target's name and health. |
-| `InventoryGridView` | `Assets/Scripts/UI/InventoryGridView.cs:28` | `IInventorySource` | The 8×6 bag grid. |
-| `ActionBarView` | `Assets/Scripts/UI/ActionBarView.cs:31` | `IAbilityBarSource` | Up to 6 ability slots. |
-| `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs:33` | `ICraftingSource` | A scrollable list of the server's recipe offers for the open station. |
+| `PlayerHudView` | `Assets/Scripts/UI/PlayerHudView.cs` | `IVitalsSource` | Health and mana bars. |
+| `VitalBarView` | `Assets/Scripts/UI/VitalBarView.cs` | `IVitalsSource` | One bar (health or mana). `VitalKind` selects which. |
+| `TargetFrameView` | `Assets/Scripts/UI/TargetFrameView.cs` | `ITargetSource` | The target's name and health. |
+| `InventoryGridView` | `Assets/Scripts/UI/InventoryGridView.cs` | `IInventorySource` | The 8×6 bag plus the five-cell mount row. |
+| `EquipmentPanelView` | `Assets/Scripts/UI/EquipmentPanelView.cs` | `IEquipmentSource` | One row per worn slot (Main Hand … Mount); right-click unequips. |
+| `CollapsiblePanelView` | `Assets/Scripts/UI/CollapsiblePanelView.cs` | — | Collapses a window to its always-visible icon and back. |
+| `MountCastBarView` | `Assets/Scripts/UI/MountCastBarView.cs` | `IMountSource` | Centre-screen mount/dismount progress bar, hidden when no cast is running. |
+| `ActionBarView` | `Assets/Scripts/UI/ActionBarView.cs` | `IAbilityBarSource` | Up to 6 ability slots. |
+| `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs` | `ICraftingSource` | A scrollable list of the server's recipe offers for the open station. |
 
 How the views work:
 
@@ -124,9 +129,20 @@ How the views work:
   `_source.RequestCast(slot, castTarget())`. The cast target is supplied by `SetCastTarget` (`:90`)
   (the game wires it to the mouse position), defaulting to a point in front. Cooldowns are not shown
   because the interface deliberately does not expose them (see [05](05-gameplay-stats-combat-abilities.md)).
-- `InventoryGridView` builds one cell per grid position on `Bind` (`:96`) using
-  `source.GridWidth`/`GridHeight`. `Repaint` (`:126`) tints every cell an item covers and labels only
+- `InventoryGridView` builds one cell per grid position on `Bind` using
+  `source.GridWidth`/`GridHeight`. `Repaint` tints every cell an item covers and labels only
   the item's origin cell, so a 2×1 item reads as one item spanning two cells.
+- `EquipmentPanelView` builds one row per `EquipmentSlots.All` entry on `Bind`, subscribes to
+  `IEquipmentSource.ContainersChanged`, and paints `"<slot>: <item>"` (or just the slot name when
+  empty). Each row carries an `EquipmentSlotView`, so a right-click asks the server to unequip that
+  slot. Items in the mount slot are what makes G work (see [05](05-gameplay-stats-combat-abilities.md)).
+- `CollapsiblePanelView` is the icon's toggle: `Configure(panel, button)` wires the click and starts
+  the window collapsed. The bag and equipment windows each have their own icon and state, so opening
+  one does not close the other.
+- `MountCastBarView` subscribes to `IMountSource.MountChanged`; it shows only for `Mounting` or
+  `Dismounting`, fills from the replicated `CastProgress`, and labels the cast ("Mounting..." /
+  "Dismounting..."). The five-second donkey cast therefore animates from the server's progress, not
+  a client-side timer.
 - `TargetFrameView.Repaint` (`:85`) shows or hides the whole frame depending on whether there is a
   target.
 - `CraftingPanelView` is the one unified crafting window (an anvil, an alchemy lab and a loom all
@@ -143,12 +159,15 @@ How the views work:
 
 ### The HUD factory
 
-`NetworkHudFactory` (`Assets/Scripts/UI/NetworkHudFactory.cs:30`) builds the whole HUD in one call:
-`Create(vitals, inventory, abilities, target, createEventSystem, createGuildBankFrame, crafting)`
-(`:68`). It creates the player HUD (with health and mana bars), the target frame, the inventory grid
-(sized from `PlayerInventory.GridWidth`/`GridHeight`), the action bar (sized from
+`NetworkHudFactory` (`Assets/Scripts/UI/NetworkHudFactory.cs`) builds the whole HUD in one call:
+`Create(vitals, inventory, abilities, target, createEventSystem, createGuildBankFrame, crafting)`.
+It creates the player HUD (with health and mana bars), the target frame, the two collapsible windows
+(a bag window carrying the inventory grid and an equipment window carrying the paper doll, each with
+its own always-visible labelled icon and collapsed at start), the action bar (sized from
 `AbilityLoadout.MaxSlots`) and the crafting panel (via `CraftingPanelFactory.Create`, built
-concealed), then adds a `NetworkHud` and binds them through `BindPlayer(..., crafting)`.
+concealed), plus the centre-screen mount cast bar, then adds a `NetworkHud` and binds them through
+`BindPlayer(..., crafting, mount)`. The bag is sized from `PlayerInventory.GridWidth`/
+`VisibleGridHeight`, which includes the mount's extra row.
 
 The crafting panel is built by `CraftingPanelFactory` (`Assets/Scripts/UI/CraftingPanelFactory.cs:17`):
 a titled frame with a **Close** button (`view.Conceal()`), a `ScrollRect` (viewport masked with

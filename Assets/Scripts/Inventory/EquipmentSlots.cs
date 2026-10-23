@@ -13,8 +13,8 @@ namespace MMO.Inventory
     /// </summary>
     public static class EquipmentSlots
     {
-        /// <summary>How many explicit slots a player has: Main Hand, Off Hand, Head, Chest, Feet.</summary>
-        public const int Count = 5;
+        /// <summary>How many explicit slots a player has: Main Hand, Off Hand, Head, Chest, Feet, Mount.</summary>
+        public const int Count = 6;
 
         private static readonly EquipmentSlot[] AllSlots =
         {
@@ -23,6 +23,7 @@ namespace MMO.Inventory
             EquipmentSlot.Head,
             EquipmentSlot.Chest,
             EquipmentSlot.Feet,
+            EquipmentSlot.Mount,
         };
 
         /// <summary>

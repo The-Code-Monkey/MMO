@@ -57,7 +57,7 @@ namespace MMO.UI
             bankGrid.SetContainer(CreateStretch(bankPanel.transform, "Cells").GetComponent<RectTransform>());
 
             float bagWidth = PlayerInventory.GridWidth * InventoryGridView.CellSize;
-            float bagHeight = PlayerInventory.GridHeight * InventoryGridView.CellSize;
+            float bagHeight = PlayerInventory.VisibleGridHeight * InventoryGridView.CellSize;
             GameObject bagPanel = CreateRect(
                 frame.transform, "BagPanel", new Vector2(0f, 1f), new Vector2(0f, 1f),
                 new Vector2(340f, -78f),

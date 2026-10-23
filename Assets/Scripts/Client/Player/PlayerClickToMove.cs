@@ -15,6 +15,7 @@ namespace MMO.Client
 
         private Camera _mainCam;
         private PlayerMover _mover;
+        private PlayerMount _mount;
         private Vector3 _target;
         private GameObject _marker;
         private CraftingStation _pendingStation;
@@ -49,6 +50,7 @@ namespace MMO.Client
         private void Awake()
         {
             _mover = GetComponent<PlayerMover>();
+            _mount = GetComponent<PlayerMount>();
         }
 
         private void Update()
@@ -143,10 +145,13 @@ namespace MMO.Client
                 // The server accepts a click by sampling the NavMesh within 1 m and walks to the
                 // sampled point, so the client must mark and measure against the same point —
                 // otherwise the arrival check below can miss (the player stops short of the raw
-                // click) and the marker outlives the walk.
-                Vector3 destination = NavMesh.SamplePosition(hit.point, out NavMeshHit navHit, 1f, NavMesh.AllAreas)
-                    ? navHit.position
-                    : hit.point;
+                // click) and the marker outlives the walk. A flying mount has no NavMesh above it,
+                // so the clicked 3D point is the destination directly.
+                Vector3 destination = _mount != null && _mount.IsFlying
+                    ? hit.point
+                    : NavMesh.SamplePosition(hit.point, out NavMeshHit navHit, 1f, NavMesh.AllAreas)
+                        ? navHit.position
+                        : hit.point;
 
                 _target = destination;
                 _mover?.RequestMoveTo(destination);

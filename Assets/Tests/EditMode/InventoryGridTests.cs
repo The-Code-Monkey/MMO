@@ -184,6 +184,56 @@ namespace MMO.Tests
             Assert.AreEqual(1, grid.FindAt(items, 2, 2));
         }
 
+        [Test]
+        public void ExtraCells_AppendAPartialRow()
+        {
+            var grid = new InventoryGrid(4, 2, 2);
+
+            Assert.AreEqual(4, grid.Width);
+            Assert.AreEqual(3, grid.Height, "The partial row is visible under the two full rows.");
+            Assert.AreEqual(10, grid.CellCount, "Eight rectangular cells plus two extras.");
+            Assert.IsTrue(grid.Contains(0, 2, 2, 1));
+            Assert.IsFalse(grid.Contains(1, 2, 1, 1), "A 2-wide item cannot start in the last extra cell.");
+            Assert.IsFalse(grid.Contains(2, 2, 1, 1), "The unused corner of the partial row is not a cell.");
+            Assert.IsFalse(grid.Contains(0, 3, 1, 1));
+        }
+
+        [Test]
+        public void ExtraCells_AreFilledAfterTheFullRows()
+        {
+            var grid = new InventoryGrid(2, 1, 1);
+            List<ItemInstance> items = new() { Item("A", 0, 0), Item("B", 1, 0) };
+
+            Assert.IsTrue(grid.TryFindFreeSpace(items, 1, 1, out int x, out int y),
+                "The partial row is used only after the rectangular rows are full.");
+            Assert.AreEqual(0, x);
+            Assert.AreEqual(1, y);
+        }
+
+        [Test]
+        public void ExtraCells_RejectAnItemThatWouldStraddleThePartialRow()
+        {
+            var grid = new InventoryGrid(4, 1, 2);
+            List<ItemInstance> items = new() { Item("A", 0, 0), Item("B", 1, 0), Item("C", 2, 0), Item("D", 3, 0) };
+
+            Assert.IsFalse(grid.CanPlace(items, 1, 1, 2, 1),
+                "Only cells 0..1 exist in the partial row, so a 2-wide item anchored at x=1 would run off it.");
+            Assert.IsTrue(grid.CanPlace(items, 0, 1, 2, 1));
+        }
+
+        [Test]
+        public void CellLimit_ClosesTheExtraCellsUntilCapacityOpens()
+        {
+            var grid = new InventoryGrid(2, 1, 1);
+            List<ItemInstance> items = new() { Item("A", 0, 0), Item("B", 1, 0) };
+
+            Assert.IsFalse(grid.TryFindFreeSpace(items, 1, 1, out _, out _, cellLimit: 2),
+                "A dismounted player cannot place into the mount's trailing slots.");
+            Assert.IsTrue(grid.TryFindFreeSpace(items, 1, 1, out int x, out int y, cellLimit: 3));
+            Assert.AreEqual(0, x);
+            Assert.AreEqual(1, y);
+        }
+
         private static ItemInstance Item(string name, int x, int y, int width = 1, int height = 1)
         {
             return new ItemInstance { ItemName = name, GridX = x, GridY = y, Width = width, Height = height };

@@ -19,28 +19,39 @@ namespace MMO.Inventory
     {
         private readonly int _width;
         private readonly int _height;
+        private readonly int _extraCells;
 
         /// <summary>Grid columns.</summary>
         public int Width => _width;
 
-        /// <summary>Grid rows.</summary>
-        public int Height => _height;
+        /// <summary>
+        /// Visible rows: the rectangular rows plus one more when the grid ends in a partial row
+        /// of extra cells (a mount's 5 carrying slots).
+        /// </summary>
+        public int Height => _height + (_extraCells > 0 ? 1 : 0);
 
         /// <summary>Total cells a player can fill.</summary>
-        public int CellCount => _width * _height;
+        public int CellCount => _width * _height + _extraCells;
 
         /// <param name="width">Grid columns. Must be at least one.</param>
         /// <param name="height">Grid rows. Must be at least one.</param>
+        /// <param name="extraCells">
+        /// Cells appended after the last full row, left to right. Zero keeps the grid rectangular.
+        /// </param>
         /// <exception cref="ArgumentOutOfRangeException">A dimension is less than one.</exception>
-        public InventoryGrid(int width, int height)
+        public InventoryGrid(int width, int height, int extraCells = 0)
         {
             if (width < 1)
                 throw new ArgumentOutOfRangeException(nameof(width), width, "A grid needs at least one column.");
             if (height < 1)
                 throw new ArgumentOutOfRangeException(nameof(height), height, "A grid needs at least one row.");
+            if (extraCells < 0 || extraCells > width)
+                throw new ArgumentOutOfRangeException(nameof(extraCells), extraCells,
+                    "A partial row fits between zero and one row of cells.");
 
             _width = width;
             _height = height;
+            _extraCells = extraCells;
         }
 
         /// <summary>
@@ -48,12 +59,53 @@ namespace MMO.Inventory
         /// (<paramref name="x"/>, <paramref name="y"/>) fits inside the grid at all. In-bounds is
         /// not the same as free — see <see cref="CanPlace"/> — but out of bounds is never free.
         /// </summary>
-        public bool Contains(int x, int y, int width, int height)
+        public bool Contains(int x, int y, int width, int height, int cellLimit = int.MaxValue)
         {
             if (width < 1 || height < 1)
                 return false;
 
-            return x >= 0 && y >= 0 && x + width <= _width && y + height <= _height;
+            for (int dy = 0; dy < height; dy++)
+            {
+                for (int dx = 0; dx < width; dx++)
+                {
+                    if (!IsCellAvailable(x + dx, y + dy, cellLimit))
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// True when a single cell exists: any cell of the rectangular rows, or one of the
+        /// trailing partial-row cells. The three corners left over by a 5-cell row under an
+        /// 8-wide bag are not cells at all, so nothing can be placed in them.
+        /// </summary>
+        private bool IsCellInside(int x, int y)
+        {
+            if (x < 0 || y < 0)
+                return false;
+
+            if (y < _height)
+                return x < _width;
+
+            return y == _height && x < _extraCells;
+        }
+
+        /// <summary>
+        /// A cell that exists and falls inside the caller's capacity limit. Cells are ordered
+        /// row-major with the partial row last, so a limit is exactly "the first N cells" — which
+        /// is how a dismounted player is refused the mount's trailing slots while still able to
+        /// read items already sitting in them.
+        /// </summary>
+        private bool IsCellAvailable(int x, int y, int cellLimit)
+        {
+            return IsCellInside(x, y) && CellIndex(x, y) < cellLimit;
+        }
+
+        private int CellIndex(int x, int y)
+        {
+            return y * _width + x;
         }
 
         /// <summary>
@@ -62,9 +114,12 @@ namespace MMO.Inventory
         /// "verifies inventory space" step the server runs before moving anything.
         /// </summary>
         /// <param name="items">Current occupants. Null is treated as an empty grid.</param>
-        public bool CanPlace(IReadOnlyList<ItemInstance> items, int x, int y, int width, int height)
+        /// <param name="cellLimit">Cells 0..limit-1 are placeable; the rest exist but are closed.</param>
+        public bool CanPlace(
+            IReadOnlyList<ItemInstance> items, int x, int y, int width, int height,
+            int cellLimit = int.MaxValue)
         {
-            if (!Contains(x, y, width, height))
+            if (!Contains(x, y, width, height, cellLimit))
                 return false;
 
             if (items == null)
@@ -98,8 +153,10 @@ namespace MMO.Inventory
         /// the grid cannot hold the item at all.
         /// </summary>
         /// <param name="items">Current occupants. Null is treated as an empty grid.</param>
+        /// <param name="cellLimit">Cells 0..limit-1 are placeable; the rest exist but are closed.</param>
         public bool TryFindFreeSpace(
-            IReadOnlyList<ItemInstance> items, int width, int height, out int gridX, out int gridY)
+            IReadOnlyList<ItemInstance> items, int width, int height, out int gridX, out int gridY,
+            int cellLimit = int.MaxValue)
         {
             gridX = 0;
             gridY = 0;
@@ -107,11 +164,11 @@ namespace MMO.Inventory
             if (width < 1 || height < 1)
                 return false;
 
-            for (int y = 0; y <= _height - height; y++)
+            for (int y = 0; y < Height; y++)
             {
-                for (int x = 0; x <= _width - width; x++)
+                for (int x = 0; x < Width; x++)
                 {
-                    if (CanPlace(items, x, y, width, height))
+                    if (CanPlace(items, x, y, width, height, cellLimit))
                     {
                         gridX = x;
                         gridY = y;

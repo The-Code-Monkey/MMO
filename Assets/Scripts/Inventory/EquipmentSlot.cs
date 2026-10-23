@@ -13,5 +13,17 @@ namespace MMO.Inventory
         Head = 2,
         Chest = 3,
         Feet = 4,
+
+        /// <summary>
+        /// The slot a mount item is worn in. Appended after the original five so their wire
+        /// values are unchanged; a mount only works while equipped here.
+        /// </summary>
+        Mount = 5,
+
+        /// <summary>
+        /// Not wearable: a bag or bank item that is neither gear nor a mount. Appended so no
+        /// existing slot moves; <see cref="EquipmentSlots.IsValid"/> rejects it.
+        /// </summary>
+        None = 6,
     }
 }

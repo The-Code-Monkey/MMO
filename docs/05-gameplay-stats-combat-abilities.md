@@ -334,6 +334,70 @@ CLIENT
   PlayerStats.VitalsChanged fires → VitalBarView.Repaint
 ```
 
+## 6. Mounts
+
+Mounts are data-only and server-authoritative. There is **no per-mount prefab**: a mount is a
+`MountData` asset (is it flying, its ground/flight speed multipliers, its size, and a cosmetic model)
+and the code builds one generic body for it.
+
+- `MountData` (`Assets/Scripts/Gameplay/MountData.cs:21`) — private `[SerializeField]` data with
+  read-only properties, like `AbilityData`. `ItemName` is the inventory item that summons it and the
+  key both ends resolve by.
+- `MountDataRegistry` (`Assets/Scripts/Gameplay/MountDataRegistry.cs`) — resolves `ItemName` to the
+  local asset, falling back to `Resources/Mounts`.
+- `MountStateMachine` (`Assets/Scripts/Gameplay/MountStateMachine.cs`) — the pure core:
+  `Unmounted → Mounting → Mounted → Flying → Mounted → Dismounting → Unmounted`, with all time
+  passed in as `now`. Getting on and getting off both take
+  `MountData.MountCastSeconds`; takeoff is legal only for a flying mount in a fly zone.
+- `PlayerMount` (`Assets/Scripts/Gameplay/PlayerMount.cs`) — the networked shell. Owner intents
+  (`RequestMount` / `RequestTakeoff` / `RequestLand` / `RequestDismount`) are `[ServerRpc]`s that
+  re-check the sender; the server resolves the item, verifies it is **worn in the mount slot**
+  (`PlayerInventory.GetEquipped(EquipmentSlot.Mount)` — carrying it in the bag is not enough), ticks
+  the machine on `Update`, and replicates only `SyncVar<int> State` and
+  `SyncVar<string> MountItemName`. Every client builds its own cosmetic body from the replicated
+  name; a dedicated server builds none. The owner's default binding is **G**: mount the item in the
+  mount slot, dismount when riding, land when flying.
+- `PlayerStartingItems` (`Assets/Scripts/Gameplay/PlayerStartingItems.cs`) — every player is granted
+  the shipped `Donkey` item on the server, after the save has been restored and only if they do not
+  already carry or wear one. The item is the authority for having the mount, and the player must
+  equip it into the mount slot before **G** will work.
+- Shipped donkey data: `Assets/Resources/Items/Donkey.asset` (the item) and
+  `Assets/Resources/Mounts/Donkey.asset` (ground mount, 1.1× speed, 5 s to mount or dismount).
+- `MountPrefabFactory` (`Assets/Scripts/Gameplay/MountPrefabFactory.cs`) — builds the generic capsule
+  scaled by `Size`, strips colliders (the player's own capsule stays the only physics surface), and
+  drops `ModelPrefab` over it when set.
+- `PlayerMover` gains two server-only hooks: `SetSpeedMultiplier(float)` (derived from mount state, so
+  a client cannot set its own speed) and `SetFlight(bool)` (ground X/Z NavMesh movement versus
+  volumetric X/Y/Z straight-line movement). There is no gravity simulation to toggle; flight stops
+  clamping the vertical axis. Landing snaps the player back onto the NavMesh at their current X/Z.
+- `ZoneRiskConfig.AllowsFlying` / `ResolveAllowsFlyingAt` — the PvP-balance hook. It fails closed: a
+  zone (or a whole scene, via a collider-less zone) is a no-fly zone unless authored otherwise.
+- `PlayerInventory` carrying: the bag is 48 slots (8×6) plus a five-cell partial row
+  (`MountExtraSlots`). Items never stack yet and every item takes one slot. The trailing five are
+  placeable only while mounted; items already there stay on dismount (nothing is dropped) and count
+  as overload. While unmounted, anything above the base 48 slows the walk by 0.1 per item, floored
+  at 0.1× (`MountRules`). The extra row is drawn by `VisibleGridHeight`.
+
+Flow:
+
+```
+CLIENT  right-click donkey → equips into the Mount slot; press G → PlayerMount.RequestMount(itemName)
+        → RpcRequestMount  ── ServerRpc ─►
+SERVER  sender owns object? → MountDataRegistry.Resolve(itemName)
+        → GetEquipped(EquipmentSlot.Mount).ItemName == itemName? → MountStateMachine.RequestMount(now)
+        → Update ticks Mounting → Mounted
+        → PlayerMover.SetSpeedMultiplier(ground) ; SyncVar State/MountItemName replicate
+CLIENT  OnChange → MountPrefabFactory builds the cosmetic body under the player
+FLYING  RequestTakeoff → server checks ZoneRiskConfig.ResolveAllowsFlyingAt(position)
+        → PlayerMover.SetFlight(true), flight multiplier; landing snaps to the NavMesh
+```
+
+Edge cases: a second mount request while mounting/mounted/dismounting is refused; a ground mount
+cannot take off; takeoff outside a fly zone is refused; dismounting mid-air is refused; losing or
+unequipping the mount item while mounted lands and dismounts on the next server tick. Dismounting
+never drops items: if the bag is over the base 48, the player simply walks slower until they drop or
+stow the excess.
+
 ## Common tasks
 
 - **Add a plain damage or heal ability.** Create the asset
@@ -349,3 +413,8 @@ CLIENT
   defaults in `PlayerSaveRecord`, so update both if you change them.
 - **Adjust the default weapon.** Change `PlayerPrefabBaker.DefaultWeaponAssetPath` and re-run
   `Tools > MMO > Create Player Prefab`.
+- **Add a mount.** Create an `Assets > Create > MMO > Mount Data` asset, set `ItemName` to the
+  inventory item that summons it, then isFlying / speed multipliers / size and (optionally) a model.
+  Save it under `Assets/Resources/Mounts` so the registry finds it. Give the matching item asset
+  `EquipSlot = Mount`; a mount only works while worn in that slot. No prefab and no mount-specific
+  code needed.

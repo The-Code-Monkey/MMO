@@ -23,6 +23,11 @@ namespace MMO.Inventory
             if (definition == null)
                 return false;
 
+            // A bag item (a mount, a quest item) names no wearable slot; equipping it would either
+            // fail late or, worse, land in MainHand and replace the player's weapon.
+            if (!EquipmentSlots.IsValid(definition.EquipSlot))
+                return false;
+
             return playerLevel >= definition.RequiredLevel;
         }
 

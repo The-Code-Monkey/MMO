@@ -246,6 +246,10 @@ namespace MMO.Net
             // nobody loads is a tool the server cannot recognise.
             ItemDefinitionRegistry.LoadAllFromResources();
 
+            // Mounts are summoned by item name, so the server needs the mount assets loaded
+            // before the first mount request can resolve one.
+            MountDataRegistry.LoadAllFromResources();
+
             WireSpawnPoints();
 
             SpawnFromMarkers(

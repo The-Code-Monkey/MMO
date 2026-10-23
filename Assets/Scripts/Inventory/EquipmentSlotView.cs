@@ -15,14 +15,14 @@ namespace MMO.Inventory
     [AddComponentMenu("MMO/Inventory/Equipment Slot View")]
     public class EquipmentSlotView : MonoBehaviour, IPointerClickHandler
     {
-        [SerializeField] private PlayerInventory _inventory;
+        private IEquipmentSource _inventory;
         [SerializeField] private EquipmentSlot _slot;
 
-        public PlayerInventory Inventory => _inventory;
+        public IEquipmentSource Inventory => _inventory;
         public EquipmentSlot Slot => _slot;
 
-        /// <summary>Points this view at a specific inventory; public for runtime wiring and tests.</summary>
-        public void SetInventory(PlayerInventory inventory) => _inventory = inventory;
+        /// <summary>Points this view at a specific equipment source; public for runtime wiring and tests.</summary>
+        public void SetInventory(IEquipmentSource inventory) => _inventory = inventory;
 
         /// <summary>Declares which equipment slot this view represents.</summary>
         public void SetSlot(EquipmentSlot slot) => _slot = slot;
@@ -41,7 +41,9 @@ namespace MMO.Inventory
         /// </summary>
         public virtual void HandleRightClick()
         {
-            if (_inventory == null)
+            // An interface reference cannot use Unity's null overload; a destroyed inventory
+            // behind it would otherwise look alive and throw.
+            if (_inventory == null || (_inventory is UnityEngine.Object unityObject && unityObject == null))
                 return;
 
             _inventory.RequestUnequip(_slot);

@@ -19,13 +19,28 @@ namespace MMO.Gameplay
         [SerializeField]
         private ZoneRiskTier _tier = ZoneRiskTier.Safe;
 
+        [SerializeField]
+        private bool _allowsFlying;
+
         /// <summary>The tier this zone carries. Undeclared values are normalised to Safe on read.</summary>
         public ZoneRiskTier Tier => Normalize((int)_tier);
+
+        /// <summary>
+        /// Whether mounts may take off in this zone. False unless authored true, so flight fails
+        /// closed: a new zone is a no-fly zone until someone deliberately says otherwise.
+        /// </summary>
+        public bool AllowsFlying => _allowsFlying;
 
         /// <summary>Reconfigures the zone's tier (an editor baker or a test).</summary>
         public void SetTier(ZoneRiskTier tier)
         {
             _tier = tier;
+        }
+
+        /// <summary>Reconfigures whether this zone allows mounts to fly (an editor baker or a test).</summary>
+        public void SetAllowsFlying(bool allowsFlying)
+        {
+            _allowsFlying = allowsFlying;
         }
 
         /// <summary>
@@ -72,6 +87,24 @@ namespace MMO.Gameplay
             }
 
             return resolved;
+        }
+
+        /// <summary>
+        /// True when any zone governing <paramref name="worldPosition"/> allows flying. Mirrors
+        /// <see cref="ResolveTierAt"/>: a zone covers its collider, or the whole scene when it has
+        /// no collider, and flight is allowed if at least one covering zone opts in. With no zone
+        /// at all the world is a no-fly zone, so a takeoff is refused rather than assumed safe.
+        /// </summary>
+        public static bool ResolveAllowsFlyingAt(Vector3 worldPosition)
+        {
+            ZoneRiskConfig[] zones = FindObjectsByType<ZoneRiskConfig>(FindObjectsSortMode.None);
+            for (int i = 0; i < zones.Length; i++)
+            {
+                if (zones[i] != null && zones[i].Contains(worldPosition) && zones[i].AllowsFlying)
+                    return true;
+            }
+
+            return false;
         }
     }
 }

@@ -64,6 +64,28 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Inventory_EquipItem_FailsForABagItemWithNoWearableSlot()
+        {
+            var donkey = ScriptableObject.CreateInstance<ItemDefinition>();
+            _created = donkey;
+            TestItemDefinitions.Write(donkey, "Donkey", equipSlot: EquipmentSlot.None);
+
+            Assert.IsFalse(InventoryValidator.CanEquip(playerLevel: 99, definition: donkey),
+                "A mount is carried, not worn; equipping it must never land in MainHand.");
+        }
+
+        [Test]
+        public void Inventory_EquipItem_AcceptsAMountSlotItem()
+        {
+            var donkey = ScriptableObject.CreateInstance<ItemDefinition>();
+            _created = donkey;
+            TestItemDefinitions.Write(donkey, "Donkey", equipSlot: EquipmentSlot.Mount);
+
+            Assert.IsTrue(InventoryValidator.CanEquip(playerLevel: 1, definition: donkey),
+                "A mount item must be equippable into the mount slot.");
+        }
+
+        [Test]
         public void InventoryValidator_IsAStaticPureHelper()
         {
             // Pure statics are the project's testing contract: reachable without a scene.

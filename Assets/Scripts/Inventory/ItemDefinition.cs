@@ -25,7 +25,7 @@ namespace MMO.Inventory
     public sealed class ItemDefinition : ScriptableObject
     {
         [SerializeField] private string _itemName = string.Empty;
-        [SerializeField] private EquipmentSlot _equipSlot;
+        [SerializeField] private EquipmentSlot _equipSlot = EquipmentSlot.None;
         [SerializeField, Min(0)] private int _requiredLevel;
         [SerializeField, Min(1)] private int _gridWidth = 1;
         [SerializeField, Min(1)] private int _gridHeight = 1;
