@@ -1,5 +1,6 @@
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Content;
 using MMO.Inventory;
 using UnityEngine;
 using UnityEngine.AI;
@@ -29,11 +30,14 @@ namespace MMO.Gameplay
 
         private NavMeshAgent _agent;
         private NPCStats _stats;
+        private AuraController _auras;
         private readonly ThreatTable _threat = new();
         private double _nextAttackTime;
         private Vector3 _spawnPosition;
 
         public ThreatTable Threat => _threat;
+
+        private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
 
         public override void OnStartNetwork()
         {
@@ -95,6 +99,14 @@ namespace MMO.Gameplay
                 return;
             }
 
+            if (Auras != null && Auras.BlocksActions)
+            {
+                _agent.isStopped = true;
+                return;
+            }
+
+            bool rooted = Auras != null && Auras.BlocksMovement;
+
             string targetId = _threat.CurrentTarget;
             if (string.IsNullOrEmpty(targetId))
             {
@@ -124,9 +136,13 @@ namespace MMO.Gameplay
 
             if (distance <= _attackRange)
             {
-                // In range: stop and auto-attack
+                // In range: stop and auto-attack. A root stops the feet, not the swing.
                 _agent.isStopped = true;
                 TryAutoAttack(targetTransform);
+            }
+            else if (rooted)
+            {
+                _agent.isStopped = true;
             }
             else if (distance <= _chaseRange)
             {
@@ -144,6 +160,12 @@ namespace MMO.Gameplay
 
         private void ReturnToSpawnIfNeeded()
         {
+            if (Auras != null && Auras.BlocksMovement)
+            {
+                _agent.isStopped = true;
+                return;
+            }
+
             float distToSpawn = Vector3.Distance(transform.position, _spawnPosition);
             if (distToSpawn > 1f)
             {

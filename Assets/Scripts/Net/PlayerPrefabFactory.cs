@@ -8,6 +8,7 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Auction;
 using MMO.Client;
+using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -140,6 +141,10 @@ namespace MMO.Net
             // Mount state: drives the mover's speed and flight and reads the bag for the mount
             // item, so it sits after both. Its RPCs are owner-checked like every other shell.
             go.AddComponent<PlayerMount>();
+
+            // Aura state: reads the player's stats and mover it scales, and gates actions through
+            // the server-only BlocksActions/BlocksMovement properties.
+            go.AddComponent<AuraController>();
 
             // Owner-side click-to-move: turns a mouse click into an intent through
             // PlayerMover.RequestMoveTo, where the server does the NavMesh validation. After

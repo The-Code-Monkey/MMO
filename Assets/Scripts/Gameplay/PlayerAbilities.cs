@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Content;
 using MMO.Inventory;
 using UnityEngine;
 
@@ -169,6 +170,10 @@ namespace MMO.Gameplay
             if (sender == null || !OwnerMatches(sender))
                 return;
 
+            AuraController auras = GetComponent<AuraController>();
+            if (auras != null && auras.BlocksActions)
+                return;
+
             PlayerStats stats = GetStats();
             if (stats == null)
                 return;
@@ -231,6 +236,12 @@ namespace MMO.Gameplay
                 return;
             }
 
+            if (ability.Logic == AbilityLogic.ApplyAura)
+            {
+                ApplyAura(ability, cast.TargetPosition, caster);
+                return;
+            }
+
             Vector3 origin = AbilityEffects.ResolveOrigin(ability.Logic, transform.position, cast.TargetPosition);
             List<PlayerStats> victims = AbilityEffects.SelectVictims(
                 origin, ability.EffectRadius, caster, FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
@@ -254,6 +265,51 @@ namespace MMO.Gameplay
             PlayerInventory attacker = GetComponent<PlayerInventory>();
             for (int i = 0; i < npcVictims.Count; i++)
                 npcVictims[i].ApplyDamage(power, attacker);
+        }
+
+        /// <summary>
+        /// Applies an aura to every visible player or enemy around the aimed point. The source is
+        /// the caster's inventory so a damage-over-time kill can be credited to them.
+        /// </summary>
+        private void ApplyAura(AbilityData ability, Vector3 targetPosition, PlayerStats caster)
+        {
+            if (ability.Aura == null)
+                return;
+
+            Vector3 origin = AbilityEffects.ResolveOrigin(
+                AbilityLogic.ApplyAura, transform.position, targetPosition);
+            Vector3 eye = transform.position + Vector3.up * PhysicsSight.DefaultEyeHeight;
+            PlayerInventory source = GetComponent<PlayerInventory>();
+
+            List<PlayerStats> players = AbilityEffects.SelectVictims(
+                origin, ability.EffectRadius, caster,
+                FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+            players = AbilityEffects.SelectVisibleVictims(eye, players, Sight);
+
+            for (int i = 0; i < players.Count; i++)
+            {
+                if (players[i].Health <= 0)
+                    continue;
+
+                AuraController auras = players[i].GetComponent<AuraController>();
+                if (auras != null)
+                    auras.Apply(ability.Aura, source);
+            }
+
+            List<NPCStats> enemies = AbilityEffects.SelectNpcVictims(
+                origin, ability.EffectRadius,
+                FindObjectsByType<NPCStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+            enemies = AbilityEffects.SelectVisibleNpcVictims(eye, enemies, Sight);
+
+            for (int i = 0; i < enemies.Count; i++)
+            {
+                if (!enemies[i].IsAlive)
+                    continue;
+
+                AuraController auras = enemies[i].GetComponent<AuraController>();
+                if (auras != null)
+                    auras.Apply(ability.Aura, source);
+            }
         }
 
         /// <summary>

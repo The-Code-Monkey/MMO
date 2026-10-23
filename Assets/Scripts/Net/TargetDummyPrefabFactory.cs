@@ -89,6 +89,7 @@ namespace MMO.Net
 
             go.AddComponent<EnemyBrain>();
             go.AddComponent<NpcLoot>();
+            go.AddComponent<AuraController>();
 
             ApplyRedMaterial(go);
             return networkObject;

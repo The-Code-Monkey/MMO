@@ -38,5 +38,10 @@ namespace MMO.Gameplay
         /// Taunt: force the enemy's threat table to target the caster. No damage or heal.
         /// </summary>
         Taunt = 4,
+
+        /// <summary>
+        /// Apply the ability's <c>Aura</c> to every visible target around the aimed point.
+        /// </summary>
+        ApplyAura = 5,
     }
 }

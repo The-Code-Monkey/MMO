@@ -1,8 +1,10 @@
+using MMO.Inventory;
+
 namespace MMO.Content
 {
     /// <summary>
-    /// One active aura on a target. Plain state with no Unity object beyond the definition, so the
-    /// rules can be exercised without a spawned server object.
+    /// One active aura on a target. Plain state with no Unity object beyond the definition and the
+    /// server-side source, so the rules can be exercised without a spawned server object.
     /// </summary>
     public struct AuraState
     {
@@ -10,6 +12,9 @@ namespace MMO.Content
         public double ExpiresAt;
         public double NextTickAt;
         public int Stacks;
+
+        /// <summary>Who applied the aura; a damage-over-time kill credits this player.</summary>
+        public PlayerInventory Source;
 
         public bool IsActive => Data != null && Stacks > 0;
     }

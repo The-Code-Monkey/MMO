@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Inventory;
 using UnityEngine;
 
@@ -103,6 +104,10 @@ namespace MMO.Gameplay
         [Server]
         public void Attack(NetworkObject target)
         {
+            AuraController auras = GetComponent<AuraController>();
+            if (auras != null && auras.BlocksActions)
+                return;
+
             WeaponData weapon = _equippedWeapon;
             if (weapon == null)
                 return;

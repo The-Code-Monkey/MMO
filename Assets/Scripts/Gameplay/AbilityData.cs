@@ -1,3 +1,4 @@
+using MMO.Content;
 using UnityEngine;
 
 namespace MMO.Gameplay
@@ -26,6 +27,7 @@ namespace MMO.Gameplay
         [SerializeField, Min(0f)] private float _effectRadius;
         [SerializeField] private AbilityLogic _logic = AbilityLogic.TargetedDamage;
         [SerializeField, Min(0)] private int _effectPower;
+        [SerializeField] private AuraData _aura;
 
         public string AbilityName => _abilityName;
 
@@ -52,5 +54,8 @@ namespace MMO.Gameplay
 
         /// <summary>Damage (or healing) the effect applies, before any future scaling.</summary>
         public int EffectPower => _effectPower;
+
+        /// <summary>The aura an <see cref="AbilityLogic.ApplyAura"/> cast applies, or null.</summary>
+        public AuraData Aura => _aura;
     }
 }

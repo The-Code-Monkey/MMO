@@ -26,7 +26,7 @@ namespace MMO.Tests
         private static readonly string[] StatFields =
         {
             "_abilityName", "_manaCost", "_cooldown", "_castTime",
-            "_castRange", "_effectRadius", "_logic", "_effectPower",
+            "_castRange", "_effectRadius", "_logic", "_effectPower", "_aura",
         };
 
         private static readonly string[] NumericFields =
@@ -95,7 +95,7 @@ namespace MMO.Tests
             foreach (string name in new[]
                      {
                          "AbilityName", "ManaCost", "Cooldown", "CastTime",
-                         "CastRange", "EffectRadius", "Logic", "EffectPower",
+                         "CastRange", "EffectRadius", "Logic", "EffectPower", "Aura",
                      })
             {
                 PropertyInfo property = typeof(AbilityData).GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
@@ -119,6 +119,7 @@ namespace MMO.Tests
             Assert.AreEqual(0f, _created.EffectRadius);
             Assert.AreEqual(AbilityLogic.TargetedDamage, _created.Logic);
             Assert.AreEqual(0, _created.EffectPower);
+            Assert.IsNull(_created.Aura);
         }
 
         [Test]
@@ -154,13 +155,14 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Logic_CoversTheThreeMechanicsTheSkillsNeed()
+        public void Logic_CoversTheMechanicsTheSkillsNeed()
         {
             // An asset hand-edited to a value outside the enum would silently resolve as
             // "no effect", so the mechanics the shipped skills rely on must exist by name.
             foreach (AbilityLogic logic in new[]
                      {
                          AbilityLogic.TargetedDamage, AbilityLogic.AreaDamage, AbilityLogic.SelfHeal,
+                         AbilityLogic.ApplyAura,
                      })
             {
                 Assert.IsTrue(System.Enum.IsDefined(typeof(AbilityLogic), logic),

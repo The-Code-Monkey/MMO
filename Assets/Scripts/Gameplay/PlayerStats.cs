@@ -45,6 +45,8 @@ namespace MMO.Gameplay
         private readonly SyncVar<int> _level = new();
         private readonly SyncVar<int> _maxHealthBonus = new();
         private readonly SyncVar<int> _maxManaBonus = new();
+        private readonly SyncVar<int> _auraHealthBonus = new();
+        private readonly SyncVar<int> _auraManaBonus = new();
 
         public int Health => _health.Value;
         public int Mana => _mana.Value;
@@ -56,11 +58,17 @@ namespace MMO.Gameplay
         /// <summary>Maximum mana currently granted by equipped items.</summary>
         public int MaxManaBonus => _maxManaBonus.Value;
 
-        /// <summary>Health cap in force: the base <see cref="MaxHealth"/> plus equipment bonuses.</summary>
-        public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value;
+        /// <summary>Maximum health currently granted by active auras.</summary>
+        public int AuraHealthBonus => _auraHealthBonus.Value;
 
-        /// <summary>Mana cap in force: the base <see cref="MaxMana"/> plus equipment bonuses.</summary>
-        public int EffectiveMaxMana => MaxMana + _maxManaBonus.Value;
+        /// <summary>Maximum mana currently granted by active auras.</summary>
+        public int AuraManaBonus => _auraManaBonus.Value;
+
+        /// <summary>Health cap in force: base, equipment and aura bonuses.</summary>
+        public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value + _auraHealthBonus.Value;
+
+        /// <summary>Mana cap in force: base, equipment and aura bonuses.</summary>
+        public int EffectiveMaxMana => MaxMana + _maxManaBonus.Value + _auraManaBonus.Value;
 
         /// <summary>
         /// Raised whenever replicated vitals change: health or mana moving, or a cap shifting
@@ -110,6 +118,8 @@ namespace MMO.Gameplay
             // the bar's fill even when the current value itself did not move.
             _maxHealthBonus.OnChange += OnMaxChanged;
             _maxManaBonus.OnChange += OnMaxChanged;
+            _auraHealthBonus.OnChange += OnMaxChanged;
+            _auraManaBonus.OnChange += OnMaxChanged;
         }
 
         public override void OnStopNetwork()
@@ -119,6 +129,8 @@ namespace MMO.Gameplay
             _level.OnChange -= OnLevelChanged;
             _maxHealthBonus.OnChange -= OnMaxChanged;
             _maxManaBonus.OnChange -= OnMaxChanged;
+            _auraHealthBonus.OnChange -= OnMaxChanged;
+            _auraManaBonus.OnChange -= OnMaxChanged;
         }
 
         /// <summary>
@@ -191,8 +203,10 @@ namespace MMO.Gameplay
         [Server]
         public void Respawn()
         {
-            _health.Value = EffectiveMaxHealth;
-            _mana.Value = EffectiveMaxMana;
+            // Auras clear on death, so the revived pool is the base plus equipment only. Using an
+            // active debuff's negative aura cap here could leave the respawn at zero health.
+            _health.Value = Mathf.Max(0, MaxHealth + _maxHealthBonus.Value);
+            _mana.Value = Mathf.Max(0, MaxMana + _maxManaBonus.Value);
         }
 
         /// <summary>
@@ -209,6 +223,21 @@ namespace MMO.Gameplay
         {
             _maxHealthBonus.Value = Mathf.Max(0, maxHealthBonus);
             _maxManaBonus.Value = Mathf.Max(0, maxManaBonus);
+
+            _health.Value = ComputeNewHealth(_health.Value, 0, EffectiveMaxHealth);
+            _mana.Value = ComputeNewMana(_mana.Value, 0, EffectiveMaxMana);
+        }
+
+        /// <summary>
+        /// Replaces the aura-derived stat bonuses. Called by <see cref="MMO.Content.AuraController"/>
+        /// whenever the active set changes; kept separate from equipment so equipping gear cannot
+        /// wipe a buff, and a debuff can lower a cap without being treated as negative gear.
+        /// </summary>
+        [Server]
+        public void ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)
+        {
+            _auraHealthBonus.Value = maxHealthBonus;
+            _auraManaBonus.Value = maxManaBonus;
 
             _health.Value = ComputeNewHealth(_health.Value, 0, EffectiveMaxHealth);
             _mana.Value = ComputeNewMana(_mana.Value, 0, EffectiveMaxMana);

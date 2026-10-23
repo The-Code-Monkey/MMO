@@ -188,6 +188,7 @@ namespace MMO.Tests
                 "The baked enemy must carry the brain the spawn controller drives.");
             Assert.IsNotNull(prefab.GetComponent<NpcLoot>(),
                 "The baked enemy must carry the loot hook its death table is configured on.");
+            Assert.IsNotNull(prefab.GetComponent<AuraController>());
             Assert.IsNotNull(prefab.GetComponent<UnityEngine.AI.NavMeshAgent>());
         }
 
