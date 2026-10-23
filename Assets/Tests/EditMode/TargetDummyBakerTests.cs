@@ -183,6 +183,9 @@ namespace MMO.Tests
             NetworkObject prefab = TargetDummyBaker.EnsureTargetDummyPrefab();
 
             Assert.IsNotNull(prefab.GetComponent<NPCStats>());
+            Assert.IsNotNull(prefab.GetComponent<EnemyBrain>(),
+                "The baked enemy must carry the brain the spawn controller drives.");
+            Assert.IsNotNull(prefab.GetComponent<UnityEngine.AI.NavMeshAgent>());
         }
 
         [Test]

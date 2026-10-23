@@ -108,5 +108,54 @@ namespace MMO.Gameplay
 
             return visible;
         }
+
+        /// <summary>
+        /// The NPC half of <see cref="SelectVictims"/>: every non-null enemy inside the effect.
+        /// The caster is a player, so there is no self to exclude here.
+        /// </summary>
+        public static List<NPCStats> SelectNpcVictims(
+            Vector3 origin,
+            float radius,
+            IReadOnlyList<NPCStats> candidates)
+        {
+            var victims = new List<NPCStats>();
+            if (candidates == null)
+                return victims;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                NPCStats candidate = candidates[i];
+                if (candidate != null && Hits(origin, candidate.transform.position, radius))
+                    victims.Add(candidate);
+            }
+
+            return victims;
+        }
+
+        /// <summary>
+        /// The NPC half of <see cref="SelectVisibleVictims"/>: an enemy behind cover takes no
+        /// damage. A null sight is treated as clear, matching the player path.
+        /// </summary>
+        public static List<NPCStats> SelectVisibleNpcVictims(
+            Vector3 eyePosition,
+            IReadOnlyList<NPCStats> victims,
+            IServerSight sight)
+        {
+            var visible = new List<NPCStats>();
+            if (victims == null)
+                return visible;
+
+            for (int i = 0; i < victims.Count; i++)
+            {
+                NPCStats victim = victims[i];
+                if (victim == null)
+                    continue;
+
+                if (sight == null || sight.HasLineOfSight(eyePosition, victim.transform.position, victim.gameObject))
+                    visible.Add(victim);
+            }
+
+            return visible;
+        }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Inventory;
 using UnityEngine;
 
 namespace MMO.Gameplay
@@ -242,6 +243,17 @@ namespace MMO.Gameplay
             int power = AbilityEffects.ComputePower(ability);
             for (int i = 0; i < victims.Count; i++)
                 victims[i].TakeDamage(power);
+
+            if (ability.Logic != AbilityLogic.TargetedDamage && ability.Logic != AbilityLogic.AreaDamage)
+                return;
+
+            List<NPCStats> npcVictims = AbilityEffects.SelectNpcVictims(
+                origin, ability.EffectRadius, FindObjectsByType<NPCStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+            npcVictims = AbilityEffects.SelectVisibleNpcVictims(eye, npcVictims, Sight);
+
+            PlayerInventory attacker = GetComponent<PlayerInventory>();
+            for (int i = 0; i < npcVictims.Count; i++)
+                npcVictims[i].ApplyDamage(power, attacker);
         }
 
         /// <summary>

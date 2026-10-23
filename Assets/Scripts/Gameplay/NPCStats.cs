@@ -1,6 +1,7 @@
 using System;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Inventory;
 using UnityEngine;
 
 namespace MMO.Gameplay
@@ -39,6 +40,25 @@ namespace MMO.Gameplay
         public string TargetName => name;
 
         /// <summary>
+        /// The player whose damage most recently landed, or null when the last change came from
+        /// the environment. Server-only state: clients read null because they never author damage.
+        /// </summary>
+        public PlayerInventory LastAttacker { get; private set; }
+
+        /// <summary>
+        /// Raised once on the server when health crosses from above zero to zero. The killer is
+        /// carried with the event so loot and quest handlers never have to guess from state that a
+        /// later respawn will clear.
+        /// </summary>
+        public event Action<PlayerInventory> Died;
+
+        /// <summary>
+        /// Raised on the server for damage that actually moved the health pool, carrying the
+        /// source and the amount dealt. <see cref="EnemyBrain"/> uses it to build threat.
+        /// </summary>
+        public event Action<PlayerInventory, int> Damaged;
+
+        /// <summary>
         /// Raised whenever replicated health changes — the <c>SyncVar.OnChange</c> callback
         /// forwarded into a plain C# event, so a bound target frame repaints on the change
         /// itself rather than sampling this component every frame.
@@ -70,13 +90,51 @@ namespace MMO.Gameplay
         [Server]
         public void TakeDamage(int amount)
         {
+            // Unattributed damage must not inherit credit from an earlier attacker.
+            LastAttacker = null;
             _health.Value = ComputeNewHealth(_health.Value, amount);
+        }
+
+        /// <summary>
+        /// Server: apply damage and name the player who dealt it. This is the attributed path
+        /// combat, abilities and damage-over-time use; <see cref="TakeDamage"/> remains the
+        /// unattributed mutator for environmental or direct calls.
+        /// </summary>
+        [Server]
+        public void ApplyDamage(int amount, PlayerInventory source)
+        {
+            int previous = _health.Value;
+            int next = ComputeNewHealth(previous, amount);
+            int dealt = previous - next;
+            if (dealt <= 0)
+                return;
+
+            LastAttacker = source;
+            Damaged?.Invoke(source, dealt);
+            _health.Value = next;
+        }
+
+        /// <summary>
+        /// Server: restore a defeated NPC for a spawn controller's respawn timer. The attacker is
+        /// cleared so a stale kill cannot claim the next death.
+        /// </summary>
+        [Server]
+        public void ResetHealth()
+        {
+            LastAttacker = null;
+            _health.Value = MaxHealth;
         }
 
         [Server]
         public void Heal(int amount)
         {
             _health.Value = ComputeHealedHealth(_health.Value, amount);
+        }
+
+        /// <summary>True only on the crossing into zero, not on a repeated hit to a corpse.</summary>
+        public static bool IsDeathTransition(int previous, int current)
+        {
+            return previous > 0 && current == 0;
         }
 
         public static int ComputeNewHealth(int current, int amount)
@@ -93,6 +151,9 @@ namespace MMO.Gameplay
         {
             Debug.Log($"[ClientId {OwnerId}] {name} health {previous} -> {current}");
             Changed?.Invoke();
+
+            if (asServer && IsDeathTransition(previous, current))
+                Died?.Invoke(LastAttacker);
         }
     }
 }

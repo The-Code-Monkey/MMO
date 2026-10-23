@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Object;
+using MMO.Inventory;
 using UnityEngine;
 
 namespace MMO.Gameplay
@@ -14,9 +15,9 @@ namespace MMO.Gameplay
     /// clear line of sight (see <see cref="SightRules"/> / <see cref="IServerSight"/>), so a shot
     /// cannot pass through a wall.
     ///
-    /// <see cref="Attack"/> for now only understands <see cref="TargetDummy"/> as a target — the
-    /// first damageable this project owns — so the check that "this is a real, live target" reads
-    /// "this is a spawned dummy". Everything before that check is generic and survives its removal.
+    /// <see cref="Attack"/> understands the two damageable shapes this project owns: the
+    /// networked <see cref="NPCStats"/> every zone enemy carries, and the older
+    /// <see cref="TargetDummy"/> the combat tests and training dummy use.
     /// </summary>
     public sealed class PlayerCombat : NetworkBehaviour
     {
@@ -109,19 +110,39 @@ namespace MMO.Gameplay
             if (target == null || !target.IsSpawned)
                 return;
 
-            if (!target.TryGetComponent(out TargetDummy dummy))
+            NPCStats npc = null;
+            TargetDummy dummy = null;
+            Vector3 targetPosition;
+            GameObject targetObject;
+
+            if (target.TryGetComponent(out npc))
+            {
+                targetPosition = npc.transform.position;
+                targetObject = npc.gameObject;
+            }
+            else if (target.TryGetComponent(out dummy))
+            {
+                targetPosition = dummy.transform.position;
+                targetObject = dummy.gameObject;
+            }
+            else
+            {
                 return;
+            }
 
             Vector3 eye = transform.position + Vector3.up * _eyeHeight;
-            bool raycastClear = Sight.HasLineOfSight(eye, dummy.transform.position, dummy.gameObject);
+            bool raycastClear = Sight.HasLineOfSight(eye, targetPosition, targetObject);
 
-            if (!IsVisibleToAttack(eye, transform.forward, dummy.transform.position,
+            if (!IsVisibleToAttack(eye, transform.forward, targetPosition,
                     weapon.AttackRange, _attackHalfAngleDegrees, raycastClear))
             {
                 return;
             }
 
-            dummy.TakeDamage(weapon.AutoAttackDamage);
+            if (npc != null)
+                npc.ApplyDamage(weapon.AutoAttackDamage, GetComponent<PlayerInventory>());
+            else
+                dummy.TakeDamage(weapon.AutoAttackDamage);
         }
 
         /// <summary>

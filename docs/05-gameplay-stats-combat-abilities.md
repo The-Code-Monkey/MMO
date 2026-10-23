@@ -100,32 +100,38 @@ whether the player stands back up — otherwise a safe-zone death would strand t
 
 ## 2. Basic weapon attacks
 
-`PlayerCombat` (`Assets/Scripts/Gameplay/PlayerCombat.cs:21`) handles the "auto attack" a weapon
+`PlayerCombat` (`Assets/Scripts/Gameplay/PlayerCombat.cs:22`) handles the "auto attack" a weapon
 provides. The weapon is a `WeaponData` assigned only by the server.
 
-- `RequestAttack(NetworkObject target)` (`:71`) — owner only; sends `RpcRequestAttack`.
-- `RpcRequestAttack` (`:84`) — re-checks ownership, then calls `Attack`.
-- `Attack(NetworkObject target)` (`:103`) — the server's checks, in order:
+- `RequestAttack(NetworkObject target)` (`:72`) — owner only; sends `RpcRequestAttack`.
+- `RpcRequestAttack` (`:85`) — re-checks ownership, then calls `Attack`.
+- `Attack(NetworkObject target)` (`:104`) — the server's checks, in order:
   1. a weapon must be equipped,
   2. the target must be spawned,
-  3. the target must have a `TargetDummy` component (only dummies are attackable today),
+  3. the target must carry either `NPCStats` (every zone enemy) or the legacy `TargetDummy`,
   4. the target must be **visible** — within `weapon.AttackRange`, inside the facing cone
      (`_attackHalfAngleDegrees`, default `60`), and with a clear line of sight (no wall between the
      attacker's eye, `_eyeHeight`, and the target),
-  5. then `dummy.TakeDamage(weapon.AutoAttackDamage)`.
+  5. then `npc.ApplyDamage(weapon.AutoAttackDamage, inventory)` or
+     `dummy.TakeDamage(weapon.AutoAttackDamage)`.
 
-`IsWithinAttackRange` (`:150`) is a pure helper using strict `<` — a target exactly on the boundary
-is a miss. `IsVisibleToAttack` (`:132`) combines range, cone and the server's raycast into the one
-verdict (`SightRules.CanSee`); the raycast arrives through the injectable `Sight` property (`:42`,
-defaults to a real `PhysicsSight`). `FindLocal` (`:165`) finds the local player's `PlayerCombat` component on either the host
+`IsWithinAttackRange` (`:171`) is a pure helper using strict `<` — a target exactly on the boundary
+is a miss. `IsVisibleToAttack` (`:153`) combines range, cone and the server's raycast into the one
+verdict (`SightRules.CanSee`); the raycast arrives through the injectable `Sight` property (`:43`,
+defaults to a real `PhysicsSight`). `FindLocal` (`:186`) finds the local player's `PlayerCombat` component on either the host
 or client side, used by the mouse-click path.
 
-`TargetDummy` (`Assets/Scripts/Gameplay/TargetDummy.cs:18`) is the punching bag. It has its own
-`MaxHealth = 100` and a `[Server] TakeDamage`. Clicking it calls
+`TargetDummy` (`Assets/Scripts/Gameplay/TargetDummy.cs:18`) is the training punching bag. It has its
+own `MaxHealth = 100` and a `[Server] TakeDamage`. Clicking it calls
 `RequestAttackFromLocalPlayer`, which routes through the local `PlayerCombat`.
 
-`NPCStats` (`Assets/Scripts/Gameplay/NPCStats.cs:28`) is the general NPC vitals component
+`NPCStats` (`Assets/Scripts/Gameplay/NPCStats.cs:29`) is the general NPC vitals component
 (`MaxHealth = 50`) implementing the `ITargetSource` interface so a target frame can display it.
+`ApplyDamage(int, PlayerInventory)` (`:104`) is its attributed damage path: it records
+`LastAttacker`, raises `Damaged` for the enemy brain's threat table, and raises `Died` once when
+health crosses into zero. `ResetHealth()` (`:122`) restores a defeated enemy for a spawn controller.
+Unattributed `TakeDamage(int)` clears the attacker so a later environmental hit cannot inherit a
+player's kill credit.
 
 ## 3. The ability system
 
@@ -262,27 +268,32 @@ passed. `EquipGear` (`:41`) rebuilds the loadout and drops in-flight casts but k
   caster can actually see, so a fireball centred just past a wall damages only what the wall did not
   hide. A null `sight` is treated as a clear line. See
   [14](14-server-authority-hardening.md#2-line-of-sight).
+- `SelectNpcVictims(origin, radius, candidates)` (`:116`) and
+  `SelectVisibleNpcVictims(eyePosition, victims, sight)` (`:139`) — the same radius and visibility
+  filters for `NPCStats`, so a damage ability reaches zone enemies as well as players.
 
 ### PlayerAbilities — the networked shell
 
-`PlayerAbilities` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:42`) is the `NetworkBehaviour`
+`PlayerAbilities` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:43`) is the `NetworkBehaviour`
 implementing `IAbilityBarSource`. It replicates six slot-name strings (one SyncVar per slot) so the
 action bar knows what to draw, and it owns the cast request flow.
 
-- `Sight` (`:65`) — the line-of-sight check applied to every victim of an area/targeted effect
+- `Sight` (`:66`) — the line-of-sight check applied to every victim of an area/targeted effect
   (defaults to a real `PhysicsSight`; a test can replace it).
-- `EquipGear(WeaponData, ArmorData)` (`:141`) — `[Server]`. Rebuilds the caster's loadout, then
+- `EquipGear(WeaponData, ArmorData)` (`:142`) — `[Server]`. Rebuilds the caster's loadout, then
   publishes the slot names.
-- `RequestCast(int slot, Vector3 targetPosition)` (`:152`) — owner only; sends `RpcRequestCast`.
-- `RpcRequestCast` (`:166`) — `[ServerRpc]`. Re-checks the sender owns the object, reads live mana
+- `RequestCast(int slot, Vector3 targetPosition)` (`:153`) — owner only; sends `RpcRequestCast`.
+- `RpcRequestCast` (`:167`) — `[ServerRpc]`. Re-checks the sender owns the object, reads live mana
   from `PlayerStats`, calls `_caster.TryCast(...)`, and on success spends the mana and applies any
   due casts immediately.
-- `Update` (`:191`) — the server also calls `ApplyDueCasts` every frame while casts are pending, so
+- `Update` (`:192`) — the server also calls `ApplyDueCasts` every frame while casts are pending, so
   a cast-time ability resolves when its timer elapses.
-- `ApplyEffect` (`:212`) — the dispatch per `AbilityLogic`:
+- `ApplyEffect` (`:213`) — the dispatch per `AbilityLogic`:
   - `SelfHeal` → `caster.Heal(ComputePower)`,
   - otherwise → `ResolveOrigin`, `SelectVictims`, then `SelectVisibleVictims(eye, victims, Sight)`
-    so only victims the caster can see are hit, then `victims[i].TakeDamage(power)`.
+    so only victims the caster can see are hit, then `victims[i].TakeDamage(power)`,
+  - for `TargetedDamage` and `AreaDamage`, the same origin/eye pass also selects NPC victims and
+    calls `ApplyDamage(power, inventory)` so the kill carries the caster's identity.
 
 `GetSlotName` (`:78`) is what the bar reads; the cooldown tracker is deliberately **not** exposed on
 the interface, because cooldowns are server-only state and a client must not be able to display
