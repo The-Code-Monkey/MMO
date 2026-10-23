@@ -95,6 +95,26 @@ and no `Update`; it repaints only from `NodeShown`/`Closed`.
 
 There is intentionally no quest-log UI in this issue.
 
+## 3. Master spawn controllers
+
+`EnemyMarker` is now a population point, not a one-shot spawner. It carries `MinAlive`, `MaxAlive`,
+`PerPlayer`, `RespawnSeconds`, `WanderRadius` and `ActivationRadius`. On server start,
+`WorldBootstrap` resolves the marker's enemy prefab and attaches a `SpawnController`
+(`Assets/Scripts/Content/SpawnController.cs`) to the marker.
+
+Every tick the controller:
+
+1. counts live `PlayerStats` inside `ActivationRadius`;
+2. asks `SpawnRules.TargetAlive` for the target population (zero with no players, otherwise
+   `players * PerPlayer` clamped to the authored range);
+3. despawns extras first, including corpses, when the target drops;
+4. waits out each defeated enemy's `RespawnSeconds`, then despawns the corpse and spawns a fresh
+   enemy at the marker (random offset within `WanderRadius`, sampled onto the NavMesh).
+
+Spawning is server-only: the controller checks `NetworkManager.IsServerStarted`, and a client
+scene contains no controller at all. There is no fixed `TargetDummySpawner` in a production
+`NetworkManager`; the class remains for tests and manual scene wiring.
+
 ## Common tasks
 
 - **Add a quest.** Create `Assets > Create > MMO > Quest Data`, give it a unique `QuestId`, add
@@ -107,3 +127,8 @@ There is intentionally no quest-log UI in this issue.
 - **Test a quest rule.** Use `QuestRules` directly; `QuestRulesTests` is the template.
 - **Test the shell.** Use `QuestDialoguePlayModeTests` and a code-built `QuestData`/`DialogueNode`;
   the server methods are `[Server]` and run on a host.
+- **Tune an enemy camp.** Select its `EnemyMarker` and set the population range, per-player density,
+  respawn timer, wander radius and activation radius. The server applies them through
+  `SpawnController`; no prefab change is needed.
+- **Test a spawn budget.** Use `SpawnRules.TargetAlive` directly; `SpawnControllerPlayModeTests`
+  covers the live density, cap and respawn behaviour.

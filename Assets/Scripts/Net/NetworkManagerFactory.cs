@@ -12,8 +12,8 @@ namespace MMO.Net
     /// <summary>
     /// Single source of truth for the "NetworkManager" GameObject. Both the editor baker
     /// and the tests build the object through here so a scene and a fresh process end up
-    /// wired identically — including the server-spawned target dummy that every client sees
-    /// in the exact same state because it only ever exists through <c>ServerManager.Spawn</c>.
+    /// wired identically — including the registered enemy prefab that scene-marker spawn
+    /// controllers instantiate through the server's spawn path.
     /// </summary>
     public static class NetworkManagerFactory
     {
@@ -22,9 +22,9 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the "NetworkManager" GameObject: transport, spawnables, join gate, the client
-        /// half of the handshake, the player spawner that hands every admitted client a player
-        /// object, and the target-dummy spawner that puts a server-spawned enemy in the world when
-        /// the server starts.
+        /// half of the handshake, and the player spawner that hands every admitted client a player
+        /// object. Enemy populations are owned by scene-marker spawn controllers, not a fixed
+        /// dummy spawner.
         /// </summary>
         /// <param name="settings">Gate rules; null falls back to the defaults.</param>
         /// <param name="gate">The join gate added to the object.</param>
@@ -166,10 +166,8 @@ namespace MMO.Net
                 // Deliberately after activation. PlayerSpawner subscribes to
                 // SceneManager.OnClientLoadedStartScenes from its own Awake, and SceneManager is
                 // only created by NetworkManager.Awake — so this must not race component Awake
-                // order on the same object. The target dummy spawner needs ServerManager to exist
-                // for the same reason.
+                // order on the same object.
                 PlayerPrefabFactory.Attach(manager, playerPrefab);
-                TargetDummyPrefabFactory.Attach(manager, targetDummyPrefab);
                 CraftingStationPrefabFactory.Attach(manager, craftingStationPrefab);
 
                 // Give the gate its async loader and let the service claim each loaded record. The

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using FishNet.Managing;
+using FishNet.Managing.Object;
 using FishNet.Object;
 using FishNet.Transporting.Tugboat;
 using MMO.Gameplay;
@@ -30,12 +31,38 @@ namespace MMO.Tests
         public static NetworkManager GetOrCreate()
         {
             if (NetworkManager.Instances.Count > 0)
-                return NetworkManager.Instances[0];
+            {
+                NetworkManager existing = NetworkManager.Instances[0];
+                AttachTestDummySpawner(existing);
+                return existing;
+            }
 
             var settings = new MMOConnectionSettings(
                 TestPort, MMOConnectionSettings.DefaultMaxClients, TestHandshakeTimeoutSeconds);
 
-            return NetworkManagerFactory.Create(settings, out _);
+            NetworkManager manager = NetworkManagerFactory.Create(settings, out _);
+            AttachTestDummySpawner(manager);
+            return manager;
+        }
+
+        /// <summary>
+        /// Production zones use scene-marker spawn controllers. The older PlayMode tests still
+        /// expect the fixed single dummy, so the shared test manager attaches that spawner here
+        /// instead of every production NetworkManager carrying one.
+        /// </summary>
+        private static void AttachTestDummySpawner(NetworkManager manager)
+        {
+            if (manager == null || manager.SpawnablePrefabs is not SinglePrefabObjects prefabs)
+                return;
+
+            foreach (NetworkObject prefab in prefabs.Prefabs)
+            {
+                if (prefab != null && prefab.name == TargetDummyPrefabFactory.PrefabName)
+                {
+                    TargetDummyPrefabFactory.Attach(manager, prefab);
+                    return;
+                }
+            }
         }
 
         public static MMOConnectionGate Gate(NetworkManager manager)

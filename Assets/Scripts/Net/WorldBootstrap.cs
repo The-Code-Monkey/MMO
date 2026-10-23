@@ -5,6 +5,7 @@ using FishNet.Managing.Object;
 using FishNet.Managing.Scened;
 using FishNet.Object;
 using FishNet.Transporting;
+using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -20,12 +21,12 @@ namespace MMO.Net
     /// gameplay-specific — it connects pieces that already exist:
     ///
     /// <list type="bullet">
-    /// <item><b>on server start</b> it turns every authored <see cref="ResourceNodeMarker"/>,
-    /// <see cref="CraftingStationMarker"/> and <see cref="EnemyMarker"/> into a networked object
-    /// through <c>ServerManager.Spawn</c> — so a node, a station and an enemy exist in exactly the
-    /// same state on every client because they only ever exist through the server's spawn path —
-    /// and hands the registered <see cref="PlayerSpawnPoint"/>s to FishNet's
-    /// <see cref="PlayerSpawner"/>;</item>
+    /// <item><b>on server start</b> it turns every authored <see cref="ResourceNodeMarker"/> and
+    /// <see cref="CraftingStationMarker"/> into a networked object through
+    /// <c>ServerManager.Spawn</c>, and gives every authored <see cref="EnemyMarker"/> a
+    /// <see cref="SpawnController"/> that owns its population and respawn — so world objects exist
+    /// in exactly the same state on every client — and hands the registered
+    /// <see cref="PlayerSpawnPoint"/>s to FishNet's <see cref="PlayerSpawner"/>;</item>
     /// <item><b>on player join</b> it reads the loaded save record from
     /// <see cref="PlayerPersistenceService"/> and moves the freshly-spawned player capsule to the
     /// position <see cref="PlayerSpawnPoint.ChooseSpawn"/> picks — nearest to their saved position,
@@ -227,9 +228,9 @@ namespace MMO.Net
         }
 
         /// <summary>
-        /// Server-only: materialises every authored marker into a networked object and points
-        /// FishNet's <see cref="PlayerSpawner"/> at the zone's spawn points. Idempotent — a marker
-        /// whose object is still alive is left alone, so a double start cannot duplicate the world,
+        /// Server-only: materialises authored node/station markers, configures an enemy spawn
+        /// controller per enemy marker, and points FishNet's <see cref="PlayerSpawner"/> at the
+        /// zone's spawn points. Idempotent — a marker whose object is still alive is left alone,
         /// and one bad marker is logged and skipped rather than aborting the whole spawn.
         /// </summary>
         public void SpawnWorld()
@@ -250,6 +251,11 @@ namespace MMO.Net
             // before the first mount request can resolve one.
             MountDataRegistry.LoadAllFromResources();
 
+            // Content registries resolve persisted quest ids and loot tables by name. Their
+            // assets self-register on load, but nothing walks Resources unless this does.
+            QuestRegistry.LoadAllFromResources();
+            LootTableRegistry.LoadAllFromResources();
+
             WireSpawnPoints();
 
             SpawnFromMarkers(
@@ -260,9 +266,8 @@ namespace MMO.Net
                 FindObjectsByType<CraftingStationMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
                 SpawnCraftingStation);
 
-            SpawnFromMarkers(
-                FindObjectsByType<EnemyMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
-                SpawnEnemy);
+            ConfigureSpawnControllers(
+                FindObjectsByType<EnemyMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
         }
 
         private void SpawnFromMarkers<T>(T[] markers, System.Func<T, NetworkObject> spawn) where T : Component
@@ -337,19 +342,44 @@ namespace MMO.Net
             return spawned;
         }
 
-        private NetworkObject SpawnEnemy(EnemyMarker marker)
+        /// <summary>
+        /// Server-only: gives every authored enemy marker its own population controller. The
+        /// controller owns spawning, density and respawn; the bootstrap only resolves the prefab
+        /// and wires the pieces once.
+        /// </summary>
+        private void ConfigureSpawnControllers(EnemyMarker[] markers)
         {
-            NetworkObject prefab = marker.EnemyPrefab != null
-                ? EnsureEnemyRegistered(marker.EnemyPrefab)
-                : ResolveRegisteredPrefab(TargetDummyPrefabFactory.PrefabName);
-
-            if (prefab == null)
+            foreach (EnemyMarker marker in markers)
             {
-                Debug.LogError($"{nameof(WorldBootstrap)}: no enemy prefab for marker '{marker.name}'; skipping.", marker);
-                return null;
-            }
+                if (marker == null)
+                    continue;
 
-            return SpawnAt(prefab, marker.transform);
+                try
+                {
+                    NetworkObject prefab = marker.EnemyPrefab != null
+                        ? EnsureEnemyRegistered(marker.EnemyPrefab)
+                        : ResolveRegisteredPrefab(TargetDummyPrefabFactory.PrefabName);
+
+                    if (prefab == null)
+                    {
+                        Debug.LogError(
+                            $"{nameof(WorldBootstrap)}: no enemy prefab for marker '{marker.name}'; skipping.", marker);
+                        continue;
+                    }
+
+                    SpawnController controller = marker.GetComponent<SpawnController>();
+                    if (controller == null)
+                        controller = marker.gameObject.AddComponent<SpawnController>();
+
+                    controller.Configure(marker, prefab, _manager);
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError(
+                        $"{nameof(WorldBootstrap)}: enemy marker '{marker.name}' could not be configured. {e.Message}",
+                        marker);
+                }
+            }
         }
 
         private NetworkObject SpawnAt(NetworkObject prefab, Transform marker)
