@@ -108,7 +108,8 @@ namespace MMO.Client
                 target: null,
                 createEventSystem: true,
                 createGuildBankFrame: false,
-                crafting: GetComponent<PlayerCrafting>());
+                crafting: GetComponent<PlayerCrafting>(),
+                mount: GetComponent<PlayerMount>());
 
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
 

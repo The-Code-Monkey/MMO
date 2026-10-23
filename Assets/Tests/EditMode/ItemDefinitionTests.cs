@@ -120,7 +120,8 @@ namespace MMO.Tests
             _created = ScriptableObject.CreateInstance<ItemDefinition>();
 
             Assert.IsEmpty(_created.ItemName);
-            Assert.AreEqual(EquipmentSlot.MainHand, _created.EquipSlot);
+            Assert.AreEqual(EquipmentSlot.None, _created.EquipSlot,
+                "A fresh asset is a bag item until someone names a wearable slot for it.");
             Assert.AreEqual(0, _created.RequiredLevel);
             Assert.AreEqual(1, _created.GridWidth);
             Assert.AreEqual(1, _created.GridHeight);

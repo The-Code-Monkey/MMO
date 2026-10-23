@@ -11,8 +11,8 @@ namespace MMO.UI
 {
     /// <summary>
     /// Builds the whole client HUD in code: a screen-space canvas carrying the health/mana pair,
-    /// the target frame, the inventory grid, the action bar and the unified crafting panel, all
-    /// wired to whatever sources the caller passes.
+    /// the target frame, the collapsible bag and equipment windows, the action bar and the unified
+    /// crafting panel, all wired to whatever sources the caller passes.
     ///
     /// <para>
     /// Nothing here loads a prefab or a scene — the project commits neither, and the existing
@@ -65,6 +65,10 @@ namespace MMO.UI
         /// The player's crafting, e.g. a spawned <c>PlayerCrafting</c>. The panel is built
         /// concealed regardless; it shows when the server sends that source an offer payload.
         /// </param>
+        /// <param name="mount">
+        /// The player's mount state, e.g. a spawned <c>PlayerMount</c>. The cast bar is built hidden
+        /// and appears while a mount or dismount cast is running.
+        /// </param>
         public static NetworkHud Create(
             IVitalsSource vitals = null,
             IInventorySource inventory = null,
@@ -72,7 +76,8 @@ namespace MMO.UI
             ITargetSource target = null,
             bool createEventSystem = true,
             bool createGuildBankFrame = false,
-            ICraftingSource crafting = null)
+            ICraftingSource crafting = null,
+            IMountSource mount = null)
         {
             GameObject root = new GameObject(HudName, typeof(RectTransform));
 
@@ -86,19 +91,27 @@ namespace MMO.UI
 
             root.AddComponent<GraphicRaycaster>();
 
+            InventoryGridView inventoryGrid = CreateInventoryGrid(root.transform, out CollapsiblePanelView inventoryWindow);
+            EquipmentPanelView equipmentPanel = CreateEquipmentPanel(root.transform, out CollapsiblePanelView equipmentWindow);
+            MountCastBarView mountCastBar = CreateMountCastBar(root.transform);
+
             NetworkHud hud = root.AddComponent<NetworkHud>();
             hud.SetViews(
                 CreatePlayerHud(root.transform),
                 CreateTargetFrame(root.transform),
-                CreateInventoryGrid(root.transform),
+                inventoryGrid,
                 CreateActionBar(root.transform),
-                ChatFeed.Create(root.transform));
+                ChatFeed.Create(root.transform),
+                inventoryWindow,
+                equipmentWindow,
+                equipmentPanel,
+                mountCastBar);
             hud.SetCraftingPanel(CraftingPanelFactory.Create(root.transform));
 
             if (createGuildBankFrame)
                 hud.SetGuildBankFrame(GuildBankFrameFactory.Create(root.transform));
 
-            hud.BindPlayer(vitals, inventory, abilities, crafting);
+            hud.BindPlayer(vitals, inventory, abilities, crafting, mount);
             hud.BindTarget(target);
 
             if (createEventSystem)
@@ -203,19 +216,110 @@ namespace MMO.UI
             return view;
         }
 
-        private static InventoryGridView CreateInventoryGrid(Transform parent)
+        private static InventoryGridView CreateInventoryGrid(Transform parent, out CollapsiblePanelView window)
         {
             GameObject panel = CreateRect(
-                parent, "InventoryGrid", new Vector2(1f, 0f), new Vector2(1f, 0f),
-                new Vector2(-12f, 12f),
+                parent, "InventoryWindow", new Vector2(1f, 0f), new Vector2(1f, 0f),
+                new Vector2(-12f, IconRowHeight + 24f),
                 new Vector2(
                     PlayerInventory.GridWidth * InventoryGridView.CellSize,
-                    PlayerInventory.GridHeight * InventoryGridView.CellSize));
+                    PlayerInventory.VisibleGridHeight * InventoryGridView.CellSize));
             panel.AddComponent<Image>().color = PanelColor;
 
             InventoryGridView grid = panel.AddComponent<InventoryGridView>();
             grid.SetContainer(CreateStretch(panel.transform, "Cells").GetComponent<RectTransform>());
+
+            Button icon = CreateIconButton(parent, "InventoryIcon", "Bag", new Vector2(-12f, 12f));
+            window = icon.gameObject.AddComponent<CollapsiblePanelView>();
+            window.Configure(panel, icon);
             return grid;
+        }
+
+        /// <summary>
+        /// The second window: one row per worn slot, opened by the equipment icon. It sits to the
+        /// left of the bag window so both can be open at once without overlapping.
+        /// </summary>
+        private static EquipmentPanelView CreateEquipmentPanel(Transform parent, out CollapsiblePanelView window)
+        {
+            const float width = 260f;
+            float bagWidth = PlayerInventory.GridWidth * InventoryGridView.CellSize;
+
+            GameObject panel = CreateRect(
+                parent, "EquipmentWindow", new Vector2(1f, 0f), new Vector2(1f, 0f),
+                new Vector2(-12f - bagWidth - 12f, IconRowHeight + 24f),
+                new Vector2(width, 240f));
+            panel.AddComponent<Image>().color = PanelColor;
+
+            GameObject titleObject = CreateRect(
+                panel.transform, "Title", new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(10f, -6f), new Vector2(width - 20f, 24f));
+            Text title = titleObject.AddComponent<Text>();
+            ApplyLabel(title, 14, TextAnchor.MiddleLeft);
+            title.text = "Equipment";
+
+            GameObject rows = CreateStretch(panel.transform, "Rows");
+            RectTransform rowsRect = (RectTransform)rows.transform;
+            rowsRect.offsetMin = new Vector2(8f, 8f);
+            rowsRect.offsetMax = new Vector2(-8f, -34f);
+
+            EquipmentPanelView view = panel.AddComponent<EquipmentPanelView>();
+            view.SetContainer(rowsRect);
+
+            Button icon = CreateIconButton(parent, "EquipmentIcon", "Gear", new Vector2(-12f - 56f, 12f));
+            window = icon.gameObject.AddComponent<CollapsiblePanelView>();
+            window.Configure(panel, icon);
+            return view;
+        }
+
+        /// <summary>The centre-screen bar that fills while the player mounts or dismounts.</summary>
+        private static MountCastBarView CreateMountCastBar(Transform parent)
+        {
+            GameObject panel = CreateRect(
+                parent, "MountCastBar", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(360f, 44f));
+            panel.AddComponent<Image>().color = TroughColor;
+
+            GameObject fillObject = CreateStretch(panel.transform, "Fill");
+            Image fill = fillObject.AddComponent<Image>();
+            fill.color = new Color(0.85f, 0.65f, 0.15f, 0.95f);
+            fill.type = Image.Type.Filled;
+            fill.fillMethod = Image.FillMethod.Horizontal;
+
+            GameObject labelObject = CreateStretch(panel.transform, "Label");
+            Text label = labelObject.AddComponent<Text>();
+            ApplyLabel(label, 16, TextAnchor.MiddleCenter);
+
+            MountCastBarView view = panel.AddComponent<MountCastBarView>();
+            view.SetVisuals(fill, label);
+            return view;
+        }
+
+        /// <summary>Size of the collapsed bag/equipment buttons, in canvas units.</summary>
+        private const float IconRowHeight = 44f;
+
+        /// <summary>
+        /// A small always-visible button that toggles a window. The project ships no icons, so the
+        /// button is a labelled square; the label opts out of raycasts so the button's background
+        /// receives the click.
+        /// </summary>
+        private static Button CreateIconButton(Transform parent, string name, string label, Vector2 position)
+        {
+            GameObject iconObject = CreateRect(
+                parent, name, new Vector2(1f, 0f), new Vector2(1f, 0f),
+                position, new Vector2(IconRowHeight, IconRowHeight));
+
+            Image background = iconObject.AddComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.65f);
+
+            Button button = iconObject.AddComponent<Button>();
+            button.targetGraphic = background;
+
+            GameObject labelObject = CreateStretch(iconObject.transform, "Label");
+            Text text = labelObject.AddComponent<Text>();
+            ApplyLabel(text, 12, TextAnchor.MiddleCenter);
+            text.text = label;
+
+            return button;
         }
 
         private static ActionBarView CreateActionBar(Transform parent)

@@ -117,6 +117,10 @@ namespace MMO.Net
             // events only once that apply has settled.
             go.AddComponent<PlayerSaveTrigger>();
 
+            // The starter donkey: after the save trigger so a restored bag is checked first and
+            // an existing donkey is not granted a second time.
+            go.AddComponent<PlayerStartingItems>();
+
             // The social surface: intent-only RPCs whose state lives behind SocialHubService. After
             // the save trigger so ResolveIdentity finds this player's account already in the join cache.
             go.AddComponent<PlayerParty>();
@@ -132,6 +136,10 @@ namespace MMO.Net
             // position. The input drivers that submit to it come after it, so they can resolve it
             // from the same GameObject.
             go.AddComponent<PlayerMover>();
+
+            // Mount state: drives the mover's speed and flight and reads the bag for the mount
+            // item, so it sits after both. Its RPCs are owner-checked like every other shell.
+            go.AddComponent<PlayerMount>();
 
             // Owner-side click-to-move: turns a mouse click into an intent through
             // PlayerMover.RequestMoveTo, where the server does the NavMesh validation. After

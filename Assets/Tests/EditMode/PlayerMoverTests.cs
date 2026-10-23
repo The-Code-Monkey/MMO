@@ -117,5 +117,27 @@ namespace MMO.Tests
                 Object.DestroyImmediate(go);
             }
         }
+
+        [Test]
+        public void SetSpeedMultiplier_IsServerOnly()
+        {
+            MethodInfo method = typeof(PlayerMover).GetMethod("SetSpeedMultiplier",
+                BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(method, "Mounts scale the mover through SetSpeedMultiplier.");
+            Assert.IsNotNull(method.GetCustomAttribute<ServerAttribute>(),
+                "A client that can set its own speed can outrun every mount.");
+        }
+
+        [Test]
+        public void SetFlight_IsServerOnly()
+        {
+            MethodInfo method = typeof(PlayerMover).GetMethod("SetFlight",
+                BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(method, "Mounts switch the mover to volumetric movement through SetFlight.");
+            Assert.IsNotNull(method.GetCustomAttribute<ServerAttribute>(),
+                "Flight is a server decision; a client must not grant itself vertical movement.");
+        }
     }
 }

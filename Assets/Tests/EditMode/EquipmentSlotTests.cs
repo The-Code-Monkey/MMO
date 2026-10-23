@@ -5,22 +5,22 @@ using NUnit.Framework;
 namespace MMO.Tests
 {
     /// <summary>
-    /// The explicit equipment slots the issue demands — Main Hand, Off Hand, Head, Chest, Feet —
-    /// as a countable, checkable list. The enum itself happily accepts any cast
-    /// (<c>(EquipmentSlot)99</c>), so this is where "five slots, no others" stops being a
-    /// convention and starts being an assertion every server-side path relies on.
+    /// The explicit equipment slots — Main Hand, Off Hand, Head, Chest, Feet and Mount — as a
+    /// countable, checkable list. The enum itself happily accepts any cast
+    /// (<c>(EquipmentSlot)99</c>), so this is where "these are the slots" stops being a convention
+    /// and starts being an assertion every server-side path relies on.
     /// </summary>
     public sealed class EquipmentSlotTests
     {
         [Test]
-        public void EquipmentSlot_Count_IsFive()
+        public void EquipmentSlot_Count_IsSix()
         {
-            Assert.AreEqual(5, EquipmentSlots.Count,
-                "The issue specifies exactly five slots: Main Hand, Off Hand, Head, Chest, Feet.");
+            Assert.AreEqual(6, EquipmentSlots.Count,
+                "The five gear slots plus the mount slot the donkey is worn in.");
         }
 
         [Test]
-        public void EquipmentSlot_Values_RunFromZeroToFour()
+        public void EquipmentSlot_Values_RunFromZeroToFive()
         {
             // Explicit values keep the equipment SyncList indexable across sessions and
             // code versions; inserting a slot in the middle would silently re-map every item.
@@ -29,6 +29,7 @@ namespace MMO.Tests
             Assert.AreEqual(2, (int)EquipmentSlot.Head);
             Assert.AreEqual(3, (int)EquipmentSlot.Chest);
             Assert.AreEqual(4, (int)EquipmentSlot.Feet);
+            Assert.AreEqual(5, (int)EquipmentSlot.Mount);
         }
 
         [Test]
@@ -37,7 +38,7 @@ namespace MMO.Tests
             EquipmentSlot[] expected =
             {
                 EquipmentSlot.MainHand, EquipmentSlot.OffHand, EquipmentSlot.Head,
-                EquipmentSlot.Chest, EquipmentSlot.Feet,
+                EquipmentSlot.Chest, EquipmentSlot.Feet, EquipmentSlot.Mount,
             };
 
             Assert.AreEqual(EquipmentSlots.Count, EquipmentSlots.All.Count);
@@ -52,11 +53,12 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void EquipmentSlots_IsValid_RejectsOutOfRangeCasts()
+        public void EquipmentSlots_IsValid_RejectsNoneAndOutOfRangeCasts()
         {
             // The classic client payload: an integer cast straight into the enum. Rejected here,
             // it never reaches an index; accepted, it would read past the equipment list.
-            Assert.IsFalse(EquipmentSlots.IsValid((EquipmentSlot)5), "One past the last slot must fail.");
+            Assert.IsFalse(EquipmentSlots.IsValid(EquipmentSlot.None), "None is not a wearable slot.");
+            Assert.IsFalse(EquipmentSlots.IsValid((EquipmentSlot)6), "One past the last slot must fail.");
             Assert.IsFalse(EquipmentSlots.IsValid((EquipmentSlot)99), "Garbage must fail.");
             Assert.IsFalse(EquipmentSlots.IsValid((EquipmentSlot)(-1)), "Negative casts must fail.");
         }

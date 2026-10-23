@@ -11,11 +11,12 @@ using UnityEngine;
 namespace MMO.Inventory
 {
     /// <summary>
-    /// The two containers a player carries: a fixed <c>GridWidth</c> x <c>GridHeight</c> bag of
-    /// items (a <c>SyncList&lt;ItemInstance&gt;</c> whose entries carry their cell and footprint)
-    /// and one explicit equipment slot per <see cref="EquipmentSlot"/> value, where every item in
-    /// either list is identified by its <see cref="ItemInstance.ItemName"/> key rather than a
-    /// reference, because FishNet serializes value fields and never Unity objects.
+    /// The two containers a player carries: a fixed grid bag — 8×6 slots plus a five-cell mount
+    /// row (<see cref="MountExtraSlots"/>) — of items (a <c>SyncList&lt;ItemInstance&gt;</c> whose
+    /// entries carry their cell and footprint) and one explicit equipment slot per
+    /// <see cref="EquipmentSlot"/> value, where every item in either list is identified by its
+    /// <see cref="ItemInstance.ItemName"/> key rather than a reference, because FishNet serializes
+    /// value fields and never Unity objects.
     ///
     /// The client never writes either list. It sends *intent* through
     /// <see cref="RequestEquip"/> / <see cref="RequestUnequip"/> — the idiomatic FishNet
@@ -39,7 +40,7 @@ namespace MMO.Inventory
     /// grid moves only when the server actually moved something.
     /// </para>
     /// </summary>
-    public sealed class PlayerInventory : NetworkBehaviour, IInventorySource
+    public sealed class PlayerInventory : NetworkBehaviour, IInventorySource, IEquipmentSource
     {
         /// <summary>Bag columns.</summary>
         public const int GridWidth = 8;
@@ -47,12 +48,27 @@ namespace MMO.Inventory
         /// <summary>Bag rows.</summary>
         public const int GridHeight = 6;
 
+        /// <summary>
+        /// Extra carrying cells a mount adds. They sit in a partial row under the six full rows,
+        /// so an 8-wide bag gets a five-cell last row.
+        /// </summary>
+        public const int MountExtraSlots = 5;
+
+        /// <summary>
+        /// Slots the bag has without a mount. A dismounted player carrying more than this is
+        /// overloaded and walks slower (<see cref="MountRules"/>).
+        /// </summary>
+        public const int BaseSlotCount = GridWidth * GridHeight;
+
+        /// <summary>Rows a bag view draws: the square rows plus the partial mount row.</summary>
+        public const int VisibleGridHeight = GridHeight + 1;
+
         // The constants above cannot satisfy an interface property, so the geometry is handed to
         // IInventorySource readers through these explicit implementations instead. A bag screen
-        // that only ever sees the interface still measures the same grid the server validates in.
+        // that only ever sees the interface still draws the extra mount row.
         int IInventorySource.GridWidth => GridWidth;
 
-        int IInventorySource.GridHeight => GridHeight;
+        int IInventorySource.GridHeight => VisibleGridHeight;
 
         // Both lists are server-owned SyncTypes: clients hold a replicated copy and are refused
         // if they try to write (the base class warns and the next delta overwrites them).
@@ -60,7 +76,21 @@ namespace MMO.Inventory
         private readonly SyncList<ItemInstance> _equipment = new();
 
         // The geometry never changes for a given player, so one grid object serves every check.
-        private readonly InventoryGrid _grid = new(GridWidth, GridHeight);
+        private readonly InventoryGrid _grid = new(GridWidth, GridHeight, MountExtraSlots);
+
+        // True while a mount is active. Its trailing five slots are placeable then; the server
+        // sets this from PlayerMount, and a dismounted player's existing items there stay put.
+        private bool _mountCapacity;
+
+        /// <summary>Server: open the mount's trailing slots while riding and close them after.</summary>
+        [Server]
+        public void SetMountCapacity(bool mounted)
+        {
+            _mountCapacity = mounted;
+        }
+
+        // How many of the grid's cells may receive a new item right now.
+        private int CellLimit => _mountCapacity ? _grid.CellCount : BaseSlotCount;
 
         // Server-side staging list for "the bag minus one item" checks; never touches replication.
         private readonly List<ItemInstance> _scratch = new();
@@ -72,6 +102,25 @@ namespace MMO.Inventory
 
         /// <summary>Replicated bag contents (read-only view; mutation is server-only).</summary>
         public IReadOnlyList<ItemInstance> Items => _items;
+
+        /// <summary>
+        /// How many item entries the bag holds. Items do not stack yet, so this is also the number
+        /// of occupied slots and the number the overload rule counts.
+        /// </summary>
+        public int ItemCount
+        {
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < _items.Count; i++)
+                {
+                    if (!_items[i].IsEmpty)
+                        count++;
+                }
+
+                return count;
+            }
+        }
 
         /// <summary>Replicated equipment slots, indexed by <see cref="EquipmentSlot"/>.</summary>
         public IReadOnlyList<ItemInstance> Equipment => _equipment;
@@ -227,7 +276,7 @@ namespace MMO.Inventory
             if (definition == null)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, definition.GridWidth, definition.GridHeight, out int x, out int y))
+            if (!_grid.TryFindFreeSpace(_items, definition.GridWidth, definition.GridHeight, out int x, out int y, CellLimit))
                 return false;
 
             var instance = ItemInstance.Create(definition, x, y);
@@ -292,7 +341,7 @@ namespace MMO.Inventory
             int freeX = 0;
             int freeY = 0;
             if (!displaced.IsEmpty &&
-                !_grid.TryFindFreeSpace(_scratch, displaced.Width, displaced.Height, out freeX, out freeY))
+                !_grid.TryFindFreeSpace(_scratch, displaced.Width, displaced.Height, out freeX, out freeY, CellLimit))
             {
                 return false;
             }
@@ -329,7 +378,7 @@ namespace MMO.Inventory
             if (worn.IsEmpty)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, worn.Width, worn.Height, out int x, out int y))
+            if (!_grid.TryFindFreeSpace(_items, worn.Width, worn.Height, out int x, out int y, CellLimit))
                 return false;
 
             _equipment.Set((int)slot, ItemInstance.Empty);
@@ -374,7 +423,7 @@ namespace MMO.Inventory
             if (item.IsEmpty)
                 return false;
 
-            if (!_grid.CanPlace(_items, gridX, gridY, Math.Max(1, item.Width), Math.Max(1, item.Height)))
+            if (!_grid.CanPlace(_items, gridX, gridY, Math.Max(1, item.Width), Math.Max(1, item.Height), CellLimit))
                 return false;
 
             item.GridX = gridX;
@@ -400,7 +449,7 @@ namespace MMO.Inventory
             if (item.IsEmpty)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, Math.Max(1, item.Width), Math.Max(1, item.Height), out int x, out int y))
+            if (!_grid.TryFindFreeSpace(_items, Math.Max(1, item.Width), Math.Max(1, item.Height), out int x, out int y, CellLimit))
                 return false;
 
             item.GridX = x;
@@ -662,7 +711,7 @@ namespace MMO.Inventory
             }
 
             if (!_grid.TryFindFreeSpace(_scratch, recipe.Output.GridWidth, recipe.Output.GridHeight,
-                    out int x, out int y))
+                    out int x, out int y, CellLimit))
                 return false;
 
             for (int i = 0; i < ingredients.Count; i++)

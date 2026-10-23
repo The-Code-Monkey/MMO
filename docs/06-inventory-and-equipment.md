@@ -141,9 +141,11 @@ equipped" by `CanEquip`. The three server gates for an equip are: resolve the de
 | 2 | `Head` | `:13` |
 | 3 | `Chest` | `:14` |
 | 4 | `Feet` | `:15` |
+| 5 | `Mount` | `:20` |
 
-`EquipmentSlots` (`Assets/Scripts/Inventory/EquipmentSlots.cs:14`) provides `Count = 5` (`:17`),
-`All` (`:32`) and `IsValid(slot)` (`:38`), which guards against casting garbage like
+`None` (`:26`) is not a wearable slot; `EquipmentSlots.IsValid` rejects it, so a bag-only item
+cannot be equipped. `EquipmentSlots` (`Assets/Scripts/Inventory/EquipmentSlots.cs:14`) provides
+`Count = 6`, `All` and `IsValid(slot)`, which guards against casting garbage like
 `(EquipmentSlot)99`.
 
 `PlayerInventory.EnsureEquipmentSlots` (`PlayerInventory.cs:634`) pads the equipment list with empty
