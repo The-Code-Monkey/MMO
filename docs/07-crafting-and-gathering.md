@@ -253,6 +253,13 @@ Replicated state is just `Remaining` (`SyncVar<int>`) and `Depleted` (`SyncVar<b
 a **state change**, not a despawn: when depleted, `ApplyDepletedState` (`:275`) disables the
 collider and renderer, and a server timer respawns it when `ResetTime` is up (`Respawn`, `:297`).
 
+The prefab also carries a carving `NavMeshObstacle` sized to its body, exactly like the crafting
+station, so a route bends *around* a vein instead of through it. Clicking one from out of reach is a
+walk, not a gather attempt: `PlayerClickToMove.BeginNodeApproach` walks to the node's
+`StandOffPosition` (clear of the body, inside `InteractRange`) and sends the gather request when the
+walk ends — the same walk-then-act shape as a station, and the reason the destination marker lands
+on the floor beside the vein rather than on top of it.
+
 `TryGather(PlayerInventory inventory)` (`:190`) is the server's harvest: if the node is available,
 `inventory.TryAddItem(definition)`, decrement `Remaining`, and deplete at zero.
 **Award leads, durability follows** — if the bag is full, the node is not consumed.
@@ -327,7 +334,10 @@ walking away or dropping the tool stops the harvest.
 
 ```
 CLIENT clicks a node
-  ResourceNode.OnMouseDown → RequestGatherFromLocalPlayer
+  too far → PlayerClickToMove.BeginNodeApproach
+    → walk to StandOffPosition, marker on the floor
+    → walk ends within reach → RequestGatherFromLocalPlayer
+  within reach → ResourceNode.OnMouseDown → RequestGatherFromLocalPlayer
     → PlayerGathering.FindLocal → RequestGather ── ServerRpc ──►
 SERVER
   PlayerGathering.RpcRequestGather → StartGathering

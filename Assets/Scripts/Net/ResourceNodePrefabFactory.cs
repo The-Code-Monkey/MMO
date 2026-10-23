@@ -4,6 +4,7 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Gameplay;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 namespace MMO.Net
@@ -82,6 +83,14 @@ namespace MMO.Net
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             ResourceNode node = go.AddComponent<ResourceNode>();
             node.SetDefinition(definition);
+
+            // Carve the NavMesh around the body like the crafting station does: a vein is
+            // scenery, and without the carve a walk to the far side goes straight through it.
+            // size is local — the root's scale turns unit size into DefaultScale's footprint.
+            var obstacle = go.AddComponent<NavMeshObstacle>();
+            obstacle.carving = true;
+            obstacle.size = Vector3.one;
+            obstacle.center = Vector3.zero;
 
             ApplyOreMaterial(go);
             return networkObject;

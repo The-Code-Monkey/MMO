@@ -3,6 +3,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Inventory;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace MMO.Gameplay
 {
@@ -101,6 +102,19 @@ namespace MMO.Gameplay
         /// <summary>Metres a gatherer may be gathered from.</summary>
         public float InteractRange =>
             _definition != null ? _definition.InteractRange : ResourceDefinition.DefaultInteractRange;
+
+        /// <summary>
+        /// Where a player stands to gather: in front of the body, inside
+        /// <see cref="InteractRange"/> so the click that walked them here can start the session.
+        /// </summary>
+        public Vector3 StandOffPosition =>
+            transform.position - transform.forward * Mathf.Min(StandOffDistance, InteractRange * 0.75f);
+
+        /// <summary>
+        /// Metres from the node's centre to its standing spot — clear of the body, like the
+        /// crafting station's stand-off.
+        /// </summary>
+        public const float StandOffDistance = 2f;
 
         /// <summary>Harvests left. Zero once the server has taken the last one.</summary>
         public int Remaining => _remaining.Value;
@@ -279,6 +293,10 @@ namespace MMO.Gameplay
 
             if (TryGetComponent(out Renderer nodeRenderer))
                 nodeRenderer.enabled = !depleted;
+
+            // The carve goes with the body: a depleted vein is not an invisible wall.
+            if (TryGetComponent(out NavMeshObstacle obstacle))
+                obstacle.enabled = !depleted;
         }
 
         /// <summary>

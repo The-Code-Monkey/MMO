@@ -4,8 +4,10 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Net;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.AI;
 using Object = UnityEngine.Object;
 
 namespace MMO.Tests
@@ -165,6 +167,21 @@ namespace MMO.Tests
             Assert.AreEqual(2f, node.GatherIntervalSeconds, 0.0001f);
             Assert.AreEqual(4f, node.InteractRange, 0.0001f);
         }
+
+        [Test]
+        public void StandOffPosition_IsReachableAndClearOfTheBody()
+        {
+            ResourceNode node = AttachNode();
+            node.transform.position = new Vector3(3f, 0.6f, -2f);
+            node.transform.localScale = ResourceNodePrefabFactory.DefaultScale;
+
+            float distance = Vector3.Distance(node.transform.position, node.StandOffPosition);
+
+            Assert.Less(distance, node.InteractRange,
+                "A click walks the player here; a spot outside reach is a gather the server refuses.");
+            Assert.Greater(distance, ResourceNodePrefabFactory.DefaultDepth / 2f,
+                "The stand-off must clear the body's half-depth, or the walk ends inside the vein.");
+        }
         #endregion
 
         #region Server authority.
@@ -198,6 +215,8 @@ namespace MMO.Tests
         {
             GameObject go = Track(GameObject.CreatePrimitive(PrimitiveType.Cube));
             ResourceNode node = go.AddComponent<ResourceNode>();
+            var obstacle = go.AddComponent<NavMeshObstacle>();
+            obstacle.carving = true;
 
             node.ApplyDepletedState(true);
 
@@ -205,6 +224,8 @@ namespace MMO.Tests
                 "A click on an empty vein must never reach the server.");
             Assert.IsFalse(go.GetComponent<MeshRenderer>().enabled,
                 "Every client has to see the emptied node the same way, from one replicated flag.");
+            Assert.IsFalse(obstacle.enabled,
+                "An emptied vein must stop carving too, or the player walks into an invisible wall.");
         }
 
         [Test]
@@ -212,12 +233,15 @@ namespace MMO.Tests
         {
             GameObject go = Track(GameObject.CreatePrimitive(PrimitiveType.Cube));
             ResourceNode node = go.AddComponent<ResourceNode>();
+            go.AddComponent<NavMeshObstacle>();
             node.ApplyDepletedState(true);
 
             node.ApplyDepletedState(false);
 
             Assert.IsTrue(go.GetComponent<Collider>().enabled);
             Assert.IsTrue(go.GetComponent<MeshRenderer>().enabled);
+            Assert.IsTrue(go.GetComponent<NavMeshObstacle>().enabled,
+                "The carve comes back with the body on respawn.");
         }
 
         [Test]

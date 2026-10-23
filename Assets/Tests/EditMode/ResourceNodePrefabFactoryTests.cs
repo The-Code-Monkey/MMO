@@ -7,6 +7,7 @@ using MMO.Inventory;
 using MMO.Net;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.AI;
 using Object = UnityEngine.Object;
 
 namespace MMO.Tests
@@ -89,6 +90,24 @@ namespace MMO.Tests
             var collider = nob.GetComponent<BoxCollider>();
             Assert.AreEqual(Vector3.one, collider.size, "The primitive collider stays unit-sized.");
             Assert.AreEqual(ResourceNodePrefabFactory.DefaultScale, nob.transform.localScale);
+        }
+
+        [Test]
+        public void Create_CarvesTheBodyFootprint()
+        {
+            NetworkObject nob = NewNode();
+            Track(nob);
+
+            NavMeshObstacle obstacle = nob.GetComponent<NavMeshObstacle>();
+            Assert.IsNotNull(obstacle,
+                "The vein must carry a NavMeshObstacle, or the NavMesh keeps a walkable patch under it.");
+            Assert.IsTrue(obstacle.carving,
+                "Without carving the obstacle only nudges agents aside; the route still runs through the vein.");
+            Assert.AreEqual(Vector3.zero, obstacle.center,
+                "The obstacle must be centred on the body, or it floats above the floor and carves nothing.");
+            Assert.AreEqual(ResourceNodePrefabFactory.DefaultScale,
+                Vector3.Scale(obstacle.size, nob.transform.lossyScale),
+                "NavMeshObstacle.size is scaled by the transform: the carve must match the body's footprint.");
         }
 
         [Test]

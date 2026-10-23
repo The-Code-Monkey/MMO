@@ -18,6 +18,7 @@ namespace MMO.Client
         private Vector3 _target;
         private GameObject _marker;
         private CraftingStation _pendingStation;
+        private ResourceNode _pendingNode;
         private readonly ClickToMoveMarkerTracker _tracker = new ClickToMoveMarkerTracker();
         private CraftingPanelView _craftingPanel;
 
@@ -61,7 +62,10 @@ namespace MMO.Client
                 SetDestinationToMouseClick();
 
             if (UpdateMarker())
+            {
                 OpenPendingStation();
+                GatherPendingNode();
+            }
         }
 
         /// <summary>
@@ -121,10 +125,19 @@ namespace MMO.Client
                     return;
                 }
 
+                // A vein is walked to, not clicked from across the room: stand off it and start
+                // gathering once the walk is over.
+                if (hit.collider.TryGetComponent(out ResourceNode node))
+                {
+                    BeginNodeApproach(node);
+                    return;
+                }
+
                 // A click on anything else is just a destination: the pending station is dropped,
                 // because the walk this click starts is not towards a station, and the panel goes
                 // with it — the player is walking away from the station it was showing.
                 _pendingStation = null;
+                _pendingNode = null;
                 CloseCraftingPanel();
 
                 // The server accepts a click by sampling the NavMesh within 1 m and walks to the
@@ -166,6 +179,7 @@ namespace MMO.Client
         public void BeginStationApproach(CraftingStation station)
         {
             _pendingStation = null;
+            _pendingNode = null;
 
             if (station == null)
                 return;
@@ -206,6 +220,56 @@ namespace MMO.Client
                 return;
 
             station.RequestOpenFromLocalPlayer();
+        }
+
+        /// <summary>
+        /// The player clicked a vein: walk to where they can reach it and start gathering on
+        /// arrival. Already within reach, the click gathers at once — the server bounds the
+        /// session on its own, so this only saves the walk.
+        /// </summary>
+        public void BeginNodeApproach(ResourceNode node)
+        {
+            _pendingNode = null;
+            _pendingStation = null;
+
+            if (node == null)
+                return;
+
+            if (GatheringRules.IsWithinReach(transform.position, node.transform.position, node.InteractRange))
+            {
+                node.RequestGatherFromLocalPlayer();
+                return;
+            }
+
+            _pendingNode = node;
+
+            // Same sampled point the mover is asked for and the server samples: the marker and
+            // the arrival check would otherwise disagree by the sampling radius.
+            Vector3 destination = node.StandOffPosition;
+            if (NavMesh.SamplePosition(destination, out NavMeshHit navHit, 1f, NavMesh.AllAreas))
+                destination = navHit.position;
+
+            _target = destination;
+            _mover?.RequestMoveTo(destination);
+            ShowMarker(destination);
+        }
+
+        /// <summary>
+        /// The walk is over: gather from the vein the player walked to, if it is still within
+        /// reach. The server refuses the request outright otherwise, so asking early is pointless.
+        /// </summary>
+        private void GatherPendingNode()
+        {
+            ResourceNode node = _pendingNode;
+            _pendingNode = null;
+
+            if (node == null)
+                return;
+
+            if (!GatheringRules.IsWithinReach(transform.position, node.transform.position, node.InteractRange))
+                return;
+
+            node.RequestGatherFromLocalPlayer();
         }
 
         private void ShowMarker(Vector3 point)
