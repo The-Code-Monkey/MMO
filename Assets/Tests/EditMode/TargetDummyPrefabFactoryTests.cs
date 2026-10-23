@@ -4,6 +4,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Net;
 using NUnit.Framework;
@@ -146,10 +147,11 @@ namespace MMO.Tests
             Track(nob.gameObject);
 
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(2, behaviours.Length, "The enemy needs its vitals and its brain.");
+            Assert.AreEqual(3, behaviours.Length, "The enemy needs its vitals, brain and loot hook.");
             Assert.IsInstanceOf<NPCStats>(behaviours[0],
                 "Stats stay first so a freshly spawned enemy has health before the brain reads it.");
             Assert.IsInstanceOf<EnemyBrain>(behaviours[1]);
+            Assert.IsInstanceOf<NpcLoot>(behaviours[2]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
         }

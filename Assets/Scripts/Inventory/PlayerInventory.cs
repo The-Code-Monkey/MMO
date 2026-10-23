@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using FishNet.Connection;
+using FishNet.Managing;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Social;
@@ -263,6 +265,33 @@ namespace MMO.Inventory
                 return;
 
             bag.Loot(this);
+        }
+
+        /// <summary>
+        /// Owner-side intent: open <paramref name="chest"/>. The client supplies only the object
+        /// it clicked; the server re-checks reach and rolls the table.
+        /// </summary>
+        public void RequestOpenChest(LootChest chest)
+        {
+            if (!IsOwner || chest == null || chest.NetworkObject == null)
+                return;
+
+            RpcRequestOpenChest(chest.NetworkObject);
+        }
+
+        [ServerRpc]
+        private void RpcRequestOpenChest(NetworkObject chestObject, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender) || chestObject == null)
+                return;
+
+            if (!chestObject.TryGetComponent(out LootChest chest))
+                return;
+
+            if (!LootBag.IsWithinRange(transform.position, chest.transform.position, chest.InteractRange))
+                return;
+
+            chest.TryOpen(this);
         }
 
         /// <summary>
@@ -761,6 +790,28 @@ namespace MMO.Inventory
 
         [Server]
         public int CountItem(string itemName) => MMO.Crafting.CraftingValidator.Count(_items, itemName);
+
+        /// <summary>
+        /// Finds this process's player inventory — the spawned object owned by the local client.
+        /// Used by world click handlers that need to send an owner-checked intent.
+        /// </summary>
+        public static PlayerInventory FindLocal(NetworkManager networkManager)
+        {
+            if (networkManager == null || networkManager.ServerManager == null || networkManager.ClientManager == null)
+                return null;
+
+            IReadOnlyDictionary<int, NetworkObject> spawned = networkManager.IsHostStarted
+                ? networkManager.ServerManager.Objects.Spawned
+                : networkManager.ClientManager.Objects.Spawned;
+
+            foreach (NetworkObject nob in spawned.Values)
+            {
+                if (nob != null && nob.IsSpawned && nob.IsOwner && nob.TryGetComponent(out PlayerInventory inventory))
+                    return inventory;
+            }
+
+            return null;
+        }
 
         // Idempotent, and tolerant of running before or after the list first syncs: an equipment
         // list shorter than the slot count would index past its end, and a host runs OnStartNetwork

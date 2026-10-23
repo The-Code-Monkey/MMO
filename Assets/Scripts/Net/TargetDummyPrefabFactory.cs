@@ -4,6 +4,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Gameplay;
 using UnityEngine;
 using UnityEngine.AI;
@@ -87,6 +88,7 @@ namespace MMO.Net
             go.SetActive(true);
 
             go.AddComponent<EnemyBrain>();
+            go.AddComponent<NpcLoot>();
 
             ApplyRedMaterial(go);
             return networkObject;
