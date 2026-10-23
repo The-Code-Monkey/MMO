@@ -136,19 +136,6 @@ namespace MMO.Gameplay
                     instance.SetActive(true);
 
                     NetworkManager.ServerManager.Spawn(instance);
-                    
-                    if (instance.TryGetComponent(out NPCStats addStats))
-                    {
-                        // Adds start with threat on the boss's current target
-                        string bossTarget = _brain?.Threat?.CurrentTarget;
-                        if (!string.IsNullOrEmpty(bossTarget))
-                        {
-                            addStats.Changed += (() =>
-                            {
-                                // When add dies, notify boss brain
-                            });
-                        }
-                    }
                 }
             }
         }

@@ -24,6 +24,7 @@ namespace MMO.Content
         private NetworkObject _prefab;
         private NetworkManager _manager;
         private readonly List<SpawnEntry> _spawned = new();
+        private readonly List<PlayerStats> _playerBuffer = new();
         private double _nextTickAt;
 
         /// <summary>Live enemies this controller currently owns.</summary>
@@ -107,13 +108,23 @@ namespace MMO.Content
             if (radius <= 0f)
                 return 0;
 
-            PlayerStats[] players = FindObjectsByType<PlayerStats>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            _playerBuffer.Clear();
+            if (_manager.ServerManager != null)
+            {
+                foreach (NetworkObject nob in _manager.ServerManager.Objects.Spawned.Values)
+                {
+                    if (nob != null && nob.IsSpawned && nob.gameObject.activeInHierarchy &&
+                        nob.TryGetComponent(out PlayerStats player))
+                    {
+                        _playerBuffer.Add(player);
+                    }
+                }
+            }
 
             int nearby = 0;
-            for (int i = 0; i < players.Length; i++)
+            for (int i = 0; i < _playerBuffer.Count; i++)
             {
-                PlayerStats player = players[i];
+                PlayerStats player = _playerBuffer[i];
                 if (player != null && player.Health > 0 &&
                     Vector3.Distance(player.transform.position, transform.position) <= radius)
                 {

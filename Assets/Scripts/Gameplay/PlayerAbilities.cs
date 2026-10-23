@@ -58,6 +58,11 @@ namespace MMO.Gameplay
 
         private PlayerStats _stats;
         private IServerSight _sight;
+        private AuraController _auras;
+        private PlayerInventory _inventory;
+        private readonly List<PlayerStats> _playerBuffer = new();
+        private readonly List<NPCStats> _npcBuffer = new();
+        private readonly List<EnemyBrain> _enemyBuffer = new();
 
         /// <summary>
         /// The line-of-sight check applied to every victim of an area or targeted effect, so a
@@ -170,7 +175,7 @@ namespace MMO.Gameplay
             if (sender == null || !OwnerMatches(sender))
                 return;
 
-            AuraController auras = GetComponent<AuraController>();
+            AuraController auras = Auras;
             if (auras != null && auras.BlocksActions)
                 return;
 
@@ -243,8 +248,9 @@ namespace MMO.Gameplay
             }
 
             Vector3 origin = AbilityEffects.ResolveOrigin(ability.Logic, transform.position, cast.TargetPosition);
+            CollectSpawned(_playerBuffer);
             List<PlayerStats> victims = AbilityEffects.SelectVictims(
-                origin, ability.EffectRadius, caster, FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+                origin, ability.EffectRadius, caster, _playerBuffer);
 
             // Only what the caster can actually see is hit: a wall between the caster's eye and a
             // victim makes that victim cover, so a fireball aimed just past the wall hits nothing.
@@ -258,11 +264,12 @@ namespace MMO.Gameplay
             if (ability.Logic != AbilityLogic.TargetedDamage && ability.Logic != AbilityLogic.AreaDamage)
                 return;
 
+            CollectSpawned(_npcBuffer);
             List<NPCStats> npcVictims = AbilityEffects.SelectNpcVictims(
-                origin, ability.EffectRadius, FindObjectsByType<NPCStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+                origin, ability.EffectRadius, _npcBuffer);
             npcVictims = AbilityEffects.SelectVisibleNpcVictims(eye, npcVictims, Sight);
 
-            PlayerInventory attacker = GetComponent<PlayerInventory>();
+            PlayerInventory attacker = Inventory;
             for (int i = 0; i < npcVictims.Count; i++)
                 npcVictims[i].ApplyDamage(power, attacker);
         }
@@ -279,11 +286,11 @@ namespace MMO.Gameplay
             Vector3 origin = AbilityEffects.ResolveOrigin(
                 AbilityLogic.ApplyAura, transform.position, targetPosition);
             Vector3 eye = transform.position + Vector3.up * PhysicsSight.DefaultEyeHeight;
-            PlayerInventory source = GetComponent<PlayerInventory>();
+            PlayerInventory source = Inventory;
 
+            CollectSpawned(_playerBuffer);
             List<PlayerStats> players = AbilityEffects.SelectVictims(
-                origin, ability.EffectRadius, caster,
-                FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+                origin, ability.EffectRadius, caster, _playerBuffer);
             players = AbilityEffects.SelectVisibleVictims(eye, players, Sight);
 
             for (int i = 0; i < players.Count; i++)
@@ -296,9 +303,9 @@ namespace MMO.Gameplay
                     auras.Apply(ability.Aura, source);
             }
 
+            CollectSpawned(_npcBuffer);
             List<NPCStats> enemies = AbilityEffects.SelectNpcVictims(
-                origin, ability.EffectRadius,
-                FindObjectsByType<NPCStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
+                origin, ability.EffectRadius, _npcBuffer);
             enemies = AbilityEffects.SelectVisibleNpcVictims(eye, enemies, Sight);
 
             for (int i = 0; i < enemies.Count; i++)
@@ -321,10 +328,10 @@ namespace MMO.Gameplay
                 return;
 
             // Find EnemyBrain near the target position
-            var enemies = FindObjectsByType<EnemyBrain>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            for (int i = 0; i < enemies.Length; i++)
+            CollectSpawned(_enemyBuffer);
+            for (int i = 0; i < _enemyBuffer.Count; i++)
             {
-                EnemyBrain enemy = enemies[i];
+                EnemyBrain enemy = _enemyBuffer[i];
                 if (enemy == null || !enemy.IsSpawned)
                     continue;
 
@@ -334,6 +341,26 @@ namespace MMO.Gameplay
                     enemy.OnTaunted(caster.name);
                     break; // Taunt affects the nearest enemy
                 }
+            }
+        }
+
+        private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
+
+        private PlayerInventory Inventory => _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
+
+        private void CollectSpawned<T>(List<T> buffer) where T : NetworkBehaviour
+        {
+            buffer.Clear();
+
+            var manager = base.NetworkManager;
+            if (manager == null || manager.ServerManager == null)
+                return;
+
+            IReadOnlyDictionary<int, NetworkObject> spawned = manager.ServerManager.Objects.Spawned;
+            foreach (NetworkObject nob in spawned.Values)
+            {
+                if (nob != null && nob.IsSpawned && nob.gameObject.activeInHierarchy && nob.TryGetComponent(out T component))
+                    buffer.Add(component);
             }
         }
 

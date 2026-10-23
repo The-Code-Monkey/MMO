@@ -52,6 +52,7 @@ namespace MMO.Gameplay
 
         private NetworkManager _networkManager;
         private IZoneTransferTokenStore _tokenStore;
+        private WaitForSecondsRealtime _graceWait;
 
         /// <summary>True while a handoff for this client is being prepared.</summary>
         public bool IsTransferring(int clientId) => _transferringClientIds.Contains(clientId);
@@ -63,6 +64,7 @@ namespace MMO.Gameplay
                 volume.isTrigger = true;
 
             _networkManager = FindFirstObjectByType<NetworkManager>();
+            _graceWait = new WaitForSecondsRealtime(_graceSeconds);
             ResolveStore();
         }
 
@@ -184,7 +186,7 @@ namespace MMO.Gameplay
 
         private IEnumerator DisconnectAfterGrace(NetworkConnection owner)
         {
-            yield return new WaitForSecondsRealtime(_graceSeconds);
+            yield return _graceWait;
 
             if (owner != null && owner.IsValid)
                 owner.Disconnect(immediately: false);
