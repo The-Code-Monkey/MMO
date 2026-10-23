@@ -73,6 +73,10 @@ New abilities, items, recipes, weapons and armor are **assets**, not code. Prefe
 - `Assets > Create > MMO > Recipe Data`
 - `Assets > Create > MMO > Resource Definition`
 - `Assets > Create > MMO > Weapon Data` / `Armor Data`
+- `Assets > Create > MMO > Quest Data`
+- `Assets > Create > MMO > Dialogue Node`
+- `Assets > Create > MMO > Weighted Loot Table`
+- `Assets > Create > MMO > Aura Data`
 
 Items and recipes self-register via `OnEnable`, so dropping a named asset in the right `Resources`
 folder is enough to make it resolvable.

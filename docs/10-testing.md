@@ -42,6 +42,7 @@ These types are used across many tests:
 | `FakeApiGateway` | `Assets/Tests/PlayMode/FakeApiGateway.cs:14` | A stand-in for `IApiGateway`. Canned login outcomes, a full call log, and a "block login" switch for race tests. |
 | `NetworkManagerTestHelper` | `Assets/Tests/PlayMode/NetworkManagerTestHelper.cs:16` | Because FishNet allows one `NetworkManager` per process, every PlayMode test shares one. Handles host start/stop, waiting for authentication, and finding spawned players/dummies. |
 | `TestItemDefinitions` | `Assets/Tests/EditMode/TestItemDefinitions.cs:14` | Builds and registers `ItemDefinition` objects in code by writing every field through a `SerializedObject` (the Inspector path). |
+| `TestContentData` | `Assets/Tests/EditMode/TestContentData.cs:15` | The same code-built approach for quests, dialogue nodes, loot tables and auras; `Cleanup()` destroys them and clears the content registries. |
 | `PlayerPrefabTestAsset` | `Assets/Tests/EditMode/PlayerPrefabTestAsset.cs:13` | Tracks whether the player prefab/folder pre-existed so `[TearDown]` removes only what the test created. |
 | `SpawnablePrefabTestAsset` | `Assets/Tests/EditMode/SpawnablePrefabTestAsset.cs:13` | The same idea for the player, dummy and resource-node prefabs. |
 | `FakeSight` | `Assets/Tests/EditMode/FakeSight.cs` and `Assets/Tests/PlayMode/FakeSight.cs` | A stand-in for `IServerSight` whose line of sight is always clear, so combat and ability tests never need a real wall. |
