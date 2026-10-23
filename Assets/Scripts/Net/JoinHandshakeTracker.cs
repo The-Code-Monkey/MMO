@@ -5,6 +5,7 @@ namespace MMO.Net
 {
     public sealed class JoinHandshakeTracker
     {
+        private static readonly List<int> _empty = new();
         private readonly Dictionary<int, double> _startedAt = new();
         private readonly Dictionary<int, CancellationTokenSource> _cts = new();
 
@@ -54,7 +55,7 @@ namespace MMO.Net
                 (expired ??= new List<int>()).Add(kvp.Key);
             }
 
-            return expired ?? new List<int>();
+            return expired ?? _empty;
         }
     }
 }

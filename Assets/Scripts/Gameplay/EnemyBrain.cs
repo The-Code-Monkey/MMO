@@ -34,6 +34,8 @@ namespace MMO.Gameplay
         private readonly ThreatTable _threat = new();
         private double _nextAttackTime;
         private Vector3 _spawnPosition;
+        private string _resolvedEntityId;
+        private Transform _resolvedTarget;
 
         public ThreatTable Threat => _threat;
 
@@ -115,8 +117,7 @@ namespace MMO.Gameplay
                 return;
             }
 
-            // Find the target's transform
-            Transform targetTransform = FindTargetTransform(targetId);
+            Transform targetTransform = ResolveTarget(targetId);
             if (targetTransform == null)
             {
                 // Target gone (despawned/destroyed) — remove from table
@@ -176,6 +177,19 @@ namespace MMO.Gameplay
             {
                 _agent.isStopped = true;
             }
+        }
+
+        private Transform ResolveTarget(string entityId)
+        {
+            // A target keeps its transform until it despawns, so reuse it while it lives; only a
+            // changed id or a despawned target re-runs the scene scan below.
+            if (_resolvedTarget != null && entityId == _resolvedEntityId)
+                return _resolvedTarget;
+
+            Transform resolved = FindTargetTransform(entityId);
+            _resolvedEntityId = entityId;
+            _resolvedTarget = resolved;
+            return resolved;
         }
 
         private Transform FindTargetTransform(string entityId)
