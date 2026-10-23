@@ -113,6 +113,11 @@ namespace MMO.Net
             go.AddComponent<PlayerWallet>();
             go.AddComponent<PlayerAuctionHouse>();
 
+            // Quest state and the server-walked dialogue session. They sit before the save trigger
+            // so a loaded quest state can be applied through them later.
+            go.AddComponent<PlayerQuestLog>();
+            go.AddComponent<PlayerDialogue>();
+
             // Added last so its OnStartNetwork runs after the stats/inventory it applies a loaded
             // save through: it consumes the record the join gate fetched and subscribes the save
             // events only once that apply has settled.

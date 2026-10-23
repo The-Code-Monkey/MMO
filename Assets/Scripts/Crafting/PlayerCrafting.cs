@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.UI;
@@ -45,6 +46,7 @@ namespace MMO.Crafting
             => Vector3.Distance(playerPosition, stationPosition) <= MaxCraftDistance;
 
         private PlayerInventory _inventory;
+        private PlayerQuestLog _quests;
         private IReadOnlyList<RecipeOffer> _availableRecipes = Array.Empty<RecipeOffer>();
 
         public int CraftingXp => _craftingXp.Value;
@@ -64,6 +66,9 @@ namespace MMO.Crafting
 
         private PlayerInventory Inventory =>
             _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
+
+        private PlayerQuestLog Quests =>
+            _quests != null ? _quests : _quests = GetComponent<PlayerQuestLog>();
 
         public override void OnStartNetwork()
         {
@@ -117,6 +122,7 @@ namespace MMO.Crafting
             if (!IsWithinReach(transform.position, station.transform.position))
                 return false;
 
+            Quests?.NotifyInteract(station.StationType.ToString());
             RpcOpenStation(target, stationObject, BuildOffers(station));
             return true;
         }

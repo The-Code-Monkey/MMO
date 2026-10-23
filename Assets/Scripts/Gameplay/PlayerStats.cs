@@ -43,6 +43,7 @@ namespace MMO.Gameplay
         private readonly SyncVar<int> _health = new();
         private readonly SyncVar<int> _mana = new();
         private readonly SyncVar<int> _level = new();
+        private readonly SyncVar<int> _experience = new();
         private readonly SyncVar<int> _maxHealthBonus = new();
         private readonly SyncVar<int> _maxManaBonus = new();
         private readonly SyncVar<int> _auraHealthBonus = new();
@@ -51,6 +52,7 @@ namespace MMO.Gameplay
         public int Health => _health.Value;
         public int Mana => _mana.Value;
         public int Level => _level.Value;
+        public int Experience => _experience.Value;
 
         /// <summary>Maximum health currently granted by equipped items.</summary>
         public int MaxHealthBonus => _maxHealthBonus.Value;
@@ -85,6 +87,9 @@ namespace MMO.Gameplay
         /// </summary>
         public event Action LevelChanged;
 
+        /// <summary>Raised when experience changes, on the server and on clients.</summary>
+        public event Action ExperienceChanged;
+
         /// <summary>
         /// Raised on the server the moment health first reaches zero — the transition, not a
         /// repeated zero, so a death runs exactly once. <see cref="PlayerDeath"/> is the
@@ -113,6 +118,7 @@ namespace MMO.Gameplay
             _health.OnChange += OnHealthChanged;
             _mana.OnChange += OnManaChanged;
             _level.OnChange += OnLevelChanged;
+            _experience.OnChange += OnExperienceChanged;
 
             // The caps are HUD state too: equipment raising or lowering a maximum has to repaint
             // the bar's fill even when the current value itself did not move.
@@ -127,6 +133,7 @@ namespace MMO.Gameplay
             _health.OnChange -= OnHealthChanged;
             _mana.OnChange -= OnManaChanged;
             _level.OnChange -= OnLevelChanged;
+            _experience.OnChange -= OnExperienceChanged;
             _maxHealthBonus.OnChange -= OnMaxChanged;
             _maxManaBonus.OnChange -= OnMaxChanged;
             _auraHealthBonus.OnChange -= OnMaxChanged;
@@ -171,6 +178,16 @@ namespace MMO.Gameplay
         public void SetLevel(int level)
         {
             _level.Value = Mathf.Max(0, level);
+        }
+
+        /// <summary>Server: grant quest or event experience. The player XP curve is not part of this step.</summary>
+        [Server]
+        public void AddExperience(int amount)
+        {
+            if (amount <= 0)
+                return;
+
+            _experience.Value += amount;
         }
 
         /// <summary>
@@ -313,6 +330,11 @@ namespace MMO.Gameplay
                 return;
 
             LevelChanged?.Invoke();
+        }
+
+        private void OnExperienceChanged(int previous, int current, bool asServer)
+        {
+            ExperienceChanged?.Invoke();
         }
 
         private void OnMaxChanged(int previous, int current, bool asServer)

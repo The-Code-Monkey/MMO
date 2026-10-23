@@ -43,6 +43,7 @@ namespace MMO.Gameplay
 
         private PlayerInventory _inventory;
         private AuraController _auras;
+        private PlayerQuestLog _quests;
 
         /// <summary>The node the server is currently gathering from, or null when idle.</summary>
         public ResourceNode GatheringNode => _node;
@@ -114,6 +115,7 @@ namespace MMO.Gameplay
                 return;
 
             _node = node;
+            Quests?.NotifyInteract(node.Definition != null ? node.Definition.name : node.name);
 
             // The first harvest lands one interval from now, not instantly: the interval *is*
             // the gathering action, and a click that paid it out immediately would double the
@@ -238,5 +240,7 @@ namespace MMO.Gameplay
         private PlayerInventory Inventory => _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
 
         private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
+
+        private PlayerQuestLog Quests => _quests != null ? _quests : _quests = GetComponent<PlayerQuestLog>();
     }
 }

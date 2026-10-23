@@ -18,24 +18,25 @@ The constants:
 | `MaxMana` | 50 | `PlayerStats.cs:37` |
 | `DefaultLevel` | 1 | `PlayerStats.cs:40` |
 
-The replicated values are seven SyncVars (`PlayerStats.cs:43-49`): health, mana, level, the two
-equipment bonus caps and the two aura bonus caps. The bonuses come from separate systems, so the
+The replicated values are eight SyncVars (`PlayerStats.cs:43-50`): health, mana, level,
+experience, the two equipment bonus caps and the two aura bonus caps. The bonuses come from separate systems, so the
 *effective* caps are:
 
 ```csharp
-public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value + _auraHealthBonus.Value;   // :68
-public int EffectiveMaxMana   => MaxMana   + _maxManaBonus.Value   + _auraManaBonus.Value;     // :71
+public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value + _auraHealthBonus.Value;   // :70
+public int EffectiveMaxMana   => MaxMana   + _maxManaBonus.Value   + _auraManaBonus.Value;     // :73
 ```
 
-The public read-only properties are `Health`, `Mana`, `Level`, `MaxHealthBonus`, `MaxManaBonus`,
-`AuraHealthBonus`, `AuraManaBonus`, `EffectiveMaxHealth`, `EffectiveMaxMana`. The component also
-raises three events:
+The public read-only properties are `Health`, `Mana`, `Level`, `Experience`, `MaxHealthBonus`,
+`MaxManaBonus`, `AuraHealthBonus`, `AuraManaBonus`, `EffectiveMaxHealth`, `EffectiveMaxMana`. The component also
+raises four events:
 
-- `VitalsChanged` (`:80`) — health or mana moved, or a cap changed (raised on server and clients).
+- `VitalsChanged` (`:82`) — health or mana moved, or a cap changed (raised on server and clients).
   The HUD listens.
-- `LevelChanged` (`:86`) — the level changed (server only). Persistence listens so a level-up saves
+- `LevelChanged` (`:88`) — the level changed (server only). Persistence listens so a level-up saves
   immediately.
-- `Died` (`:95`) — health crossed from above zero to zero (server only). Raised once per death; the
+- `ExperienceChanged` (`:91`) — quest/event XP changed (server and clients).
+- `Died` (`:100`) — health crossed from above zero to zero (server only). Raised once per death; the
   risk-tier resolver ([section 1a](#1a-death-and-the-risk-tiers)) listens. The transition is guarded
   by `_applyingSave`, so spawning from a save that happens to be at zero health does not read as a
   death.
@@ -44,29 +45,30 @@ raises three events:
 
 Every mutation is a `[Server]` method:
 
-- `TakeDamage(int)` (`:142`) and `Heal(int)` (`:148`),
-- `SpendMana(int)` (`:154`) and `RestoreMana(int)` (`:160`),
-- `SetLevel(int)` (`:171`),
-- `ApplySave(int health, int mana, int level)` (`:182`) — used when a save record is loaded. It
+- `TakeDamage(int)` (`:149`) and `Heal(int)` (`:155`),
+- `SpendMana(int)` (`:161`) and `RestoreMana(int)` (`:167`),
+- `SetLevel(int)` (`:178`),
+- `AddExperience(int)` (`:185`) — quest/event XP, server-only.
+- `ApplySave(int health, int mana, int level)` (`:199`) — used when a save record is loaded. It
   clamps health and mana to the effective caps.
-- `Respawn()` (`:204`) — restores health and mana to the base plus equipment caps. Called by the
+- `Respawn()` (`:221`) — restores health and mana to the base plus equipment caps. Called by the
   death resolver for **every** death, whatever the tier (see
   [section 1a](#1a-death-and-the-risk-tiers)). Auras clear on death, so they are deliberately not
   part of the respawn pool.
-- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:222`) — used when gear changes. If
+- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:239`) — used when gear changes. If
   a bonus shrinks, current values are pulled down with it.
-- `ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)` (`:237`) — used when the active aura set
+- `ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)` (`:254`) — used when the active aura set
   changes; separate from equipment so one cannot wipe the other.
 
 The arithmetic itself lives in pure static helpers so it can be tested directly:
-`ComputeNewHealth` (`:273`), `ComputeHealedHealth` (`:278`), `ComputeNewMana` (`:283`) and
-`ComputeRestoredMana` (`:288`). They all clamp the result, so a negative damage amount cannot heal
+`ComputeNewHealth` (`:290`), `ComputeHealedHealth` (`:295`), `ComputeNewMana` (`:300`) and
+`ComputeRestoredMana` (`:305`). They all clamp the result, so a negative damage amount cannot heal
 and a negative heal cannot damage.
 
 ### The client request path
 
-A client may ask to damage someone through `RequestDamage(int)` (`:250`), which returns unless the
-caller owns the player, then sends `RpcRequestDamage` (`:259`). The server handler re-checks that the
+A client may ask to damage someone through `RequestDamage(int)` (`:267`), which returns unless the
+caller owns the player, then sends `RpcRequestDamage` (`:276`). The server handler re-checks that the
 sender is the owner before calling `TakeDamage`. That double check (FishNet also enforces ownership)
 is the house style: never trust the client.
 

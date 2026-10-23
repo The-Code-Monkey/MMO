@@ -139,20 +139,20 @@ the server uses to build the UI payload. It never touches `TryCraft`:
 - `LevelForXp(xp)` (`:13`) = `floor(sqrt(xp / 100)) + 1`.
 
 (There is a duplicate, unused copy of these formulas in `PlayerCrafting.CraftingXpTableImpl` at
-`PlayerCrafting.cs:223`. It is dead code; the live curve is `CraftingXpTable`.)
+`PlayerCrafting.cs:229`. It is dead code; the live curve is `CraftingXpTable`.)
 
 ## 5. PlayerCrafting — the server craft path and the offer payload
 
-`PlayerCrafting` (`Assets/Scripts/Crafting/PlayerCrafting.cs:27`) is the `NetworkBehaviour` holding a
+`PlayerCrafting` (`Assets/Scripts/Crafting/PlayerCrafting.cs:28`) is the `NetworkBehaviour` holding a
 player's crafting XP, running the authoritative craft, and implementing `ICraftingSource` so the
 crafting panel can bind to it.
 
 ### Opening a station (server decides what is offered)
 
-- `RequestOpenStation(station)` (`:82`) — owner only; sends `RpcRequestOpen(station.NetworkObject)`.
-- `RpcRequestOpen` (`:95`) — `[ServerRpc]`; re-checks the sender owns the object, then calls
+- `RequestOpenStation(station)` (`:87`) — owner only; sends `RpcRequestOpen(station.NetworkObject)`.
+- `RpcRequestOpen` (`:100`) — `[ServerRpc]`; re-checks the sender owns the object, then calls
   `TrySendOffers`.
-- `TrySendOffers(target, stationObject)` (`:110`, `[Server]`) — the server's gate: the station must
+- `TrySendOffers(target, stationObject)` (`:115`, `[Server]`) — the server's gate: the station must
   exist and the player must be within `MaxCraftDistance` (`:29`). Only then does it build the payload
   and answer **that one client** with `RpcOpenStation`.
 - `BuildOffers(station)` (`:140`, `[Server]`) — `CraftingOfferRules.Available(station.StationType,
@@ -164,7 +164,8 @@ crafting panel can bind to it.
   the panel without a new payload.
 
 Stepping too far from the station and clicking it produces **no payload**: the client cannot read a
-station it could not use.
+station it could not use. A successful open also reports an **Interact** quest objective using
+`CraftingStationType.ToString()` as the key.
 
 ### One reach rule for both ends
 
@@ -178,10 +179,10 @@ refuses — the walk would end and no panel would ever appear.
 
 - `MaxCraftDistance = 3f` (`:29`) — how close the player must stand to the station.
 - `RequestCraft(station, recipeName)` (`:152`) — owner only; sends `RpcRequestCraft`.
-- `RpcRequestCraft` (`:161`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`;
+- `RpcRequestCraft` (`:167`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`;
   on success it re-sends the offers (`TrySendOffers`) so the panel is handed the freshly-affordable
   list rather than a stale one.
-- `TryCraft(NetworkObject stationObject, string recipeName)` (`:174`) — the server's full check:
+- `TryCraft(NetworkObject stationObject, string recipeName)` (`:180`) — the server's full check:
 
 ```csharp
 if (stationObject == null || !stationObject.TryGetComponent(out CraftingStation station))

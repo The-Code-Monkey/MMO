@@ -97,12 +97,14 @@ The HUD is a set of independent views under a coordinating component, all create
 ### NetworkHud (the coordinator)
 
 `NetworkHud` (`Assets/Scripts/UI/NetworkHud.cs`) holds references to the player HUD, target frame,
-bag grid, action bar, the two collapsible windows and the equipment panel. `SetViews(...)` wires
-them. The useful methods are:
+bag grid, action bar, the two collapsible windows, the equipment panel and the dialogue panel.
+`SetViews(...)` wires the main set; `SetCraftingPanel` and `SetDialogueView` add their concealed
+windows. The useful methods are:
 
 - `BindPlayer(vitals, inventory = null, abilities = null)` — binds the player-facing views to
   the live sources. Any argument may be null; that screen just stays quiet. The equipment panel
   binds when the inventory also implements `IEquipmentSource` (the real `PlayerInventory` does).
+- `BindDialogue(dialogue)` — binds the dialogue panel to the local player's `PlayerDialogue`.
 - `BindTarget(target)` — binds the target frame.
 - `Unbind()` — disconnects everything.
 
@@ -119,6 +121,7 @@ them. The useful methods are:
 | `MountCastBarView` | `Assets/Scripts/UI/MountCastBarView.cs` | `IMountSource` | Centre-screen mount/dismount progress bar, hidden when no cast is running. |
 | `ActionBarView` | `Assets/Scripts/UI/ActionBarView.cs` | `IAbilityBarSource` | Up to 6 ability slots. |
 | `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs` | `ICraftingSource` | A scrollable list of the server's recipe offers for the open station. |
+| `DialogueView` | `Assets/Scripts/UI/DialogueView.cs` | `PlayerDialogue` | Speaker, text and one button per server-sent dialogue choice. |
 
 How the views work:
 
@@ -165,19 +168,20 @@ It creates the player HUD (with health and mana bars), the target frame, the two
 (a bag window carrying the inventory grid and an equipment window carrying the paper doll, each with
 its own always-visible labelled icon and collapsed at start), the action bar (sized from
 `AbilityLoadout.MaxSlots`) and the crafting panel (via `CraftingPanelFactory.Create`, built
-concealed), plus the centre-screen mount cast bar, then adds a `NetworkHud` and binds them through
-`BindPlayer(..., crafting, mount)`. The bag is sized from `PlayerInventory.GridWidth`/
+concealed), the dialogue panel (via `DialogueView.Create`, built concealed), plus the centre-screen
+mount cast bar, then adds a `NetworkHud` and binds them through `BindPlayer(..., crafting, mount)`
+and `BindDialogue(dialogue)`. The bag is sized from `PlayerInventory.GridWidth`/
 `VisibleGridHeight`, which includes the mount's extra row.
 
 The crafting panel is built by `CraftingPanelFactory` (`Assets/Scripts/UI/CraftingPanelFactory.cs:17`):
 a titled frame with a **Close** button (`view.Conceal()`), a `ScrollRect` (viewport masked with
 `RectMask2D`, content with a `VerticalLayoutGroup` + `ContentSizeFitter`) and the
-`CraftingPanelView` itself. `NetworkHud.SetCraftingPanel` (`NetworkHud.cs:77`) stores it concealed;
-`NetworkHud.BindPlayer` (`:98`) binds it to the `ICraftingSource`, and `NetworkHud.Unbind` (`:150`)
+`CraftingPanelView` itself. `NetworkHud.SetCraftingPanel` (`NetworkHud.cs:106`) stores it concealed;
+`NetworkHud.BindPlayer` (`:134`) binds it to the `ICraftingSource`, and `NetworkHud.Unbind` (`:186`)
 unbinds and conceals it again.
 
-`EnsureEventSystem` (`:103`) returns the existing `EventSystem` or creates one. It prefers the new
-Input System's UI module, discovering it by reflection (`FindInputSystemModule`, `:296`) and falling
+`EnsureEventSystem` (`NetworkHudFactory.cs:136`) returns the existing `EventSystem` or creates one. It prefers the new
+Input System's UI module, discovering it by reflection (`FindInputSystemModule`, `:440`) and falling
 back to the old `StandaloneInputModule`.
 
 ### Who builds the HUD: LocalPlayerHud

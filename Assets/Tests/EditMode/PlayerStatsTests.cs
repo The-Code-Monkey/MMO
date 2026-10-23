@@ -188,10 +188,9 @@ namespace MMO.Tests
                 }
             }
 
-            Assert.AreEqual(7, syncVars.Count,
-                "PlayerStats should hold exactly seven SyncVars: health, mana, level, the two " +
-                "equipment bonus caps and the two aura bonus caps — inventory and auras each " +
-                "recalculate their own pair.");
+            Assert.AreEqual(8, syncVars.Count,
+                "PlayerStats should hold exactly eight SyncVars: health, mana, level, experience, " +
+                "the two equipment bonus caps and the two aura bonus caps.");
         }
 
         [Test]
@@ -215,7 +214,7 @@ namespace MMO.Tests
             // vitals are: only their owning systems may move them, never a client.
             foreach (string stat in new[]
                      {
-                         "Level", "MaxHealthBonus", "MaxManaBonus",
+                         "Level", "Experience", "MaxHealthBonus", "MaxManaBonus",
                          "AuraHealthBonus", "AuraManaBonus",
                          "EffectiveMaxHealth", "EffectiveMaxMana",
                      })
@@ -248,7 +247,7 @@ namespace MMO.Tests
             foreach (string name in new[]
                      {
                          "TakeDamage", "Heal", "SpendMana", "RestoreMana",
-                         "SetLevel", "ApplyEquipmentBonuses", "ApplyAuraBonuses",
+                         "SetLevel", "AddExperience", "ApplyEquipmentBonuses", "ApplyAuraBonuses",
                      })
             {
                 MethodInfo method = GetMutator(name);

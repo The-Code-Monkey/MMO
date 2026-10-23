@@ -68,6 +68,7 @@ namespace MMO.Content
             }
 
             _opened.Value = true;
+            inventory.GetComponent<PlayerQuestLog>()?.NotifyInteract(name);
             return true;
         }
 
