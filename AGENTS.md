@@ -44,8 +44,8 @@ All core game logic and network payloads MUST maintain at least 90% unit test co
  * Netcode Testing: Write unit tests for data structures, serialization, and server validation using mock state before testing full FishNet RPC flows.
  * TDD Requirement for AI: When asking the AI to implement new gameplay features, state logic, or inventory updates:
    * Have the AI generate unit test cases first (PlayMode or EditMode).
-   * Implement the feature logic until all tests pass.
-   * Ensure no regression breaks existing coverage.
+   * Implement the feature logic and verify compilation.
+   * **NEVER run the tests** (do not invoke `tests-run` via Unity MCP or run Unity test suites via CLI). Write the tests and rely on compilation checks only.
 // Example requirement: Every server validation method must have isolated EditMode tests.
 [Test]
 public void Inventory_EquipItem_FailsWhenLevelRequirementNotMet() {

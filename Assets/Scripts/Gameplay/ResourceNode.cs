@@ -3,6 +3,7 @@ using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Inventory;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace MMO.Gameplay
 {
@@ -13,6 +14,21 @@ namespace MMO.Gameplay
     /// empty), and <see cref="Depleted"/>, whether it is currently empty and waiting out its
     /// respawn timer. Every client holds a copy of both and is refused if it tries to write
     /// them, so a "vein" can never be re-filled by the machine clicking it.
+    ///
+    /// <para>
+    /// What a node <em>is</em> — ore or lumber, five harvests or one, a pickaxe or bare hands,
+    /// a T2 vein or a T1 one — lives on the <see cref="ResourceDefinition"/> asset the node
+    /// carries, the same way <see cref="MMO.Crafting.CraftingStation"/> wears a
+    /// <see cref="MMO.Crafting.RecipeData"/>. One component, one prefab, every kind of
+    /// resource: the balance moves into an asset a designer edits, and the tool rule is a kind
+    /// and a tier instead of a string somebody has to spell the same way twice.
+    /// </para>
+    ///
+    /// <para>
+    /// The definition is configuration, not state: both ends read the same prefab, exactly like
+    /// <see cref="WeaponData"/> on <see cref="PlayerCombat"/>, so nothing here is replicated
+    /// and nothing here has a setter.
+    /// </para>
     ///
     /// <para>
     /// The harvest itself is a round trip: a click on this node's collider routes through
@@ -31,36 +47,10 @@ namespace MMO.Gameplay
     /// visible. The server's own respawn timer — plain server clock arithmetic in
     /// <see cref="Update"/> — flips the flag back and the vein reappears everywhere at once.
     /// </para>
-    ///
-    /// <para>
-    /// The six serialized fields are configuration, not state: both ends read the same prefab,
-    /// exactly like <see cref="WeaponData"/> on <see cref="PlayerCombat"/>, so nothing here is
-    /// replicated and nothing here has a setter. Balance lives in the Inspector.
-    /// </para>
     /// </summary>
     public sealed class ResourceNode : NetworkBehaviour
     {
-        /// <summary>What a default node yields: the shipped <c>Resources</c> item key.</summary>
-        public const string DefaultItemId = "Iron Ore";
-
-        /// <summary>Harvests a default vein holds before it depletes — the durability/tick count.</summary>
-        public const int DefaultMaxYield = 5;
-
-        /// <summary>Seconds a default node spends empty before the server regrows it.</summary>
-        public const float DefaultRespawnSeconds = 30f;
-
-        /// <summary>Seconds between two harvest ticks of a default node — the tick timer.</summary>
-        public const float DefaultGatherIntervalSeconds = 1.2f;
-
-        /// <summary>Metres a default node may be gathered from.</summary>
-        public const float DefaultInteractRange = 3f;
-
-        [SerializeField] private string _itemId = DefaultItemId;
-        [SerializeField] private string _requiredTool = string.Empty;
-        [SerializeField, Min(1)] private int _maxYield = DefaultMaxYield;
-        [SerializeField, Min(0f)] private float _respawnSeconds = DefaultRespawnSeconds;
-        [SerializeField, Min(0f)] private float _gatherIntervalSeconds = DefaultGatherIntervalSeconds;
-        [SerializeField, Min(0f)] private float _interactRange = DefaultInteractRange;
+        [SerializeField] private ResourceDefinition _definition;
 
         // Server-owned. Clients hold a replicated copy and are refused if they try to write.
         private readonly SyncVar<int> _remaining = new();
@@ -70,26 +60,61 @@ namespace MMO.Gameplay
         // replicated — a client that wants a respawn countdown asks the server for one.
         private double _respawnAt;
 
-        /// <summary>The item key each successful harvest awards into the gatherer's bag.</summary>
-        public string ItemId => _itemId;
-
         /// <summary>
-        /// The item key the gatherer must hold (bag or equipment) to harvest this node, or an
-        /// empty string when bare hands suffice.
+        /// The definition that says what this node is and what it gives. May be null — a node
+        /// with no definition yields nothing rather than crashing the gather loop.
         /// </summary>
-        public string RequiredTool => _requiredTool ?? string.Empty;
+        public ResourceDefinition Definition => _definition;
+
+        /// <summary>What kind of resource this node is.</summary>
+        public ResourceType Type => _definition != null ? _definition.Type : ResourceType.None;
+
+        /// <summary>The item a harvest awards, or null when the node has nothing to give.</summary>
+        public ItemDefinition Drop => _definition != null ? _definition.Drop : null;
 
         /// <summary>Harvests the node holds before it depletes, floored at one.</summary>
-        public int MaxYield => Mathf.Max(1, _maxYield);
+        public int DropAmount =>
+            _definition != null ? _definition.DropAmount : ResourceDefinition.DefaultDropAmount;
+
+        /// <summary>
+        /// The tool tier a gatherer has to bring. Zero means the node asks for no tier — bare
+        /// hands will do — and a tier above zero means a T1 tool never opens a T2 vein.
+        /// </summary>
+        public int GatheringTier => _definition != null ? _definition.GatheringTier : 0;
+
+        /// <summary>
+        /// The kind of tool the gatherer must hold, or <see cref="ToolKind.None"/> when bare
+        /// hands suffice.
+        /// </summary>
+        public ToolKind RequiredTool =>
+            _definition != null ? _definition.RequiredTool : ToolKind.None;
 
         /// <summary>Seconds the node stays depleted before the server regrows it.</summary>
-        public float RespawnSeconds => Mathf.Max(0f, _respawnSeconds);
+        public float ResetTime =>
+            _definition != null ? _definition.ResetTime : ResourceDefinition.DefaultResetTime;
 
         /// <summary>Seconds between two harvest ticks.</summary>
-        public float GatherIntervalSeconds => Mathf.Max(0f, _gatherIntervalSeconds);
+        public float GatherIntervalSeconds =>
+            _definition != null
+                ? _definition.GatherIntervalSeconds
+                : ResourceDefinition.DefaultGatherIntervalSeconds;
 
-        /// <summary>Metres a gatherer may stand from this node.</summary>
-        public float InteractRange => Mathf.Max(0f, _interactRange);
+        /// <summary>Metres a gatherer may be gathered from.</summary>
+        public float InteractRange =>
+            _definition != null ? _definition.InteractRange : ResourceDefinition.DefaultInteractRange;
+
+        /// <summary>
+        /// Where a player stands to gather: in front of the body, inside
+        /// <see cref="InteractRange"/> so the click that walked them here can start the session.
+        /// </summary>
+        public Vector3 StandOffPosition =>
+            transform.position - transform.forward * Mathf.Min(StandOffDistance, InteractRange * 0.75f);
+
+        /// <summary>
+        /// Metres from the node's centre to its standing spot — clear of the body, like the
+        /// crafting station's stand-off.
+        /// </summary>
+        public const float StandOffDistance = 2f;
 
         /// <summary>Harvests left. Zero once the server has taken the last one.</summary>
         public int Remaining => _remaining.Value;
@@ -111,12 +136,24 @@ namespace MMO.Gameplay
         /// </summary>
         public event Action StateChanged;
 
+        /// <summary>
+        /// Points this node at a definition. This is configuration, not state: the reference is
+        /// baked into the prefab and read by both ends, and this setter exists for the code that
+        /// builds a node in memory (<see cref="MMO.Net.ResourceNodePrefabFactory"/>) or writes
+        /// one to disk (the editor baker). It is never replicated, and the server's own copy is
+        /// the only one that ever decides anything.
+        /// </summary>
+        public void SetDefinition(ResourceDefinition definition)
+        {
+            _definition = definition;
+        }
+
         public override void OnStartNetwork()
         {
             if (IsServer)
             {
                 // A SyncVar is default-initialised, so an unreset node would spawn empty.
-                _remaining.Value = MaxYield;
+                _remaining.Value = DropAmount;
                 _depleted.Value = false;
             }
 
@@ -154,7 +191,7 @@ namespace MMO.Gameplay
         /// <summary>
         /// Server: take one harvest from this node on behalf of <paramref name="inventory"/>.
         /// Refuses — without spending any durability — when the node is unavailable, when the
-        /// item key resolves to no definition, or when the bag has no room for the award.
+        /// definition has no drop item to give, or when the bag has no room for the award.
         /// Returns true only when an item actually landed in the bag, which is the fact
         /// <see cref="PlayerGathering"/> uses to decide whether to schedule the next tick.
         /// </summary>
@@ -169,11 +206,11 @@ namespace MMO.Gameplay
             if (!IsAvailable || inventory == null)
                 return false;
 
-            ItemDefinition definition = ItemDefinitionRegistry.Resolve(_itemId);
+            ItemDefinition definition = Drop;
             if (definition == null)
             {
                 Debug.LogError(
-                    $"{nameof(ResourceNode)}: cannot award '{_itemId}'; no definition registered or loadable.");
+                    $"{nameof(ResourceNode)}: '{name}' has no drop item to award; nothing to gather.");
                 return false;
             }
 
@@ -185,6 +222,23 @@ namespace MMO.Gameplay
                 Deplete(Time.timeAsDouble);
 
             return true;
+        }
+
+        /// <summary>
+        /// True when the player's tools satisfy this node's requirement — the server's gate.
+        /// A named kind has to be held, and it has to reach the node's tier, so a T1 pickaxe
+        /// never opens a T2 vein.
+        /// </summary>
+        public bool HasRequiredTool(PlayerInventory inventory)
+        {
+            if (inventory == null)
+                return false;
+
+            return ToolRules.Satisfies(
+                inventory.Items,
+                inventory.Equipment,
+                RequiredTool,
+                GatheringTier);
         }
 
         /// <summary>
@@ -239,6 +293,10 @@ namespace MMO.Gameplay
 
             if (TryGetComponent(out Renderer nodeRenderer))
                 nodeRenderer.enabled = !depleted;
+
+            // The carve goes with the body: a depleted vein is not an invisible wall.
+            if (TryGetComponent(out NavMeshObstacle obstacle))
+                obstacle.enabled = !depleted;
         }
 
         /// <summary>
@@ -247,19 +305,19 @@ namespace MMO.Gameplay
         /// </summary>
         private void Deplete(double now)
         {
-            _respawnAt = GatheringRules.ComputeRespawnAt(now, RespawnSeconds);
+            _respawnAt = GatheringRules.ComputeRespawnAt(now, ResetTime);
             _depleted.Value = true;
 
-            Debug.Log($"[ResourceNode {name}] depleted; respawns in {RespawnSeconds:0.#}s.");
+            Debug.Log($"[ResourceNode {name}] depleted; respawns in {ResetTime:0.#}s.");
         }
 
         /// <summary>Server: the empty window is over — full durability, back on every client.</summary>
         private void Respawn()
         {
-            _remaining.Value = MaxYield;
+            _remaining.Value = DropAmount;
             _depleted.Value = false;
 
-            Debug.Log($"[ResourceNode {name}] respawned with {MaxYield} harvests.");
+            Debug.Log($"[ResourceNode {name}] respawned with {DropAmount} harvests.");
         }
 
         private void OnRemainingChanged(int previous, int current, bool asServer)

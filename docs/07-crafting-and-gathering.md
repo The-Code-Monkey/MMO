@@ -205,47 +205,107 @@ payload is only a display list, a forged or stale recipe name never authorises a
 re-runs the full validation.
 
 
-## 6. Gathering data: ResourceNode
+## 6. Gathering data: ResourceDefinition and ResourceNode
 
-`ResourceNode` (`Assets/Scripts/Gameplay/ResourceNode.cs:41`) is a `NetworkBehaviour`. It is placed
+A resource is two pieces: the **data** (`ResourceDefinition`) and the **object** (`ResourceNode`).
+
+### 6.1 ResourceDefinition — what a resource is
+
+`ResourceDefinition` (`Assets/Scripts/Gameplay/ResourceDefinition.cs:26`) is a `ScriptableObject`
+created with `Assets > Create > MMO > Resource Definition`. It is the gathering half of what
+`RecipeData` is to crafting: a designer authors it, the node wears it, and the balance never lives
+in code.
+
+| Field | Property | Meaning |
+|---|---|---|
+| `_resourceType` | `Type` | `ResourceType` — `None`, `Ore`, `Lumber`, `Herb`, `Fish`. |
+| `_drop` | `Drop` | The `ItemDefinition` a harvest awards. |
+| `_dropAmount` | `DropAmount` | Units the node holds **in total** (floored at 1). |
+| `_gatheringTier` | `GatheringTier` | Tool tier the gatherer must bring (0 = bare hands). |
+| `_requiredTool` | `RequiredTool` | `ToolKind` the resource names (`None` = no tool named). |
+| `_resetTime` | `ResetTime` | Seconds an emptied node stays empty. |
+| `_gatherIntervalSeconds` | `GatherIntervalSeconds` | Seconds between two harvests. |
+| `_interactRange` | `InteractRange` | Metres a gatherer may stand from the node. |
+
+The shipped definition is `Assets/Resources/ResourceDefinitions/Iron_Ore.asset` — an ore vein that
+drops the shipped `Iron Ore` item, five units, bare-handed (no tool, tier 0), a 30 second reset, a
+1.2 second interval and a 3 metre reach. `ResourceDefinition.LoadDefault()`
+(`Assets/Scripts/Gameplay/ResourceDefinition.cs:101`) finds it by name, which is how the prefab
+factory hands a runtime-built node its configuration.
+
+The definition carries **no networking**. Both ends read the same asset through the same prefab —
+exactly like `WeaponData` on `PlayerCombat` — so there is nothing to replicate and nothing a client
+can lie about.
+
+### 6.2 ResourceNode — the object in the world
+
+`ResourceNode` (`Assets/Scripts/Gameplay/ResourceNode.cs:50`) is a `NetworkBehaviour`. It is placed
 in a scene as a `ResourceNodeMarker` (built as a prefab with `Tools > MMO > Create Resource Node
 Prefab`); on server start the zone's `WorldBootstrap` spawns the networked node at each marker (see
-[04](04-networking-and-the-join-flow.md) and [09](09-editor-tooling-and-scenes.md)). Its defaults:
+[04](04-networking-and-the-join-flow.md) and [09](09-editor-tooling-and-scenes.md)).
 
-| Constant | Value | Line |
-|---|---|---|
-| `DefaultItemId` | `"Iron Ore"` | `:44` |
-| `DefaultMaxYield` | 5 | `:47` |
-| `DefaultRespawnSeconds` | 30 | `:50` |
-| `DefaultGatherIntervalSeconds` | 1.2 | `:53` |
-| `DefaultInteractRange` | 3 | `:56` |
-
-Configurable fields: item id, required tool, max yield, respawn seconds, gather interval and
-interact range.
+The node's only serialized field is `_definition` (`:60`); every configuration question is answered
+by reading it (`DropAmount`, `GatheringTier`, `RequiredTool`, `ResetTime`, `GatherIntervalSeconds`,
+`InteractRange`). A node with no definition is **inert, not broken**: it answers with the documented
+defaults and yields nothing.
 
 Replicated state is just `Remaining` (`SyncVar<int>`) and `Depleted` (`SyncVar<bool>`). Depletion is
-a **state change**, not a despawn: when depleted, `ApplyDepletedState` (`:235`) disables the
-collider and renderer, and a server timer respawns it 30 seconds later (`Respawn`, `:257`).
+a **state change**, not a despawn: when depleted, `ApplyDepletedState` (`:275`) disables the
+collider and renderer, and a server timer respawns it when `ResetTime` is up (`Respawn`, `:297`).
 
-`TryGather(PlayerInventory inventory)` (`:166`) is the server's harvest: if the node is available,
-resolve the item, `inventory.TryAddItem(definition)`, decrement `Remaining`, and deplete at zero.
+The prefab also carries a carving `NavMeshObstacle` sized to its body, exactly like the crafting
+station, so a route bends *around* a vein instead of through it. Clicking one from out of reach is a
+walk, not a gather attempt: `PlayerClickToMove.BeginNodeApproach` walks to the node's
+`StandOffPosition` (clear of the body, inside `InteractRange`) and sends the gather request when the
+walk ends — the same walk-then-act shape as a station, and the reason the destination marker lands
+on the floor beside the vein rather than on top of it.
+
+`TryGather(PlayerInventory inventory)` (`:190`) is the server's harvest: if the node is available,
+`inventory.TryAddItem(definition)`, decrement `Remaining`, and deplete at zero.
 **Award leads, durability follows** — if the bag is full, the node is not consumed.
 
 ## 7. Gathering rules
 
-`GatheringRules` (`Assets/Scripts/Gameplay/GatheringRules.cs:24`) is pure:
+`GatheringRules` (`Assets/Scripts/Gameplay/GatheringRules.cs:28`) is pure:
 
 | Method | Purpose | Line |
 |---|---|---|
-| `IsWithinReach(gatherer, node, reach)` | Distance check (strict `<`, positive reach). | `:32` |
-| `HasRequiredTool(bag, equipment, requiredTool)` | Does the player carry the tool (in bag **or** worn)? Blank tool = always true. | `:49` |
-| `IsTickDue(nextTickAt, now)` | `now >= nextTickAt`. | `:62` |
-| `ComputeNextTick(now, interval)` | `now + max(0, interval)`. | `:72` |
-| `ComputeRespawnAt(now, respawn)` | `now + max(0, respawn)`. | `:78` |
-| `IsRespawnDue(respawnAt, now)` | `now >= respawnAt`. | `:84` |
-| `ComputeRemaining(remaining)` | `max(0, remaining - 1)`. | `:93` |
+| `IsWithinReach(gatherer, node, reach)` | Distance check (strict `<`, positive reach). | `:36` |
+| `IsTickDue(nextTickAt, now)` | `now >= nextTickAt`. | `:42` |
+| `ComputeNextTick(now, interval)` | `now + max(0, interval)`. | `:52` |
+| `ComputeRespawnAt(now, respawn)` | `now + max(0, respawn)`. | `:58` |
+| `IsRespawnDue(respawnAt, now)` | `now >= respawnAt`. | `:64` |
+| `ComputeRemaining(remaining)` | `max(0, remaining - 1)`. | `:73` |
 
-Tool checks look only at `ItemInstance.ItemName`, so no asset has to load.
+### 7.1 The tool gate: ToolRules
+
+The tool check is not part of `GatheringRules`: it is a question about the items a player holds, so
+it lives with the item data in `ToolRules` (`Assets/Scripts/Inventory/ToolRules.cs:24`).
+
+A tool's identity lives on its `ItemDefinition`: `ToolKind` (which family of tool it is) and
+`ToolTier` (how good it is). `ToolKind` values are `None`, `Pickaxe`, `Axe`, `Shovel`, `Sickle`,
+`Knife`.
+
+| Method | Purpose | Line |
+|---|---|---|
+| `KindOf(itemName)` | The kind of tool an item is (`None` when it is not a tool). | `:36` |
+| `TierOf(itemName)` | The tier an item reaches (0 when it is not a tool). | `:46` |
+| `BestTier(bag, equipment, kind)` | The best tier of that kind, in bag **or** worn (`NoTool` = −1). | `:57` |
+| `BestToolTier(bag, equipment)` | The best tier of any tool at all. | `:72` |
+| `Satisfies(bag, equipment, requiredTool, requiredTier)` | The gate itself. | `:96` |
+
+`Satisfies` has two conditions and both must hold:
+
+- **Kind.** If the resource names a tool, the player must hold one of that kind (bag or worn).
+- **Tier.** If the resource asks for a tier, the tool that counts must reach at least that tier —
+  which is what refuses a T1 pickaxe on a T2 vein.
+
+A resource that names no tool and asks for no tier is harvestable by hand. A resource that names no
+tool but *does* ask for a tier still needs a tool (bare hands reach no tier), of any kind. There is
+no way to write "T2 or above" and have bare hands slip through.
+
+An item nobody can resolve is simply not a tool: it contributes no kind and no tier, and is never an
+exception. A missing definition is data the server has to refuse, not a crash.
 
 ## 8. PlayerGathering — the harvest loop
 
@@ -253,15 +313,19 @@ Tool checks look only at `ItemInstance.ItemName`, so no asset has to load.
 pipeline. The tick timer lives on the player and is server-only.
 
 - `RequestGather(NetworkObject target)` (`:60`) — owner only; sends `RpcRequestGather`.
-- `RpcRequestGather` (`:72`) — `[ServerRpc]`; re-checks ownership, then `StartGathering`.
-- `StartGathering(NetworkObject target)` (`:91`) — checks the target is a spawned, available
-  `ResourceNode`, the player has an inventory, is within `InteractRange`, and has the required tool.
-  Then it sets `_nextTickAt = now + GatherIntervalSeconds` — so the **first** harvest lands one
-  interval later, not instantly.
-- `StopGathering()` (`:122`) — clears the target; idempotent.
-- `Update` (`:132`) — each server frame while gathering: verify the node is still there/available and
+- `RpcRequestGather` (`:73`) — `[ServerRpc]`; re-checks ownership, then `StartGathering`.
+- `StartGathering(NetworkObject target)` (`:93`) — checks the target is a spawned, available
+  `ResourceNode`, the player has an inventory, is within `InteractRange`, and satisfies the tool
+  gate. Then it sets `_nextTickAt = now + GatherIntervalSeconds` — so the **first** harvest lands
+  one interval later, not instantly.
+- `StopGathering()` (`:124`) — clears the target; idempotent.
+- `Update` (`:133`) — each server frame while gathering: verify the node is still there/available and
   the player is still in range with the tool; when the tick is due, call `node.TryGather`, stop if the
   node is now depleted, otherwise schedule the next tick.
+
+The tool gate itself is `HasRequiredTool(node, inventory)` (`:188`), which asks `ToolRules` — the
+same question is asked at the start of a session and again on every tick, because a player can drop
+or swap a tool between two harvests.
 
 Note the asymmetry with crafting: in `PlayerGathering`, `Update` re-checks reach/tool every tick, so
 walking away or dropping the tool stops the harvest.
@@ -270,15 +334,18 @@ walking away or dropping the tool stops the harvest.
 
 ```
 CLIENT clicks a node
-  ResourceNode.OnMouseDown → RequestGatherFromLocalPlayer
+  too far → PlayerClickToMove.BeginNodeApproach
+    → walk to StandOffPosition, marker on the floor
+    → walk ends within reach → RequestGatherFromLocalPlayer
+  within reach → ResourceNode.OnMouseDown → RequestGatherFromLocalPlayer
     → PlayerGathering.FindLocal → RequestGather ── ServerRpc ──►
 SERVER
   PlayerGathering.RpcRequestGather → StartGathering
-    checks: spawned node, available, in range, has tool
+    checks: spawned node, available, in range, tool kind + tier satisfied
     schedule first tick
   ... every frame while gathering (Update) ...
     tick due → node.TryGather(inventory)
-       resolve item → inventory.TryAddItem → decrement Remaining → maybe Deplete
+       inventory.TryAddItem → decrement Remaining → maybe Deplete
     stop if depleted or out of range / tool gone
     SyncVar Remaining/Depleted replicate to all clients
 ```
@@ -295,10 +362,16 @@ SERVER
   changes.
 - **Change the crafting XP curve.** Edit `CraftingXpTable.XpForLevel`/`LevelForXp`. Ignore the dead
   `CraftingXpTableImpl` copy.
+- **Add a new kind of resource.** Create the asset (`Assets > Create > MMO > Resource Definition`),
+  set the kind, drop item, amount, tool and tier, and save it under `Resources/ResourceDefinitions`.
+  Point a node at it — no code changes.
 - **Add a resource node to a scene.** Drop a `ResourceNodeMarker` where the node should appear (or
-  bake the zone with `Tools > MMO > Build Zones`), point it at the resource-node prefab and set its
-  item id, tool requirement, yield, respawn and interval.
-- **Change how long gathering takes per item.** Edit `GatherIntervalSeconds` on the node.
-- **Tune node respawn.** Edit `RespawnSeconds` on the node.
+  bake the zone with `Tools > MMO > Build Zones`) and point it at the resource-node prefab. The
+  prefab carries the definition; the marker only says where the node goes.
+- **Make a resource need a tool.** Set the definition's `RequiredTool` (the kind) and
+  `GatheringTier` (the floor). The tool item itself carries `ToolKind` and `ToolTier` on its
+  `ItemDefinition` — a T1 pickaxe and a T2 pickaxe are two items of one kind at two tiers.
+- **Change how long gathering takes per item.** Edit `GatherIntervalSeconds` on the definition.
+- **Tune node respawn.** Edit `ResetTime` on the definition.
 - **Make gathering stop when the player moves.** Already handled: `PlayerGathering.Update` re-checks
   `IsWithinReach` every tick.

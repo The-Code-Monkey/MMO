@@ -58,6 +58,7 @@ namespace MMO.Editor
                 TargetDummyBaker.WireTargetDummy(existing);
                 CraftingStationBaker.WireCraftingStation(existing);
                 LootBagBaker.WireLootBag(existing);
+                ResourceNodeBaker.WireResourceNode(existing);
                 return existing;
             }
 
@@ -67,9 +68,10 @@ namespace MMO.Editor
             NetworkObject targetDummyPrefab = TargetDummyBaker.EnsureTargetDummyPrefab();
             NetworkObject craftingStationPrefab = CraftingStationBaker.EnsureCraftingStationPrefab();
             NetworkObject lootBagPrefab = LootBagBaker.EnsureLootBagPrefab();
+            NetworkObject resourceNodePrefab = ResourceNodeBaker.EnsureResourceNodePrefab(); // <-- Add this line
 
             NetworkManager manager = NetworkManagerFactory.Create(
-                settings, out _, playerPrefab, targetDummyPrefab, craftingStationPrefab, lootBagPrefab);
+                settings, out _, playerPrefab, targetDummyPrefab, craftingStationPrefab, lootBagPrefab, resourceNodePrefab);
 
             // A freshly constructed GameObject already lands in the active scene, so only
             // move it when it genuinely ended up somewhere else.

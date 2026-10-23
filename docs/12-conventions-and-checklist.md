@@ -44,7 +44,7 @@ Three anti-cheat rules fall out of this; they are documented in full in
 - Put decision logic in pure classes/static methods that take every input (including `now`) as an
   argument, read no clock, and touch no Unity objects. Examples: `AbilityCastRules`,
   `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `GatheringRules`, `JoinPolicy`,
-  `PartyRules`, `GuildRules`, `MovementRules`, `SightRules`.
+  `PartyRules`, `GuildRules`, `MovementRules`, `SightRules`, `ToolRules`.
 - Put the clock, world and network in a `NetworkBehaviour` shell that calls the pure core.
 
 This is what keeps the test suite fast and offline. If you find yourself writing `Time.time` inside a
@@ -71,6 +71,7 @@ New abilities, items, recipes, weapons and armor are **assets**, not code. Prefe
 - `Assets > Create > MMO > Ability Data`
 - `Assets > Create > MMO > Item Definition`
 - `Assets > Create > MMO > Recipe Data`
+- `Assets > Create > MMO > Resource Definition`
 - `Assets > Create > MMO > Weapon Data` / `Armor Data`
 
 Items and recipes self-register via `OnEnable`, so dropping a named asset in the right `Resources`
@@ -88,7 +89,8 @@ From `agents.md` and the way the suite is built:
 4. Run the whole suite before you consider the change done.
 
 See [10](10-testing.md) for the fakes (`FakeApiGateway`, `InMemoryPlayerRepository`,
-`TestItemDefinitions`) and the `*TestAsset` cleanup pattern for assets/prefabs.
+`TestItemDefinitions`, `TestResourceDefinitions`) and the `*TestAsset` cleanup pattern for
+assets/prefabs.
 
 ## 6. Persistence and backend rules
 

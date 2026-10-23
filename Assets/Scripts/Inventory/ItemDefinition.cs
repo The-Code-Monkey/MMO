@@ -5,9 +5,10 @@ namespace MMO.Inventory
     /// <summary>
     /// Pure data for one kind of item: what it is called, which <see cref="EquipmentSlot"/>
     /// designates it as worn, how strong the wearer must be to use it, how much room it takes
-    /// up in the inventory grid, and the player stats it grants while worn. This is the
-    /// "you are what you wear" data half — an asset you right-click into existence from the
-    /// Project window, never a scene object.
+    /// up in the inventory grid, the player stats it grants while worn, and — for the tools —
+    /// what kind of tool it is and what tier it reaches. This is the "you are what you wear"
+    /// data half — an asset you right-click into existence from the Project window, never a
+    /// scene object.
     ///
     /// Deliberately carries no networking. Balance numbers are not state: the server reads the
     /// same asset the client reads, so there is nothing to replicate and nothing for a client
@@ -34,6 +35,8 @@ namespace MMO.Inventory
         [SerializeField] private bool _isStackable;
         [SerializeField, Min(1)] private int _maxStackSize = 1;
         [SerializeField, Min(0)] private long _value;
+        [SerializeField] private ToolKind _toolKind = ToolKind.None;
+        [SerializeField, Min(0)] private int _toolTier;
 
         /// <summary>
         /// The stable key both ends of the connection use to identify this item. It is what
@@ -78,6 +81,18 @@ namespace MMO.Inventory
 
         /// <summary>The monetary/value of a single item unit (in game currency units).</summary>
         public long Value => _value;
+
+        /// <summary>
+        /// What kind of tool this item is, or <see cref="ToolKind.None"/> when it is not a tool
+        /// at all. A resource node asks for a kind, and the player has to hold one of it.
+        /// </summary>
+        public ToolKind ToolKind => _toolKind;
+
+        /// <summary>
+        /// The tier this tool reaches. Zero is an unranked tool; a resource that asks for a tier
+        /// wants a tool at least that high, so a T1 pickaxe never opens a T2 vein.
+        /// </summary>
+        public int ToolTier => Mathf.Max(0, _toolTier);
 
         // A definition deserialized from disk already carries its name here, so loading an asset
         // registers it; one created in code has no name yet and registers after the Inspector

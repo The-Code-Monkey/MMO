@@ -4,6 +4,7 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Gameplay;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 namespace MMO.Net
@@ -50,7 +51,8 @@ namespace MMO.Net
 
         /// <summary>
         /// Builds the node: a squat cube with a <see cref="NetworkObject"/> and the project's own
-        /// networked <see cref="ResourceNode"/>, wearing its default ore configuration.
+        /// networked <see cref="ResourceNode"/>, wearing the shipped default resource
+        /// definition.
         /// </summary>
         /// <remarks>
         /// The result is an ordinary active GameObject, so it can be saved as a prefab asset
@@ -59,6 +61,16 @@ namespace MMO.Net
         /// spawns, so an inactive source is still perfectly spawnable.
         /// </remarks>
         public static NetworkObject Create()
+        {
+            return Create(ResourceDefinition.LoadDefault());
+        }
+
+        /// <summary>
+        /// Builds the node wearing <paramref name="definition"/> — the seam a test or a
+        /// content tool uses to bake a different kind of resource into a node. A null
+        /// definition leaves the node inert rather than broken: it yields nothing and says so.
+        /// </summary>
+        public static NetworkObject Create(ResourceDefinition definition)
         {
             // CreatePrimitive is what supplies the cube mesh, renderer and a BoxCollider whose
             // dimensions already match the mesh.
@@ -69,7 +81,16 @@ namespace MMO.Net
             // NetworkObject before any NetworkBehaviour: behaviours resolve their owning
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
-            go.AddComponent<ResourceNode>();
+            ResourceNode node = go.AddComponent<ResourceNode>();
+            node.SetDefinition(definition);
+
+            // Carve the NavMesh around the body like the crafting station does: a vein is
+            // scenery, and without the carve a walk to the far side goes straight through it.
+            // size is local — the root's scale turns unit size into DefaultScale's footprint.
+            var obstacle = go.AddComponent<NavMeshObstacle>();
+            obstacle.carving = true;
+            obstacle.size = Vector3.one;
+            obstacle.center = Vector3.zero;
 
             ApplyOreMaterial(go);
             return networkObject;
@@ -106,15 +127,14 @@ namespace MMO.Net
         /// behaviours are assigned right here instead of waiting for a second Awake. While not
         /// playing this is a no-op and <c>NetworkManager.Awake</c> assigns the ids later.
         /// </remarks>
-        public static bool Register(PrefabObjects prefabs, NetworkObject nodePrefab)
+        public static bool Register(PrefabObjects prefabs, NetworkObject nodePrefab, bool initializeAdded = false)
         {
             if (prefabs == null)
                 throw new ArgumentNullException(nameof(prefabs));
-
             if (nodePrefab == null || Contains(prefabs, nodePrefab))
                 return false;
 
-            prefabs.AddObject(nodePrefab, checkForDuplicates: true, initializeAdded: true);
+            prefabs.AddObject(nodePrefab, checkForDuplicates: true, initializeAdded: initializeAdded);
             return true;
         }
 

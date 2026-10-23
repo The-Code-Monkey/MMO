@@ -85,8 +85,9 @@ namespace MMO.Gameplay
         /// The server-side decision, and the whole of it: the target must be a live
         /// <see cref="ResourceNode"/> that is still available, the gatherer must stand within
         /// its <see cref="ResourceNode.InteractRange"/>, and the bag or the equipment must hold
-        /// the tool the node demands. Only then is a session booked. A fresh accepted request
-        /// replaces any running one, so clicking a second node simply moves the loop.
+        /// a tool that satisfies the node's requirement — the right kind, at the right tier. Only
+        /// then is a session booked. A fresh accepted request replaces any running one, so
+        /// clicking a second node simply moves the loop.
         /// </summary>
         [Server]
         public void StartGathering(NetworkObject target)
@@ -104,7 +105,7 @@ namespace MMO.Gameplay
             if (!GatheringRules.IsWithinReach(transform.position, node.transform.position, node.InteractRange))
                 return;
 
-            if (!GatheringRules.HasRequiredTool(inventory.Items, inventory.Equipment, node.RequiredTool))
+            if (!HasRequiredTool(node, inventory))
                 return;
 
             _node = node;
@@ -160,7 +161,7 @@ namespace MMO.Gameplay
             PlayerInventory inventory = Inventory;
             if (inventory == null ||
                 !GatheringRules.IsWithinReach(transform.position, node.transform.position, node.InteractRange) ||
-                !GatheringRules.HasRequiredTool(inventory.Items, inventory.Equipment, node.RequiredTool) ||
+                !HasRequiredTool(node, inventory) ||
                 !node.TryGather(inventory))
             {
                 StopGathering();
@@ -177,6 +178,20 @@ namespace MMO.Gameplay
             }
 
             _nextTickAt = GatheringRules.ComputeNextTick(now, node.GatherIntervalSeconds);
+        }
+
+        /// <summary>
+        /// The tool gate: the gatherer must hold a tool of the kind the node names, and that
+        /// tool has to reach the node's tier. A T1 pickaxe never opens a T2 vein, and bare hands
+        /// never open anything that asks for a tool at all.
+        /// </summary>
+        private static bool HasRequiredTool(ResourceNode node, PlayerInventory inventory)
+        {
+            return ToolRules.Satisfies(
+                inventory.Items,
+                inventory.Equipment,
+                node.RequiredTool,
+                node.GatheringTier);
         }
 
         /// <summary>

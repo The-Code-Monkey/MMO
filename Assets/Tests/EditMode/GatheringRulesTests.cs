@@ -1,17 +1,20 @@
-using System.Collections.Generic;
 using MMO.Gameplay;
-using MMO.Inventory;
 using NUnit.Framework;
 using UnityEngine;
 
 namespace MMO.Tests
 {
     /// <summary>
-    /// The gathering loop's arithmetic as pure functions: reach, tool, tick timing and the
+    /// The gathering loop's arithmetic as pure functions: reach, tick timing and the
     /// durability/respawn numbers behind <see cref="ResourceNode"/> and
     /// <see cref="PlayerGathering"/>. Nothing here spawns, connects or waits — the whole point
     /// of the rules living outside the networked components is that an EditMode test can prove
     /// the decision surface without a server, a scene or a frame.
+    ///
+    /// <para>
+    /// The tool gate lives in <see cref="ToolRules"/> and is proved there: it is a question
+    /// about the tools a player holds, not about the gathering loop.
+    /// </para>
     /// </summary>
     public sealed class GatheringRulesTests
     {
@@ -67,76 +70,6 @@ namespace MMO.Tests
             Assert.IsTrue(GatheringRules.IsWithinReach(gatherer, node, 6f),
                 "3-4-5 triangle: the straight-line distance is 5, under the 6 metre reach.");
             Assert.IsFalse(GatheringRules.IsWithinReach(gatherer, node, 4f));
-        }
-        #endregion
-
-        #region Tool requirements.
-        [Test]
-        public void HasRequiredTool_NoRequirement_IsAlwaysSatisfied()
-        {
-            Assert.IsTrue(GatheringRules.HasRequiredTool(null, null, string.Empty));
-            Assert.IsTrue(GatheringRules.HasRequiredTool(null, null, null),
-                "An absent requirement and an empty one mean the same thing: bare hands are fine.");
-        }
-
-        [Test]
-        public void HasRequiredTool_TheToolIsInTheBag_IsSatisfied()
-        {
-            List<ItemInstance> bag = new() { Item("Iron Ore"), Item("Pickaxe") };
-
-            Assert.IsTrue(GatheringRules.HasRequiredTool(bag, null, "Pickaxe"));
-        }
-
-        [Test]
-        public void HasRequiredTool_TheToolIsEquipped_IsSatisfied()
-        {
-            List<ItemInstance> equipment = new() { Item("Pickaxe") };
-
-            Assert.IsTrue(GatheringRules.HasRequiredTool(null, equipment, "Pickaxe"),
-                "A wielded pickaxe counts as much as a carried one.");
-        }
-
-        [Test]
-        public void HasRequiredTool_TheToolIsNowhere_IsRefused()
-        {
-            List<ItemInstance> bag = new() { Item("Iron Ore"), Item("Bread") };
-            List<ItemInstance> equipment = new() { Item("Iron Helm") };
-
-            Assert.IsFalse(GatheringRules.HasRequiredTool(bag, equipment, "Pickaxe"));
-        }
-
-        [Test]
-        public void HasRequiredTool_AnEmptyBagAndEmptyEquipment_AreRefused()
-        {
-            Assert.IsFalse(GatheringRules.HasRequiredTool(
-                new List<ItemInstance>(), new List<ItemInstance>(), "Pickaxe"));
-        }
-
-        [Test]
-        public void HasRequiredTool_NullContainers_AreRefusedNotThrown()
-        {
-            // The server validates against live SyncList views; one of them may not exist yet
-            // on a player that has not finished spawning. A null must read as "not held".
-            Assert.IsFalse(GatheringRules.HasRequiredTool(null, null, "Pickaxe"));
-        }
-
-        [Test]
-        public void HasRequiredTool_MatchesTheKeyExactly()
-        {
-            // Item keys are wire identities: two keys that differ only by case or by a plural
-            // are two different items, and "pickaxe" must not satisfy "Pickaxe".
-            List<ItemInstance> bag = new() { Item("pickaxe"), Item("Iron Ore") };
-
-            Assert.IsFalse(GatheringRules.HasRequiredTool(bag, null, "Pickaxe"));
-            Assert.IsTrue(GatheringRules.HasRequiredTool(bag, null, "pickaxe"));
-        }
-
-        [Test]
-        public void HasRequiredTool_IgnoresEmptySlots()
-        {
-            List<ItemInstance> bag = new() { ItemInstance.Empty, Item("Pickaxe") };
-
-            Assert.IsTrue(GatheringRules.HasRequiredTool(bag, null, "Pickaxe"));
         }
         #endregion
 
@@ -227,10 +160,5 @@ namespace MMO.Tests
             Assert.IsTrue(GatheringRules.IsRespawnDue(respawnAt: 130d, now: 130d));
         }
         #endregion
-
-        private static ItemInstance Item(string itemName)
-        {
-            return new ItemInstance { ItemName = itemName };
-        }
     }
 }

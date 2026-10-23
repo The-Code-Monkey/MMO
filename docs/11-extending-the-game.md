@@ -100,9 +100,17 @@ station interaction.
 
 1. Run `Tools > MMO > Create Resource Node Prefab` (if the prefab does not exist).
 2. Drag it into the zone scene.
-3. In the Inspector set the item id, required tool (blank means "no tool needed"), max yield, respawn
-   seconds, gather interval and interact range.
-4. Add an EditMode test in `GatheringRulesTests` or `ResourceNodeTests` if you change the rules.
+3. Create the resource's data (`Assets > Create > MMO > Resource Definition`): pick its kind, the
+   item it drops, how many units a node holds, the tool kind and tier it demands, and its timings.
+   Save it under `Assets/Resources/ResourceDefinitions/`.
+4. Point the node prefab at the definition — that is the node's whole configuration.
+5. Add EditMode tests in `ToolRulesTests`, `ResourceDefinitionTests` or `ResourceNodeTests` if you
+   change the rules.
+
+To add a **tool** item: create the item (`Assets > Create > MMO > Item Definition`), set its
+`ToolKind` and `ToolTier`, and save it under `Assets/Resources/Items/`. The tier lives on the item,
+so "Bronze Pickaxe" and "Iron Pickaxe" are two items of one kind at two tiers — and a T1 pickaxe
+will not open a T2 vein.
 
 ## 6. Add a new zone server
 

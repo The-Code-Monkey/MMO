@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Gameplay;
+using MMO.Inventory;
 using MMO.Net;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.AI;
 using Object = UnityEngine.Object;
 
 namespace MMO.Tests
@@ -88,6 +90,24 @@ namespace MMO.Tests
             var collider = nob.GetComponent<BoxCollider>();
             Assert.AreEqual(Vector3.one, collider.size, "The primitive collider stays unit-sized.");
             Assert.AreEqual(ResourceNodePrefabFactory.DefaultScale, nob.transform.localScale);
+        }
+
+        [Test]
+        public void Create_CarvesTheBodyFootprint()
+        {
+            NetworkObject nob = NewNode();
+            Track(nob);
+
+            NavMeshObstacle obstacle = nob.GetComponent<NavMeshObstacle>();
+            Assert.IsNotNull(obstacle,
+                "The vein must carry a NavMeshObstacle, or the NavMesh keeps a walkable patch under it.");
+            Assert.IsTrue(obstacle.carving,
+                "Without carving the obstacle only nudges agents aside; the route still runs through the vein.");
+            Assert.AreEqual(Vector3.zero, obstacle.center,
+                "The obstacle must be centred on the body, or it floats above the floor and carves nothing.");
+            Assert.AreEqual(ResourceNodePrefabFactory.DefaultScale,
+                Vector3.Scale(obstacle.size, nob.transform.lossyScale),
+                "NavMeshObstacle.size is scaled by the transform: the carve must match the body's footprint.");
         }
 
         [Test]
@@ -182,14 +202,18 @@ namespace MMO.Tests
             Track(nob);
             ResourceNode node = nob.GetComponent<ResourceNode>();
 
-            // The factory's defaults are the shipped vein: a bare-handed iron ore node a player
-            // can empty and watch regrow, with no extra configuration on top.
-            Assert.AreEqual(ResourceNode.DefaultItemId, node.ItemId);
-            Assert.AreEqual(string.Empty, node.RequiredTool);
-            Assert.AreEqual(ResourceNode.DefaultMaxYield, node.MaxYield);
-            Assert.AreEqual(ResourceNode.DefaultRespawnSeconds, node.RespawnSeconds, 0.0001f);
-            Assert.AreEqual(ResourceNode.DefaultGatherIntervalSeconds, node.GatherIntervalSeconds, 0.0001f);
-            Assert.AreEqual(ResourceNode.DefaultInteractRange, node.InteractRange, 0.0001f);
+            // The factory hands the node the shipped vein definition, so a node built at runtime
+            // is exactly as workable as the baked prefab — no extra configuration on top.
+            Assert.IsNotNull(node.Definition,
+                "A node built at runtime has to carry the shipped definition, or it is inert.");
+            Assert.AreEqual(ResourceType.Ore, node.Type);
+            Assert.IsNotNull(node.Drop, "The shipped definition awards the shipped Iron Ore item.");
+            Assert.AreEqual(5, node.DropAmount);
+            Assert.AreEqual(ToolKind.None, node.RequiredTool);
+            Assert.AreEqual(0, node.GatheringTier);
+            Assert.AreEqual(30f, node.ResetTime, 0.0001f);
+            Assert.AreEqual(1.2f, node.GatherIntervalSeconds, 0.0001f);
+            Assert.AreEqual(3f, node.InteractRange, 0.0001f);
         }
         #endregion
 

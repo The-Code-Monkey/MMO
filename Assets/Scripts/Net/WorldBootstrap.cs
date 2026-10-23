@@ -7,6 +7,7 @@ using FishNet.Object;
 using FishNet.Transporting;
 using MMO.Crafting;
 using MMO.Gameplay;
+using MMO.Inventory;
 using MMO.Persistence;
 using Unity.AI.Navigation;
 using UnityEngine;
@@ -240,6 +241,11 @@ namespace MMO.Net
 
             RecipeRegistry.LoadAllFromResources();
 
+            // The item assets too: the tool gate reads a tool's kind and tier from its
+            // definition, and it resolves that definition by the item's name — so an item
+            // nobody loads is a tool the server cannot recognise.
+            ItemDefinitionRegistry.LoadAllFromResources();
+
             WireSpawnPoints();
 
             SpawnFromMarkers(
@@ -379,7 +385,7 @@ namespace MMO.Net
             if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
                 return prefab;
 
-            ResourceNodePrefabFactory.Register(_manager.SpawnablePrefabs, prefab);
+            ResourceNodePrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
             return prefab;
         }
 

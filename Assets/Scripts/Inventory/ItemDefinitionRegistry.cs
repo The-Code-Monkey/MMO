@@ -22,6 +22,12 @@ namespace MMO.Inventory
     /// </summary>
     public static class ItemDefinitionRegistry
     {
+        /// <summary>
+        /// The <c>Resources</c> subfolder the shipped item assets live under — the item above is
+        /// <c>Resources/Items/Iron_Ore.asset</c>.
+        /// </summary>
+        public const string ItemsFolder = "Items";
+
         private static readonly Dictionary<string, ItemDefinition> Registered = new();
 
         /// <summary>How many definitions are currently registered. Exposed for diagnostics and tests.</summary>
@@ -100,5 +106,24 @@ namespace MMO.Inventory
         /// <c>Resources</c> fallback, which is what keeps test ordering irrelevant.
         /// </summary>
         public static void Clear() => Registered.Clear();
+
+        /// <summary>
+        /// Loads every <see cref="ItemDefinition"/> asset under <c>Resources/Items</c> and
+        /// registers the whole set at once.
+        ///
+        /// <para>
+        /// Each asset already registers itself on load, so this only forces the load to happen.
+        /// It matters because a shipped item is only ever named on the wire — a tool's kind and
+        /// tier live on its definition, and the tool gate resolves them by name — so an item
+        /// asset nobody loads is an item the server cannot answer questions about. Safe to call
+        /// repeatedly: re-registering the same instance just overwrites the dictionary entry with
+        /// itself.
+        /// </para>
+        /// </summary>
+        public static void LoadAllFromResources()
+        {
+            foreach (ItemDefinition definition in Resources.LoadAll<ItemDefinition>(ItemsFolder))
+                Register(definition);
+        }
     }
 }
