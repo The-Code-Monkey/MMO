@@ -4,16 +4,18 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Gameplay;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 
 namespace MMO.Net
 {
     /// <summary>
-    /// Builds the target dummy — a red capsule carrying a FishNet <see cref="NetworkObject"/> and
-    /// the project's own networked <see cref="NPCStats"/> — and wires it into a
-    /// <see cref="NetworkManager"/> so the server spawns one when it starts.
+    /// Builds the target dummy — a red capsule carrying a FishNet <see cref="NetworkObject"/>, the
+    /// project's own networked <see cref="NPCStats"/> and the server-only <see cref="EnemyBrain"/>
+    /// — and wires it into a <see cref="NetworkManager"/> so the server spawns one when it starts.
     ///
     /// The dummy is a <em>server-spawned</em> entity: nobody instantiates it in a scene. A
     /// <see cref="TargetDummySpawner"/> on the NetworkManager object instantiates the prefab and
@@ -76,6 +78,18 @@ namespace MMO.Net
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<NPCStats>();
+
+            // The agent ships disabled; EnemyBrain enables it only once it finds a baked NavMesh.
+            // Adding it while the capsule is inactive keeps an unposed test spawn from logging
+            // NavMesh placement errors.
+            go.SetActive(false);
+            NavMeshAgent agent = go.AddComponent<NavMeshAgent>();
+            agent.enabled = false;
+            go.SetActive(true);
+
+            go.AddComponent<EnemyBrain>();
+            go.AddComponent<NpcLoot>();
+            go.AddComponent<AuraController>();
 
             ApplyRedMaterial(go);
             return networkObject;

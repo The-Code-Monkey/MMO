@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Auction;
 using MMO.Inventory;
+using MMO.Net;
 using MMO.Persistence;
 using UnityEngine;
 
@@ -127,66 +127,17 @@ namespace MMO.Gameplay
             if (loot.Count == 0)
                 return;
 
-            LootBag bag = SpawnLootBag(transform.position, loot);
+            LootBag bag = LootBagSpawner.Spawn(NetworkManager, _lootBagPrefab, transform.position, loot);
             if (bag == null)
             {
-                // No prefab wired: keep the items. Deleting them here would be unrecoverable, so
-                // a misconfigured drop is loud and lossless rather than silent and destructive.
-                Debug.LogError($"{nameof(PlayerDeath)}: no loot-bag prefab configured; '{name}' keeps their items instead of dropping them.", this);
+                // No bag could be spawned: keep the items. Deleting them here would be
+                // unrecoverable, so a misconfigured drop is loud and lossless.
+                Debug.LogError($"{nameof(PlayerDeath)}: could not spawn a loot bag; '{name}' keeps their items instead of dropping them.", this);
                 return;
             }
 
             _inventory.ClearAll();
             PersistNow();
-        }
-
-        private LootBag SpawnLootBag(Vector3 position, IReadOnlyList<ItemInstance> items)
-        {
-            NetworkObject prefab = ResolveLootBagPrefab();
-            if (prefab == null)
-                return null;
-
-            var manager = NetworkManager;
-            if (manager == null || manager.ServerManager == null || !manager.IsServerStarted)
-                return null;
-
-            GameObject instance = Instantiate(prefab.gameObject, position, Quaternion.identity);
-            instance.name = prefab.name;
-            instance.SetActive(true);
-            manager.ServerManager.Spawn(instance);
-
-            LootBag bag = instance.GetComponent<LootBag>();
-            bag?.Fill(items);
-            return bag;
-        }
-
-        /// <summary>
-        /// The drop prefab: an explicit wiring if one was set, otherwise the loot bag already
-        /// registered as a spawnable on this player's NetworkManager. Resolving it from the
-        /// collection means a black-zone death works with no per-prefab reference to bake — the
-        /// same registration that gives the bag its prefab id is the one that makes it droppable.
-        /// </summary>
-        private NetworkObject ResolveLootBagPrefab()
-        {
-            if (_lootBagPrefab != null)
-                return _lootBagPrefab;
-
-            var manager = NetworkManager;
-            if (manager == null || manager.SpawnablePrefabs is not SinglePrefabObjects single)
-                return null;
-
-            IReadOnlyList<NetworkObject> prefabs = single.Prefabs;
-            for (int i = 0; i < prefabs.Count; i++)
-            {
-                NetworkObject candidate = prefabs[i];
-                if (candidate != null && candidate.TryGetComponent(out LootBag _))
-                {
-                    _lootBagPrefab = candidate;
-                    return candidate;
-                }
-            }
-
-            return null;
         }
 
         private void ChargeRepair(int repairCost)

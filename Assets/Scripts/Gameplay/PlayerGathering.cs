@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Inventory;
 using UnityEngine;
 
@@ -41,6 +42,8 @@ namespace MMO.Gameplay
         private double _nextTickAt;
 
         private PlayerInventory _inventory;
+        private AuraController _auras;
+        private PlayerQuestLog _quests;
 
         /// <summary>The node the server is currently gathering from, or null when idle.</summary>
         public ResourceNode GatheringNode => _node;
@@ -92,6 +95,9 @@ namespace MMO.Gameplay
         [Server]
         public void StartGathering(NetworkObject target)
         {
+            if (Auras != null && Auras.BlocksActions)
+                return;
+
             if (target == null || !target.IsSpawned)
                 return;
 
@@ -109,6 +115,7 @@ namespace MMO.Gameplay
                 return;
 
             _node = node;
+            Quests?.NotifyInteract(node.Definition != null ? node.Definition.name : node.name);
 
             // The first harvest lands one interval from now, not instantly: the interval *is*
             // the gathering action, and a click that paid it out immediately would double the
@@ -134,6 +141,12 @@ namespace MMO.Gameplay
         {
             if (!IsServer)
                 return;
+
+            if (Auras != null && Auras.BlocksActions)
+            {
+                StopGathering();
+                return;
+            }
 
             // Unity's destroyed-object equality: a node that was despawned out from under the
             // session reads as null here, and the stale reference is dropped rather than
@@ -225,5 +238,9 @@ namespace MMO.Gameplay
         // Null-guarded lazy fetch so pure-logic tests can construct the component without a
         // sibling PlayerInventory and still exercise everything except the award itself.
         private PlayerInventory Inventory => _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
+
+        private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
+
+        private PlayerQuestLog Quests => _quests != null ? _quests : _quests = GetComponent<PlayerQuestLog>();
     }
 }

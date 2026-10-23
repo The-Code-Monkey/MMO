@@ -18,21 +18,25 @@ The constants:
 | `MaxMana` | 50 | `PlayerStats.cs:37` |
 | `DefaultLevel` | 1 | `PlayerStats.cs:40` |
 
-The replicated values are SyncVars (`PlayerStats.cs:43-47`): health, mana, level, a max-health bonus
-and a max-mana bonus. The bonuses come from equipment, so the *effective* caps are:
+The replicated values are eight SyncVars (`PlayerStats.cs:43-50`): health, mana, level,
+experience, the two equipment bonus caps and the two aura bonus caps. The bonuses come from separate systems, so the
+*effective* caps are:
 
 ```csharp
-public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value;   // :60
-public int EffectiveMaxMana   => MaxMana   + _maxManaBonus.Value;     // :63
+public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value + _auraHealthBonus.Value;   // :70
+public int EffectiveMaxMana   => MaxMana   + _maxManaBonus.Value   + _auraManaBonus.Value;     // :73
 ```
 
-The public read-only properties are `Health`, `Mana`, `Level`, `MaxHealthBonus`, `MaxManaBonus`,
-`EffectiveMaxHealth`, `EffectiveMaxMana`. The component also raises three events:
+The public read-only properties are `Health`, `Mana`, `Level`, `Experience`, `MaxHealthBonus`,
+`MaxManaBonus`, `AuraHealthBonus`, `AuraManaBonus`, `EffectiveMaxHealth`, `EffectiveMaxMana`. The component also
+raises four events:
 
-- `VitalsChanged` (`:72`) — health or mana moved (raised on server and clients). The HUD listens.
-- `LevelChanged` (`:78`) — the level changed (server only). Persistence listens so a level-up saves
+- `VitalsChanged` (`:82`) — health or mana moved, or a cap changed (raised on server and clients).
+  The HUD listens.
+- `LevelChanged` (`:88`) — the level changed (server only). Persistence listens so a level-up saves
   immediately.
-- `Died` (`:87`) — health crossed from above zero to zero (server only). Raised once per death; the
+- `ExperienceChanged` (`:91`) — quest/event XP changed (server and clients).
+- `Died` (`:100`) — health crossed from above zero to zero (server only). Raised once per death; the
   risk-tier resolver ([section 1a](#1a-death-and-the-risk-tiers)) listens. The transition is guarded
   by `_applyingSave`, so spawning from a save that happens to be at zero health does not read as a
   death.
@@ -41,25 +45,31 @@ The public read-only properties are `Health`, `Mana`, `Level`, `MaxHealthBonus`,
 
 Every mutation is a `[Server]` method:
 
-- `TakeDamage(int)` (`:130`) and `Heal(int)` (`:136`),
-- `SpendMana(int)` (`:142`) and `RestoreMana(int)` (`:148`),
-- `SetLevel(int)` (`:159`),
-- `ApplySave(int health, int mana, int level)` (`:170`) — used when a save record is loaded. It
+- `TakeDamage(int)` (`:149`) and `Heal(int)` (`:155`),
+- `SpendMana(int)` (`:161`) and `RestoreMana(int)` (`:167`),
+- `SetLevel(int)` (`:178`),
+- `AddExperience(int)` (`:185`) — quest/event XP, server-only.
+- `ApplyExperience(int)` (`:195`) — restores XP from a save.
+- `ApplySave(int health, int mana, int level)` (`:206`) — used when a save record is loaded. It
   clamps health and mana to the effective caps.
-- `Respawn()` (`:192`) — restores health and mana to the effective caps. Called by the death
-  resolver for **every** death, whatever the tier (see [section 1a](#1a-death-and-the-risk-tiers)).
-- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:208`) — used when gear changes. If
-  a bonus shrinks, current values are pulled down with it (`:213-214`).
+- `Respawn()` (`:228`) — restores health and mana to the base plus equipment caps. Called by the
+  death resolver for **every** death, whatever the tier (see
+  [section 1a](#1a-death-and-the-risk-tiers)). Auras clear on death, so they are deliberately not
+  part of the respawn pool.
+- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:246`) — used when gear changes. If
+  a bonus shrinks, current values are pulled down with it.
+- `ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)` (`:261`) — used when the active aura set
+  changes; separate from equipment so one cannot wipe the other.
 
 The arithmetic itself lives in pure static helpers so it can be tested directly:
-`ComputeNewHealth` (`:244`), `ComputeHealedHealth` (`:249`), `ComputeNewMana` (`:254`) and
-`ComputeRestoredMana` (`:259`). They all clamp the result, so a negative damage amount cannot heal
+`ComputeNewHealth` (`:297`), `ComputeHealedHealth` (`:302`), `ComputeNewMana` (`:307`) and
+`ComputeRestoredMana` (`:312`). They all clamp the result, so a negative damage amount cannot heal
 and a negative heal cannot damage.
 
 ### The client request path
 
-A client may ask to damage someone through `RequestDamage(int)` (`:221`), which returns unless the
-caller owns the player, then sends `RpcRequestDamage` (`:230`). The server handler re-checks that the
+A client may ask to damage someone through `RequestDamage(int)` (`:274`), which returns unless the
+caller owns the player, then sends `RpcRequestDamage` (`:283`). The server handler re-checks that the
 sender is the owner before calling `TakeDamage`. That double check (FishNet also enforces ownership)
 is the house style: never trust the client.
 
@@ -100,32 +110,38 @@ whether the player stands back up — otherwise a safe-zone death would strand t
 
 ## 2. Basic weapon attacks
 
-`PlayerCombat` (`Assets/Scripts/Gameplay/PlayerCombat.cs:21`) handles the "auto attack" a weapon
+`PlayerCombat` (`Assets/Scripts/Gameplay/PlayerCombat.cs:23`) handles the "auto attack" a weapon
 provides. The weapon is a `WeaponData` assigned only by the server.
 
-- `RequestAttack(NetworkObject target)` (`:71`) — owner only; sends `RpcRequestAttack`.
-- `RpcRequestAttack` (`:84`) — re-checks ownership, then calls `Attack`.
-- `Attack(NetworkObject target)` (`:103`) — the server's checks, in order:
+- `RequestAttack(NetworkObject target)` (`:73`) — owner only; sends `RpcRequestAttack`.
+- `RpcRequestAttack` (`:86`) — re-checks ownership, then calls `Attack`.
+- `Attack(NetworkObject target)` (`:105`) — the server's checks, in order:
   1. a weapon must be equipped,
   2. the target must be spawned,
-  3. the target must have a `TargetDummy` component (only dummies are attackable today),
+  3. the target must carry either `NPCStats` (every zone enemy) or the legacy `TargetDummy`,
   4. the target must be **visible** — within `weapon.AttackRange`, inside the facing cone
      (`_attackHalfAngleDegrees`, default `60`), and with a clear line of sight (no wall between the
      attacker's eye, `_eyeHeight`, and the target),
-  5. then `dummy.TakeDamage(weapon.AutoAttackDamage)`.
+  5. then `npc.ApplyDamage(weapon.AutoAttackDamage, inventory)` or
+     `dummy.TakeDamage(weapon.AutoAttackDamage)`.
 
-`IsWithinAttackRange` (`:150`) is a pure helper using strict `<` — a target exactly on the boundary
-is a miss. `IsVisibleToAttack` (`:132`) combines range, cone and the server's raycast into the one
-verdict (`SightRules.CanSee`); the raycast arrives through the injectable `Sight` property (`:42`,
-defaults to a real `PhysicsSight`). `FindLocal` (`:165`) finds the local player's `PlayerCombat` component on either the host
-or client side, used by the mouse-click path.
+`IsWithinAttackRange` (`:176`) is a pure helper using strict `<` — a target exactly on the boundary
+is a miss. `IsVisibleToAttack` (`:158`) combines range, cone and the server's raycast into the one
+verdict (`SightRules.CanSee`); the raycast arrives through the injectable `Sight` property (`:44`,
+defaults to a real `PhysicsSight`). `FindLocal` (`:191`) finds the local player's `PlayerCombat` component on either the host
+or client side, used by the mouse-click path. A stun blocks the attack before any of these checks.
 
-`TargetDummy` (`Assets/Scripts/Gameplay/TargetDummy.cs:18`) is the punching bag. It has its own
-`MaxHealth = 100` and a `[Server] TakeDamage`. Clicking it calls
+`TargetDummy` (`Assets/Scripts/Gameplay/TargetDummy.cs:18`) is the training punching bag. It has its
+own `MaxHealth = 100` and a `[Server] TakeDamage`. Clicking it calls
 `RequestAttackFromLocalPlayer`, which routes through the local `PlayerCombat`.
 
-`NPCStats` (`Assets/Scripts/Gameplay/NPCStats.cs:28`) is the general NPC vitals component
+`NPCStats` (`Assets/Scripts/Gameplay/NPCStats.cs:29`) is the general NPC vitals component
 (`MaxHealth = 50`) implementing the `ITargetSource` interface so a target frame can display it.
+`ApplyDamage(int, PlayerInventory)` (`:104`) is its attributed damage path: it records
+`LastAttacker`, raises `Damaged` for the enemy brain's threat table, and raises `Died` once when
+health crosses into zero. `ResetHealth()` (`:122`) restores a defeated enemy for a spawn controller.
+Unattributed `TakeDamage(int)` clears the attacker so a later environmental hit cannot inherit a
+player's kill credit.
 
 ## 3. The ability system
 
@@ -152,16 +168,19 @@ read by both the server and the client. Adding a plain damage or heal ability re
 items and recipes which self-register (see [06](06-inventory-and-equipment.md) and
 [07](07-crafting-and-gathering.md)).
 
-### AbilityLogic — the three mechanics
+### AbilityLogic — the mechanics
 
 `AbilityLogic` (`Assets/Scripts/Gameplay/AbilityLogic.cs`) is an enum, not a class hierarchy, so a
 skill stays serialisable and testable:
 
 | Value | Meaning | Line |
 |---|---|---|
-| `TargetedDamage` (0) | Damage every valid target within `EffectRadius` of the aimed point. | `:18` |
-| `AreaDamage` (1) | Damage every valid target within `EffectRadius` of the **caster** (a melee cleave that ignores mouse aim). | `:24` |
-| `SelfHeal` (2) | Heal the caster. Skips the range check. | `:29` |
+| `TargetedDamage` (0) | Damage every valid target within `EffectRadius` of the aimed point. | `:19` |
+| `AreaDamage` (1) | Damage every valid target within `EffectRadius` of the **caster** (a melee cleave that ignores mouse aim). | `:25` |
+| `SelfHeal` (2) | Heal the caster. Skips the range check. | `:30` |
+| `Heal` (3) | Heal other players in the radius. | `:35` |
+| `Taunt` (4) | Force the nearest `EnemyBrain` to target the caster. | `:40` |
+| `ApplyAura` (5) | Apply the ability's `Aura` to every visible player/enemy in the radius. | `:45` |
 
 The existing assets are `Assets/Data/Abilities/Fireball.asset` (`TargetedDamage`),
 `Cleave.asset` (`AreaDamage`) and `Second_Wind.asset` (`SelfHeal`).
@@ -262,29 +281,35 @@ passed. `EquipGear` (`:41`) rebuilds the loadout and drops in-flight casts but k
   caster can actually see, so a fireball centred just past a wall damages only what the wall did not
   hide. A null `sight` is treated as a clear line. See
   [14](14-server-authority-hardening.md#2-line-of-sight).
+- `SelectNpcVictims(origin, radius, candidates)` (`:116`) and
+  `SelectVisibleNpcVictims(eyePosition, victims, sight)` (`:139`) — the same radius and visibility
+  filters for `NPCStats`, so a damage ability reaches zone enemies as well as players.
 
 ### PlayerAbilities — the networked shell
 
-`PlayerAbilities` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:42`) is the `NetworkBehaviour`
+`PlayerAbilities` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:44`) is the `NetworkBehaviour`
 implementing `IAbilityBarSource`. It replicates six slot-name strings (one SyncVar per slot) so the
 action bar knows what to draw, and it owns the cast request flow.
 
-- `Sight` (`:65`) — the line-of-sight check applied to every victim of an area/targeted effect
+- `Sight` (`:67`) — the line-of-sight check applied to every victim of an area/targeted effect
   (defaults to a real `PhysicsSight`; a test can replace it).
-- `EquipGear(WeaponData, ArmorData)` (`:141`) — `[Server]`. Rebuilds the caster's loadout, then
+- `EquipGear(WeaponData, ArmorData)` (`:143`) — `[Server]`. Rebuilds the caster's loadout, then
   publishes the slot names.
-- `RequestCast(int slot, Vector3 targetPosition)` (`:152`) — owner only; sends `RpcRequestCast`.
-- `RpcRequestCast` (`:166`) — `[ServerRpc]`. Re-checks the sender owns the object, reads live mana
-  from `PlayerStats`, calls `_caster.TryCast(...)`, and on success spends the mana and applies any
-  due casts immediately.
-- `Update` (`:191`) — the server also calls `ApplyDueCasts` every frame while casts are pending, so
+- `RequestCast(int slot, Vector3 targetPosition)` (`:154`) — owner only; sends `RpcRequestCast`.
+- `RpcRequestCast` (`:168`) — `[ServerRpc]`. Re-checks the sender owns the object, refuses a stun,
+  reads live mana from `PlayerStats`, calls `_caster.TryCast(...)`, and on success spends the mana
+  and applies any due casts immediately.
+- `Update` (`:197`) — the server also calls `ApplyDueCasts` every frame while casts are pending, so
   a cast-time ability resolves when its timer elapses.
-- `ApplyEffect` (`:212`) — the dispatch per `AbilityLogic`:
+- `ApplyEffect` (`:218`) — the dispatch per `AbilityLogic`:
   - `SelfHeal` → `caster.Heal(ComputePower)`,
+  - `ApplyAura` → selects visible players and NPCs and calls `AuraController.Apply`,
   - otherwise → `ResolveOrigin`, `SelectVictims`, then `SelectVisibleVictims(eye, victims, Sight)`
-    so only victims the caster can see are hit, then `victims[i].TakeDamage(power)`.
+    so only victims the caster can see are hit, then `victims[i].TakeDamage(power)`,
+  - for `TargetedDamage` and `AreaDamage`, the same origin/eye pass also selects NPC victims and
+    calls `ApplyDamage(power, inventory)` so the kill carries the caster's identity.
 
-`GetSlotName` (`:78`) is what the bar reads; the cooldown tracker is deliberately **not** exposed on
+`GetSlotName` (`:94`) is what the bar reads; the cooldown tracker is deliberately **not** exposed on
 the interface, because cooldowns are server-only state and a client must not be able to display
 invented readiness.
 
@@ -328,11 +353,39 @@ SERVER
     → schedule: BeginCastUntil / StartGlobalCooldown / StartCooldown
     → (later, Update) ApplyDueCasts → ApplyEffect
          TargetedDamage/AreaDamage: ResolveOrigin → SelectVictims → TakeDamage
+         ApplyAura: ResolveOrigin → SelectVictims → AuraController.Apply
          SelfHeal: Heal
     → SyncVar writes replicate to all clients
 CLIENT
   PlayerStats.VitalsChanged fires → VitalBarView.Repaint
 ```
+
+## 5a. Auras — buffs, debuffs and crowd control
+
+An aura is a `AuraData` asset (`Assets/Scripts/Content/AuraData.cs`): kind (`Dot`, `Hot`, `Stun`,
+`Root`, `Buff`, `Debuff`), duration, tick interval, per-tick magnitude, flat stat bonus, stat kind
+and max stacks. The pure rules live in `AuraRules`:
+
+- `Apply` refreshes a max-stack-1 aura or adds stacks up to the cap;
+- `Tick` produces at most one due DoT/HoT tick and reports expiry;
+- `BlocksActions` is true for a stun; `BlocksMovement` is true for a stun or root;
+- `TotalFlatBonus` sums a stat across active auras, scaled by stacks.
+
+`AuraController` (`Assets/Scripts/Content/AuraController.cs`) is the server-authoritative shell on
+players and enemies. It owns the active `AuraState` list, applies ticks through `PlayerStats` or
+`NPCStats`, credits DoT damage to the applier through `NPCStats.ApplyDamage`, clears on death, and
+replicates a `SyncList<AuraSnapshot>` for a future buff bar. Stat bonuses go into their own
+`PlayerStats` cap fields (`ApplyAuraBonuses`), separate from equipment, so equipping gear cannot wipe
+a buff. A stun or root drives the mover's separate aura speed multiplier to zero.
+
+Action gates consult `BlocksActions` on the server: `PlayerCombat.Attack`,
+`PlayerAbilities.RpcRequestCast`, `PlayerGathering.StartGathering`/tick, and `EnemyBrain.Update`.
+A root stops enemy pathing but still allows an attack that is already in range.
+
+`AbilityLogic.ApplyAura` lets an ability asset carry an `AuraData` and apply it to every visible
+player or enemy in its radius, using the caster's `PlayerInventory` as the source.
+
+Auras are session-only in this issue; there is no buff-bar UI and no aura persistence.
 
 ## 6. Mounts
 

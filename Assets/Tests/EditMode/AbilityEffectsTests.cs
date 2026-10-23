@@ -242,6 +242,70 @@ namespace MMO.Tests
             Assert.IsEmpty(AbilityEffects.SelectVisibleVictims(Caster, null, new FakeSight(clear: true)));
         }
 
+        [Test]
+        public void SelectNpcVictims_HitsEveryoneInsideTheRadius()
+        {
+            NPCStats near = SpawnNpc("Near", new Vector3(1f, 0f, 0f));
+            NPCStats far = SpawnNpc("Far", new Vector3(50f, 0f, 0f));
+
+            List<NPCStats> victims = AbilityEffects.SelectNpcVictims(
+                Caster, 5f, new[] { near, far });
+
+            Assert.AreEqual(new[] { near }, victims);
+        }
+
+        [Test]
+        public void SelectNpcVictims_IgnoresNullCandidatesAndPreservesOrder()
+        {
+            NPCStats first = SpawnNpc("First", new Vector3(1f, 0f, 0f));
+            NPCStats second = SpawnNpc("Second", new Vector3(2f, 0f, 0f));
+
+            List<NPCStats> victims = AbilityEffects.SelectNpcVictims(
+                Caster, 5f, new[] { null, first, second });
+
+            Assert.AreEqual(new[] { first, second }, victims);
+        }
+
+        [Test]
+        public void SelectNpcVictims_ReturnsNobodyForMissingCandidates()
+        {
+            Assert.IsEmpty(AbilityEffects.SelectNpcVictims(Caster, 5f, null));
+        }
+
+        [Test]
+        public void SelectVisibleNpcVictims_KeepsEveryoneOnAClearLine()
+        {
+            NPCStats near = SpawnNpc("Near", new Vector3(1f, 0f, 0f));
+            NPCStats far = SpawnNpc("Far", new Vector3(2f, 0f, 0f));
+
+            List<NPCStats> visible = AbilityEffects.SelectVisibleNpcVictims(
+                Caster, new[] { near, far }, new FakeSight(clear: true));
+
+            Assert.AreEqual(new[] { near, far }, visible);
+        }
+
+        [Test]
+        public void SelectVisibleNpcVictims_DropsEveryoneBehindCover()
+        {
+            NPCStats hidden = SpawnNpc("Hidden", new Vector3(10f, 0f, 0f));
+
+            List<NPCStats> visible = AbilityEffects.SelectVisibleNpcVictims(
+                Caster, new[] { hidden }, new FakeSight(clear: false));
+
+            Assert.IsEmpty(visible);
+        }
+
+        [Test]
+        public void SelectVisibleNpcVictims_WithNoSight_KeepsEveryone()
+        {
+            NPCStats victim = SpawnNpc("Victim", new Vector3(1f, 0f, 0f));
+
+            List<NPCStats> visible = AbilityEffects.SelectVisibleNpcVictims(
+                Caster, new[] { victim }, null);
+
+            Assert.AreEqual(new[] { victim }, visible);
+        }
+
         private PlayerStats SpawnStats(string name, Vector3 position)
         {
             var go = new GameObject(name);
@@ -249,6 +313,15 @@ namespace MMO.Tests
             _sceneObjects.Add(go);
 
             return go.AddComponent<PlayerStats>();
+        }
+
+        private NPCStats SpawnNpc(string name, Vector3 position)
+        {
+            var go = new GameObject(name);
+            go.transform.position = position;
+            _sceneObjects.Add(go);
+
+            return go.AddComponent<NPCStats>();
         }
 
         private AbilityData NewAbility(string abilityName, int effectPower)

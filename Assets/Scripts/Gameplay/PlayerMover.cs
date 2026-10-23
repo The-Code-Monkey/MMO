@@ -40,13 +40,17 @@ namespace MMO.Gameplay
         private Vector3? _moveTarget;
         private readonly WalkPath _walk = new();
         private float _speedMultiplier = 1f;
+        private float _auraSpeedMultiplier = 1f;
         private bool _flying;
 
         /// <summary>
-        /// The speed the server integrates at: the baked base speed scaled by whatever a mount
-        /// currently asks for. Never negative.
+        /// The speed the server integrates at: the baked base speed scaled by the mount and aura
+        /// multipliers. Never negative; a stun or root drives the aura multiplier to zero.
         /// </summary>
-        public float MaxSpeed => Mathf.Max(0f, _maxSpeed) * Mathf.Max(0f, _speedMultiplier);
+        public float MaxSpeed =>
+            Mathf.Max(0f, _maxSpeed) *
+            Mathf.Max(0f, _speedMultiplier) *
+            Mathf.Max(0f, _auraSpeedMultiplier);
 
         /// <summary>
         /// The last position the server itself observed. Before the first server tick this reads
@@ -191,6 +195,16 @@ namespace MMO.Gameplay
         public void SetSpeedMultiplier(float multiplier)
         {
             _speedMultiplier = Mathf.Max(0f, multiplier);
+        }
+
+        /// <summary>
+        /// Server: the aura-driven speed multiplier, kept separate from the mount multiplier so a
+        /// root or a slow cannot clobber the mount's setting (and vice versa).
+        /// </summary>
+        [Server]
+        public void SetAuraSpeedMultiplier(float multiplier)
+        {
+            _auraSpeedMultiplier = Mathf.Max(0f, multiplier);
         }
 
         /// <summary>

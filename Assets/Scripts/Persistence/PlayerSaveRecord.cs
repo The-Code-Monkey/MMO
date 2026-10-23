@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MMO.Content;
 using MMO.Gameplay;
 using UnityEngine;
 
@@ -38,8 +39,9 @@ namespace MMO.Persistence
     /// <summary>
     /// The single "source of truth" a connected player's state is round-tripped through. Replaces
     /// the old write-only <c>PlayerSaveData</c>/<c>InventorySaveData</c> pair with one record that
-    /// can actually be loaded back: vitals, level, world position (reserved — no movement system
-    /// saves position yet), and both inventory containers in one flat shape.
+    /// can actually be loaded back: vitals, level, experience, world position (reserved — no
+    /// movement system saves position yet), both inventory containers, and quest progress in one
+    /// flat shape.
     ///
     /// A record is owned by the <em>server's</em> storage session: the database key is the player's
     /// stable <c>AccountId</c>, but the storage object itself belongs to the game-server account, so
@@ -54,7 +56,7 @@ namespace MMO.Persistence
     public class PlayerSaveRecord
     {
         /// <summary>Bump when the shape below stops round-tripping old saves.</summary>
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
 
         /// <summary>The player's stable account key; the storage key this record lives under.</summary>
         public string UserId;
@@ -68,6 +70,9 @@ namespace MMO.Persistence
 
         public int Mana = PlayerStats.MaxMana;
 
+        /// <summary>Quest/event experience. Not a level curve; the level travels separately.</summary>
+        public int Experience = 0;
+
         /// <summary>Reserved. No movement save exists yet, so it round-trips but is not applied.</summary>
         public Vector3 Position;
 
@@ -78,5 +83,11 @@ namespace MMO.Persistence
         public long Gold = 0;
 
         public List<ItemSaveData> Items = new List<ItemSaveData>();
+
+        /// <summary>Quest ids that have already completed and paid their reward.</summary>
+        public List<string> CompletedQuestIds = new List<string>();
+
+        /// <summary>Active objective counters. Completed quests may still have rows here.</summary>
+        public List<QuestProgressEntry> QuestProgress = new List<QuestProgressEntry>();
 }
 }

@@ -251,14 +251,15 @@ therefore never leave a saved item above its own ceiling.
 
 | Method | What it does | Line |
 |---|---|---|
-| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:384` |
-| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:414` |
-| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:426` |
-| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:439` |
-| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:363` |
-| `RequestLoot(LootBag bag)` / `RpcRequestLoot` | Owner intent → `[ServerRpc]` → owner + range check → `bag.Loot(this)`. | `:178`, `:187` |
+| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:502` |
+| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:532` |
+| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:544` |
+| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:574` |
+| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:476` |
+| `RequestLoot(LootBag bag)` / `RpcRequestLoot` | Owner intent → `[ServerRpc]` → owner + range check → `bag.Loot(this)`. | `:247`, `:256` |
+| `RequestOpenChest(LootChest chest)` / `RpcRequestOpenChest` | Owner intent → `[ServerRpc]` → owner + range check → `chest.TryOpen(this)`. | `:274`, `:283` |
 
-`LootBag` (`Assets/Scripts/Gameplay/LootBag.cs:22`) is the pile of dropped items. It is a
+`LootBag` (`Assets/Scripts/Gameplay/LootBag.cs:23`) is the pile of dropped items. It is a
 **server-write** `SyncList<ItemInstance>` (`Fill` is `[Server]`) and is deliberately *unowned*:
 FishNet only lets an owner send a `[ServerRpc]` to an object, so a looter routes the intent through
 their own `PlayerInventory` instead, which re-checks range before calling `Loot`. A bag that empties
@@ -277,6 +278,15 @@ The prefab's drop target is resolved from the `NetworkManager`'s spawnable prefa
 registration that gives the loot bag its id), so no per-prefab reference needs baking. See
 [05, section 1a](05-gameplay-stats-combat-abilities.md#1a-death-and-the-risk-tiers) for the tier
 table.
+
+The same bag-spawn path is shared with content loot. `LootBagSpawner`
+(`Assets/Scripts/Net/LootBagSpawner.cs`) instantiates, spawns and fills a bag for any caller.
+`NpcLoot` (`Assets/Scripts/Content/NpcLoot.cs`) subscribes to `NPCStats.Died`, rolls its
+`WeightedLootTable` and hands the drops to `LootAwarder`, which fills the killer's bag and spills
+anything that does not fit into a loot bag rather than deleting it. `LootChest`
+(`Assets/Scripts/Content/LootChest.cs`) uses the same award path but is one-shot: its replicated
+`Opened` flag disables the collider and renderer, and a second open request is refused. A chest or
+mob whose overflow cannot be placed reports an error instead of silently dropping items.
 
 ## 11. Single-writer ownership (dupe protection)
 

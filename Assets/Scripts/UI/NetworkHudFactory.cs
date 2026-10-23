@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -69,6 +70,10 @@ namespace MMO.UI
         /// The player's mount state, e.g. a spawned <c>PlayerMount</c>. The cast bar is built hidden
         /// and appears while a mount or dismount cast is running.
         /// </param>
+        /// <param name="dialogue">
+        /// The player's dialogue shell, e.g. a spawned <c>PlayerDialogue</c>. The panel is built
+        /// concealed and appears when the server sends a node payload.
+        /// </param>
         public static NetworkHud Create(
             IVitalsSource vitals = null,
             IInventorySource inventory = null,
@@ -77,7 +82,8 @@ namespace MMO.UI
             bool createEventSystem = true,
             bool createGuildBankFrame = false,
             ICraftingSource crafting = null,
-            IMountSource mount = null)
+            IMountSource mount = null,
+            PlayerDialogue dialogue = null)
         {
             GameObject root = new GameObject(HudName, typeof(RectTransform));
 
@@ -107,11 +113,13 @@ namespace MMO.UI
                 equipmentPanel,
                 mountCastBar);
             hud.SetCraftingPanel(CraftingPanelFactory.Create(root.transform));
+            hud.SetDialogueView(DialogueView.Create(root.transform));
 
             if (createGuildBankFrame)
                 hud.SetGuildBankFrame(GuildBankFrameFactory.Create(root.transform));
 
             hud.BindPlayer(vitals, inventory, abilities, crafting, mount);
+            hud.BindDialogue(dialogue);
             hud.BindTarget(target);
 
             if (createEventSystem)

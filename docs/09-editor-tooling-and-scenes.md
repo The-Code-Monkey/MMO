@@ -119,8 +119,9 @@ rig, a `ZoneRiskConfig`, spawn points carrying `PlayerSpawnPoint` (four in the t
 wilderness, one in the tutorial; the first is the zone default) wired into the `PlayerSpawner`, a
 `WorldBootstrap`, and one `ZoneTransferTrigger` road out (`tutorial → safe → wilderness` and back).
 Each scene also authors `ResourceNodeMarker` / `CraftingStationMarker` / `EnemyMarker` children under
-`ZoneRoot/Markers` that the server spawns from — the town has a smithy (furnace + anvil) and edge
-veins, the wilderness has scattered veins and a few enemies, and the tutorial has a target dummy plus
+`ZoneRoot/Markers` that the server spawns from or configures a spawn controller for — the town has a
+smithy (furnace + anvil) and edge veins, the wilderness has scattered veins and a few enemy spawn
+points, and the tutorial has a target dummy plus
 a furnace (the placeholder forge the first iron-ore refining recipe runs at; see
 [07](07-crafting-and-gathering.md)). The zone's `SocialHubService.ZoneId` and raid-registry
 host/port/template are set so the servers are addressable and distinct, and all three scenes are

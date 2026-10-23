@@ -1,3 +1,4 @@
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
 using UnityEngine;
@@ -31,6 +32,7 @@ namespace MMO.UI
         private CollapsiblePanelView _equipmentWindow;
         private EquipmentPanelView _equipmentPanel;
         private MountCastBarView _mountCastBar;
+        private DialogueView _dialogueView;
 
         /// <summary>The health/mana pair, or null before views were assigned.</summary>
         public PlayerHudView PlayerHud => _playerHud;
@@ -64,6 +66,9 @@ namespace MMO.UI
 
         /// <summary>The centre-screen mount cast bar, or null before views were assigned.</summary>
         public MountCastBarView MountCastBar => _mountCastBar;
+
+        /// <summary>The dialogue panel, or null before views were assigned.</summary>
+        public DialogueView DialogueView => _dialogueView;
 
         /// <summary>
         /// Hands the assembled screens to the HUD; called by the factory.
@@ -102,6 +107,13 @@ namespace MMO.UI
         {
             _craftingPanel = craftingPanel;
             _craftingPanel?.Conceal();
+        }
+
+        /// <summary>Gives the HUD the dialogue panel the factory built; starts concealed.</summary>
+        public void SetDialogueView(DialogueView dialogueView)
+        {
+            _dialogueView = dialogueView;
+            _dialogueView?.Hide();
         }
 
         /// <summary>
@@ -143,6 +155,13 @@ namespace MMO.UI
 
             if (_craftingPanel != null)
                 _craftingPanel.Bind(crafting);
+        }
+
+        /// <summary>Binds the dialogue panel to the local player's dialogue shell.</summary>
+        public void BindDialogue(PlayerDialogue dialogue)
+        {
+            if (_dialogueView != null)
+                _dialogueView.Bind(dialogue);
         }
 
         /// <summary>Shows <paramref name="target"/> in the frame; null hides the frame.</summary>
@@ -188,6 +207,12 @@ namespace MMO.UI
             {
                 _craftingPanel.Unbind();
                 _craftingPanel.Conceal();
+            }
+
+            if (_dialogueView != null)
+            {
+                _dialogueView.Unbind();
+                _dialogueView.Hide();
             }
 
             if (_guildBankFrame != null)

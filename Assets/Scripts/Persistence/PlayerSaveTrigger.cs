@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using FishNet.Object;
 using MMO.Auction;
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
 using UnityEngine;
@@ -29,6 +30,7 @@ namespace MMO.Persistence
     {
         private PlayerStats _stats;
         private PlayerInventory _inventory;
+        private PlayerQuestLog _quests;
         private PlayerWallet _wallet;
         private string _accountId;
         private bool _subscribed;
@@ -57,6 +59,7 @@ namespace MMO.Persistence
 
             _stats = GetComponent<PlayerStats>();
             _inventory = GetComponent<PlayerInventory>();
+            _quests = GetComponent<PlayerQuestLog>();
             _wallet = GetComponent<PlayerWallet>();
             if (_stats == null || _inventory == null)
             {
@@ -71,7 +74,16 @@ namespace MMO.Persistence
 
             // Apply the loaded save in one shot. Subscribing afterwards keeps the apply itself from
             // re-triggering the same events it is creating.
-            PlayerSaveMapper.Apply(record, out List<ItemInstance> bag, out List<ItemInstance> equipment, out int skippedItems, out long gold);
+            PlayerSaveMapper.Apply(
+                record,
+                out List<ItemInstance> bag,
+                out List<ItemInstance> equipment,
+                out int skippedItems,
+                out long gold,
+                out int experience,
+                out List<string> completedQuestIds,
+                out List<QuestProgressEntry> questProgress);
+
             if (skippedItems > 0)
             {
                 Debug.LogWarning($"{nameof(PlayerSaveTrigger)}: dropped {skippedItems} item(s) from '{_accountId}' that no longer have a definition.");
@@ -82,12 +94,17 @@ namespace MMO.Persistence
                 _stats.ApplySave(record.Health, record.Mana, record.Level);
             }
 
+            _stats.ApplyExperience(experience);
             _inventory.Restore(bag, equipment);
+            _quests?.Restore(completedQuestIds, questProgress);
             _wallet?.InitializeFromSave(record);
 
             service.RegisterLivePlayer(_accountId, Capture);
             _stats.LevelChanged += OnLevelChanged;
+            _stats.ExperienceChanged += OnExperienceChanged;
             _inventory.ContainersChanged += OnInventoryChanged;
+            if (_quests != null)
+                _quests.ProgressChanged += OnQuestProgressChanged;
             if (_wallet != null)
                 _wallet.OnGoldChanged += OnGoldChanged;
             _subscribed = true;
@@ -101,7 +118,10 @@ namespace MMO.Persistence
                 if (service != null)
                 {
                     _stats.LevelChanged -= OnLevelChanged;
+                    _stats.ExperienceChanged -= OnExperienceChanged;
                     _inventory.ContainersChanged -= OnInventoryChanged;
+                    if (_quests != null)
+                        _quests.ProgressChanged -= OnQuestProgressChanged;
                     if (_wallet != null)
                         _wallet.OnGoldChanged -= OnGoldChanged;
                     _subscribed = false;
@@ -118,7 +138,10 @@ namespace MMO.Persistence
                             _wallet != null ? _wallet.Gold : 0,
                             transform.position,
                             _inventory.Items,
-                            _inventory.Equipment));
+                            _inventory.Equipment,
+                            _stats.Experience,
+                            _quests != null ? _quests.CompletedQuestIds : null,
+                            _quests != null ? _quests.Progress : null));
 
                     service.UnregisterLivePlayer(_accountId);
                     service.ForgetClient(Owner != null ? Owner.ClientId : -1);
@@ -134,7 +157,19 @@ namespace MMO.Persistence
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: true);
         }
 
+        private void OnExperienceChanged()
+        {
+            if (_subscribed && !string.IsNullOrEmpty(_accountId))
+                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
+        }
+
         private void OnInventoryChanged()
+        {
+            if (_subscribed && !string.IsNullOrEmpty(_accountId))
+                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
+        }
+
+        private void OnQuestProgressChanged()
         {
             if (_subscribed && !string.IsNullOrEmpty(_accountId))
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
@@ -156,7 +191,10 @@ namespace MMO.Persistence
                 _wallet != null ? _wallet.Gold : 0,
                 transform.position,
                 _inventory.Items,
-                _inventory.Equipment);
+                _inventory.Equipment,
+                _stats.Experience,
+                _quests != null ? _quests.CompletedQuestIds : null,
+                _quests != null ? _quests.Progress : null);
         }
     }
 }

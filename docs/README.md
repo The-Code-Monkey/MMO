@@ -26,6 +26,7 @@ If you only have ten minutes, read [01-architecture-overview](01-architecture-ov
 | 12 | [Conventions and checklist](12-conventions-and-checklist.md) | Server-authority rules, TDD flow, and the pull-request checklist. |
 | 13 | [Social: party and guild](13-social-party-and-guild.md) | Cross-zone parties and guilds, the CAS retry loop, presence heartbeats. |
 | 14 | [Server authority hardening](14-server-authority-hardening.md) | Anti-cheat: server-authoritative movement, line-of-sight raycasts, and the item-dupe guard. |
+| 15 | [Content systems: quests and dialogue](15-content-systems.md) | Quest data and progress, objective keys, server-walked dialogue and the minimal reader. |
 
 ## The one idea to remember
 

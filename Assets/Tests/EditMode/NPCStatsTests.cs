@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using MMO.Gameplay;
+using MMO.Inventory;
 using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -87,6 +89,59 @@ namespace MMO.Tests
         public void MaxHealth_IsGreaterThanZero()
         {
             Assert.Greater(NPCStats.MaxHealth, 0, "A health pool of zero makes the stat meaningless.");
+        }
+
+        [Test]
+        public void IsDeathTransition_OnlyOnTheCrossingIntoZero()
+        {
+            Assert.IsTrue(NPCStats.IsDeathTransition(10, 0));
+            Assert.IsTrue(NPCStats.IsDeathTransition(1, 0));
+            Assert.IsFalse(NPCStats.IsDeathTransition(0, 0),
+                "A restored corpse must not be treated as a fresh death.");
+            Assert.IsFalse(NPCStats.IsDeathTransition(10, 4));
+        }
+
+        [Test]
+        public void Died_IsAnEventCarryingTheKiller()
+        {
+            EventInfo died = typeof(NPCStats).GetEvent("Died", BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(died, "Loot and quests need one death hook to subscribe to.");
+            Assert.AreEqual(typeof(Action<PlayerInventory>), died.EventHandlerType,
+                "The killer has to travel with the death; downstream handlers must not guess.");
+        }
+
+        [Test]
+        public void LastAttacker_IsReadOnly()
+        {
+            PropertyInfo property = typeof(NPCStats).GetProperty("LastAttacker", BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(property);
+            Assert.AreEqual(typeof(PlayerInventory), property.PropertyType);
+            Assert.IsNull(property.GetSetMethod(nonPublic: false),
+                "Only ApplyDamage may name the attacker; a public setter would let any caller forge credit.");
+        }
+
+        [Test]
+        public void ApplyDamage_IsPublicAndCarriesTheServerAttribute()
+        {
+            MethodInfo method = typeof(NPCStats).GetMethod(
+                "ApplyDamage", BindingFlags.Public | BindingFlags.Instance, null,
+                new[] { typeof(int), typeof(PlayerInventory) }, null);
+
+            Assert.IsNotNull(method, "Expected a public ApplyDamage(int amount, PlayerInventory source).");
+            Assert.IsNotNull(method.GetCustomAttribute<ServerAttribute>(),
+                "ApplyDamage lost its [Server] attribute, so a client could author a kill.");
+        }
+
+        [Test]
+        public void ResetHealth_IsPublicAndCarriesTheServerAttribute()
+        {
+            MethodInfo method = typeof(NPCStats).GetMethod("ResetHealth", BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(method, "The spawn controller needs a server-only respawn reset.");
+            Assert.IsNotNull(method.GetCustomAttribute<ServerAttribute>(),
+                "ResetHealth lost its [Server] attribute, so a client could revive an enemy.");
         }
 
         [Test]

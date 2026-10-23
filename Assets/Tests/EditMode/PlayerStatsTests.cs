@@ -188,9 +188,9 @@ namespace MMO.Tests
                 }
             }
 
-            Assert.AreEqual(5, syncVars.Count,
-                "PlayerStats should hold exactly five SyncVars: health, mana, level, and the two " +
-                "equipment bonus caps — the inventory system recalculates those from what is worn.");
+            Assert.AreEqual(8, syncVars.Count,
+                "PlayerStats should hold exactly eight SyncVars: health, mana, level, experience, " +
+                "the two equipment bonus caps and the two aura bonus caps.");
         }
 
         [Test]
@@ -210,11 +210,12 @@ namespace MMO.Tests
         [Test]
         public void EquipmentStats_ExposeNoPublicSetter()
         {
-            // The level and the equipment bonus caps are server-owned for the same reason the
-            // vitals are: only PlayerInventory's recalculated totals may move them, never a client.
+            // The level, equipment caps and aura caps are server-owned for the same reason the
+            // vitals are: only their owning systems may move them, never a client.
             foreach (string stat in new[]
                      {
-                         "Level", "MaxHealthBonus", "MaxManaBonus",
+                         "Level", "Experience", "MaxHealthBonus", "MaxManaBonus",
+                         "AuraHealthBonus", "AuraManaBonus",
                          "EffectiveMaxHealth", "EffectiveMaxMana",
                      })
             {
@@ -246,7 +247,7 @@ namespace MMO.Tests
             foreach (string name in new[]
                      {
                          "TakeDamage", "Heal", "SpendMana", "RestoreMana",
-                         "SetLevel", "ApplyEquipmentBonuses",
+                         "SetLevel", "AddExperience", "ApplyExperience", "ApplyEquipmentBonuses", "ApplyAuraBonuses",
                      })
             {
                 MethodInfo method = GetMutator(name);

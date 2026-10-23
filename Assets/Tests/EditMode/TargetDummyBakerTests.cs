@@ -4,6 +4,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Editor;
 using MMO.Gameplay;
 using MMO.Net;
@@ -183,6 +184,12 @@ namespace MMO.Tests
             NetworkObject prefab = TargetDummyBaker.EnsureTargetDummyPrefab();
 
             Assert.IsNotNull(prefab.GetComponent<NPCStats>());
+            Assert.IsNotNull(prefab.GetComponent<EnemyBrain>(),
+                "The baked enemy must carry the brain the spawn controller drives.");
+            Assert.IsNotNull(prefab.GetComponent<NpcLoot>(),
+                "The baked enemy must carry the loot hook its death table is configured on.");
+            Assert.IsNotNull(prefab.GetComponent<AuraController>());
+            Assert.IsNotNull(prefab.GetComponent<UnityEngine.AI.NavMeshAgent>());
         }
 
         [Test]

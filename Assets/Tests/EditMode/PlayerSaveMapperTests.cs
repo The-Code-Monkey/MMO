@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Persistence;
@@ -202,15 +203,92 @@ namespace MMO.Tests
             Assert.AreEqual(4, equipment[(int)EquipmentSlot.Head].GridX);
         }
 
+
+        [Test]
+        public void SchemaVersion_IsTwo()
+        {
+            Assert.AreEqual(2, PlayerSaveRecord.CurrentSchemaVersion);
+        }
+
+        [Test]
+        public void Capture_RoundTripsExperienceAndQuestContent()
+        {
+            var progress = new QuestProgressEntry
+            {
+                QuestId = "wolf_hunt",
+                Kind = QuestObjectiveKind.Kill,
+                TargetName = "Wolf",
+                Count = 2,
+            };
+
+            PlayerSaveRecord record = Capture(
+                experience: 42,
+                completedQuestIds: new[] { "intro" },
+                questProgress: new[] { progress });
+
+            Assert.AreEqual(42, record.Experience);
+            CollectionAssert.AreEqual(new[] { "intro" }, record.CompletedQuestIds);
+            Assert.AreEqual(1, record.QuestProgress.Count);
+            Assert.AreEqual("wolf_hunt", record.QuestProgress[0].QuestId);
+
+            PlayerSaveMapper.Apply(
+                record,
+                out _,
+                out _,
+                out int skipped,
+                out _,
+                out int experience,
+                out List<string> completed,
+                out List<QuestProgressEntry> restored);
+
+            Assert.AreEqual(0, skipped);
+            Assert.AreEqual(42, experience);
+            CollectionAssert.AreEqual(new[] { "intro" }, completed);
+            Assert.AreEqual(1, restored.Count);
+            Assert.AreEqual(QuestObjectiveKind.Kill, restored[0].Kind);
+            Assert.AreEqual("Wolf", restored[0].TargetName);
+            Assert.AreEqual(2, restored[0].Count);
+        }
+
+        [Test]
+        public void Apply_LegacyRecord_DefaultsContent()
+        {
+            var legacy = new PlayerSaveRecord
+            {
+                UserId = "u-1",
+                CompletedQuestIds = null,
+                QuestProgress = null,
+            };
+
+            PlayerSaveMapper.Apply(
+                legacy,
+                out _,
+                out _,
+                out _,
+                out _,
+                out int experience,
+                out List<string> completed,
+                out List<QuestProgressEntry> progress);
+
+            Assert.AreEqual(0, experience);
+            Assert.IsEmpty(completed);
+            Assert.IsEmpty(progress);
+        }
+
         private static PlayerSaveRecord Capture(
             int level = 1,
             int health = PlayerStats.MaxHealth,
             int mana = PlayerStats.MaxMana,
             long gold = 0,
             IReadOnlyList<ItemInstance> bag = null,
-            IReadOnlyList<ItemInstance> equipment = null)
+            IReadOnlyList<ItemInstance> equipment = null,
+            int experience = 0,
+            IReadOnlyList<string> completedQuestIds = null,
+            IReadOnlyList<QuestProgressEntry> questProgress = null)
         {
-            return PlayerSaveMapper.Capture("u-1", level, health, mana, gold, new Vector3(1f, 2f, 3f), bag, equipment);
+            return PlayerSaveMapper.Capture(
+                "u-1", level, health, mana, gold, new Vector3(1f, 2f, 3f), bag, equipment,
+                experience, completedQuestIds, questProgress);
         }
 
         private static ItemSaveData Saved(string name, int equipmentSlot = -1, int gridX = 0, int gridY = 0)

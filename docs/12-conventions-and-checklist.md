@@ -73,9 +73,23 @@ New abilities, items, recipes, weapons and armor are **assets**, not code. Prefe
 - `Assets > Create > MMO > Recipe Data`
 - `Assets > Create > MMO > Resource Definition`
 - `Assets > Create > MMO > Weapon Data` / `Armor Data`
+- `Assets > Create > MMO > Quest Data`
+- `Assets > Create > MMO > Dialogue Node`
+- `Assets > Create > MMO > Weighted Loot Table`
+- `Assets > Create > MMO > Aura Data`
 
 Items and recipes self-register via `OnEnable`, so dropping a named asset in the right `Resources`
-folder is enough to make it resolvable.
+folder is enough to make it resolvable. Quests and loot tables are loaded from
+`Resources/Content/Quests` and `Resources/Content/LootTables` by their registries.
+
+Content conventions:
+
+- Loot entries are **independent chances** (`0..1`), not normalized weights; 0.5 means 50%.
+- Quest objective keys are stable strings: `NPCStats.TargetName` for kills,
+  `ItemDefinition.ItemName` for collects, and the node/resource/station/chest key for interacts.
+- Auras are session-only; they are not saved.
+- Enemy camps are authored on `EnemyMarker` and run through `SpawnController`; a production manager
+  does not carry a fixed target-dummy spawner.
 
 ## 5. Testing rules (TDD)
 
@@ -126,7 +140,8 @@ Before opening a PR:
       state goes through a single-writer; a second item grant is refused).
 - [ ] Tests were written first and pass; core logic is well covered.
 - [ ] New pure logic lives in a pure class taking `now`/inputs as arguments.
-- [ ] New data uses ScriptableObject assets where possible.
+- [ ] New data uses ScriptableObject assets where possible; content keys and loot chances follow
+      the conventions above.
 - [ ] New wire types use public fields; new SyncVars use the object form.
 - [ ] The backend is reached only through `IPlayerRepository` / `IApiGateway`.
 - [ ] Any changed system's doc chapter in `docs/` is updated in the same PR.

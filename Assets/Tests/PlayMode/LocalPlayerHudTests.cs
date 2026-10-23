@@ -131,6 +131,9 @@ namespace MMO.Tests
             Assert.IsNotNull(hud.CraftingPanel, "The crafting window ships with the HUD, concealed.");
             Assert.IsFalse(hud.CraftingPanel.IsOpen,
                 "The crafting panel stays hidden until the server sends this player an offer.");
+            Assert.IsNotNull(hud.DialogueView, "The dialogue panel ships with the HUD, concealed.");
+            Assert.IsFalse(hud.DialogueView.IsOpen,
+                "The dialogue panel stays hidden until the server sends this player a node.");
         }
 
         [UnityTest]

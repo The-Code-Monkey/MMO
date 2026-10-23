@@ -12,8 +12,8 @@ namespace MMO.Editor
     /// Materialises the object <see cref="NetworkManagerFactory"/> builds into the active
     /// scene, so the scene is saved with a NetworkManager already in it — including the player
     /// prefab registration and PlayerSpawner that make a connecting client receive a player
-    /// object, and the target dummy registration and spawner that put a server-spawned enemy
-    /// in the world when the server starts.
+    /// object. Enemy populations are placed by <c>EnemyMarker</c> spawn controllers, not a fixed
+    /// dummy spawner.
     /// </summary>
     public static class NetworkManagerSceneBaker
     {
@@ -40,8 +40,8 @@ namespace MMO.Editor
 
         /// <summary>
         /// Returns the scene's NetworkManager, creating one if the scene has none, and wires the
-        /// player object into it so every admitted client is spawned one, plus the target dummy
-        /// that the server instantiates and spawns when it starts listening.
+        /// shared prefabs into it. Enemy populations are placed by <c>EnemyMarker</c> spawn
+        /// controllers, not a fixed dummy spawner.
         /// Idempotent: a second call reuses the existing object and does not duplicate the wiring.
         /// </summary>
         public static NetworkManager CreateInActiveScene(MMOConnectionSettings settings)
@@ -55,7 +55,6 @@ namespace MMO.Editor
 
                 // Already in the scene, so it has no prefab wiring of ours to inherit; give it one.
                 PlayerPrefabBaker.WirePlayerPrefab(existing);
-                TargetDummyBaker.WireTargetDummy(existing);
                 CraftingStationBaker.WireCraftingStation(existing);
                 LootBagBaker.WireLootBag(existing);
                 ResourceNodeBaker.WireResourceNode(existing);

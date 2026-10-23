@@ -8,6 +8,7 @@ using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Auction;
 using MMO.Client;
+using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -112,6 +113,11 @@ namespace MMO.Net
             go.AddComponent<PlayerWallet>();
             go.AddComponent<PlayerAuctionHouse>();
 
+            // Quest state and the server-walked dialogue session. They sit before the save trigger
+            // so a loaded quest state can be applied through them later.
+            go.AddComponent<PlayerQuestLog>();
+            go.AddComponent<PlayerDialogue>();
+
             // Added last so its OnStartNetwork runs after the stats/inventory it applies a loaded
             // save through: it consumes the record the join gate fetched and subscribes the save
             // events only once that apply has settled.
@@ -140,6 +146,10 @@ namespace MMO.Net
             // Mount state: drives the mover's speed and flight and reads the bag for the mount
             // item, so it sits after both. Its RPCs are owner-checked like every other shell.
             go.AddComponent<PlayerMount>();
+
+            // Aura state: reads the player's stats and mover it scales, and gates actions through
+            // the server-only BlocksActions/BlocksMovement properties.
+            go.AddComponent<AuraController>();
 
             // Owner-side click-to-move: turns a mouse click into an intent through
             // PlayerMover.RequestMoveTo, where the server does the NavMesh validation. After

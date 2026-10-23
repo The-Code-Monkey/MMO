@@ -4,6 +4,7 @@ using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Net;
 using NUnit.Framework;
@@ -140,16 +141,34 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Create_PutsTheStatsNextToTheNetworkObject()
+        public void Create_PutsTheEnemyBehavioursNextToTheNetworkObject()
         {
             NetworkObject nob = TargetDummyPrefabFactory.Create();
             Track(nob.gameObject);
 
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(1, behaviours.Length, "Only the project's own behaviour belongs here.");
-            Assert.IsInstanceOf<NPCStats>(behaviours[0]);
+            Assert.AreEqual(4, behaviours.Length,
+                "The enemy needs its vitals, brain, loot hook and aura shell.");
+            Assert.IsInstanceOf<NPCStats>(behaviours[0],
+                "Stats stay first so a freshly spawned enemy has health before the brain reads it.");
+            Assert.IsInstanceOf<EnemyBrain>(behaviours[1]);
+            Assert.IsInstanceOf<NpcLoot>(behaviours[2]);
+            Assert.IsInstanceOf<AuraController>(behaviours[3]);
             Assert.AreSame(nob.gameObject, behaviours[0].gameObject,
                 "The stats and the NetworkObject must be on the same object.");
+        }
+
+        [Test]
+        public void Create_AddsANavMeshAgentForTheBrain()
+        {
+            NetworkObject nob = TargetDummyPrefabFactory.Create();
+            Track(nob.gameObject);
+
+            Assert.IsNotNull(nob.GetComponent<UnityEngine.AI.NavMeshAgent>(),
+                "EnemyBrain requires an agent; the prefab must carry one before the brain is added.");
+            Assert.IsFalse(nob.GetComponent<UnityEngine.AI.NavMeshAgent>().enabled,
+                "The agent starts disabled so a test scene without a NavMesh does not log placement errors.");
+            Assert.IsNotNull(nob.GetComponent<EnemyBrain>());
         }
 
         [Test]

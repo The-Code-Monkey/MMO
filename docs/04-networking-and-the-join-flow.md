@@ -222,9 +222,10 @@ The `NetworkManager` object graph is generic; the **scene** layers the world on 
 scene carries a server-only `WorldBootstrap` (`Assets/Scripts/Net/WorldBootstrap.cs`) on the
 `NetworkManager` object. On server start it:
 
-- spawns every `ResourceNodeMarker`, `CraftingStationMarker` and `EnemyMarker` under the scene's
-  `Markers` root (each marker names the prefab to use, so the level is authored by placing markers,
-  not by hand-spawning networked objects), and
+- spawns every `ResourceNodeMarker` and `CraftingStationMarker` under the scene's `Markers` root,
+  and gives every `EnemyMarker` a server-side `SpawnController` that owns its population, density
+  and respawn timer (each marker names the prefab to use, so the level is authored by placing
+  markers, not by hand-spawning networked objects), and
 - subscribes to the `PlayerSpawner`'s `OnSpawned` event so it can place each joining player.
 
 Placement is decided by the scene's `PlayerSpawnPoint`s (`Assets/Scripts/Net/PlayerSpawnPoint.cs`).

@@ -22,6 +22,8 @@ GameObject:
   - component: {fileID: 4748785539353044818}
   - component: {fileID: 6344316905428052550}
   - component: {fileID: 6561559964275652801}
+  - component: {fileID: 7385269363321464}
+  - component: {fileID: 6380855348582973878}
   - component: {fileID: 6901790986073579184}
   - component: {fileID: 2380682821765895201}
   - component: {fileID: 506150388635910153}
@@ -31,6 +33,7 @@ GameObject:
   - component: {fileID: 5417282396660200929}
   - component: {fileID: 6183399494757744168}
   - component: {fileID: 5554675490262176391}
+  - component: {fileID: 8786340995436250260}
   - component: {fileID: 7972816330282042749}
   - component: {fileID: 4776461223201602675}
   - component: {fileID: 4262900348515514802}
@@ -333,6 +336,36 @@ MonoBehaviour:
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 1248092469509279395}
   _networkObjectCache: {fileID: 0}
+--- !u!114 &7385269363321464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8673228683051736043}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9591fc7d37371aad2a8e9022c5361ea3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Content.PlayerQuestLog
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1248092469509279395}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &6380855348582973878
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8673228683051736043}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee66a4fe0c31df5e598729b60cf7e0b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Content.PlayerDialogue
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1248092469509279395}
+  _networkObjectCache: {fileID: 0}
 --- !u!114 &6901790986073579184
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -466,6 +499,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1f9074dc0b106de5fa384bbef6b22ad6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerMount
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 1248092469509279395}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &8786340995436250260
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8673228683051736043}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82d10efb36740c773ac17aab723fff01, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Content.AuraController
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 1248092469509279395}
   _networkObjectCache: {fileID: 0}

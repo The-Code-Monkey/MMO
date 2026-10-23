@@ -43,12 +43,16 @@ namespace MMO.Gameplay
         private readonly SyncVar<int> _health = new();
         private readonly SyncVar<int> _mana = new();
         private readonly SyncVar<int> _level = new();
+        private readonly SyncVar<int> _experience = new();
         private readonly SyncVar<int> _maxHealthBonus = new();
         private readonly SyncVar<int> _maxManaBonus = new();
+        private readonly SyncVar<int> _auraHealthBonus = new();
+        private readonly SyncVar<int> _auraManaBonus = new();
 
         public int Health => _health.Value;
         public int Mana => _mana.Value;
         public int Level => _level.Value;
+        public int Experience => _experience.Value;
 
         /// <summary>Maximum health currently granted by equipped items.</summary>
         public int MaxHealthBonus => _maxHealthBonus.Value;
@@ -56,11 +60,17 @@ namespace MMO.Gameplay
         /// <summary>Maximum mana currently granted by equipped items.</summary>
         public int MaxManaBonus => _maxManaBonus.Value;
 
-        /// <summary>Health cap in force: the base <see cref="MaxHealth"/> plus equipment bonuses.</summary>
-        public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value;
+        /// <summary>Maximum health currently granted by active auras.</summary>
+        public int AuraHealthBonus => _auraHealthBonus.Value;
 
-        /// <summary>Mana cap in force: the base <see cref="MaxMana"/> plus equipment bonuses.</summary>
-        public int EffectiveMaxMana => MaxMana + _maxManaBonus.Value;
+        /// <summary>Maximum mana currently granted by active auras.</summary>
+        public int AuraManaBonus => _auraManaBonus.Value;
+
+        /// <summary>Health cap in force: base, equipment and aura bonuses.</summary>
+        public int EffectiveMaxHealth => MaxHealth + _maxHealthBonus.Value + _auraHealthBonus.Value;
+
+        /// <summary>Mana cap in force: base, equipment and aura bonuses.</summary>
+        public int EffectiveMaxMana => MaxMana + _maxManaBonus.Value + _auraManaBonus.Value;
 
         /// <summary>
         /// Raised whenever replicated vitals change: health or mana moving, or a cap shifting
@@ -76,6 +86,9 @@ namespace MMO.Gameplay
         /// the persistence layer binds to: "levelled up → push the new state to the backend."
         /// </summary>
         public event Action LevelChanged;
+
+        /// <summary>Raised when experience changes, on the server and on clients.</summary>
+        public event Action ExperienceChanged;
 
         /// <summary>
         /// Raised on the server the moment health first reaches zero — the transition, not a
@@ -105,11 +118,14 @@ namespace MMO.Gameplay
             _health.OnChange += OnHealthChanged;
             _mana.OnChange += OnManaChanged;
             _level.OnChange += OnLevelChanged;
+            _experience.OnChange += OnExperienceChanged;
 
             // The caps are HUD state too: equipment raising or lowering a maximum has to repaint
             // the bar's fill even when the current value itself did not move.
             _maxHealthBonus.OnChange += OnMaxChanged;
             _maxManaBonus.OnChange += OnMaxChanged;
+            _auraHealthBonus.OnChange += OnMaxChanged;
+            _auraManaBonus.OnChange += OnMaxChanged;
         }
 
         public override void OnStopNetwork()
@@ -117,8 +133,11 @@ namespace MMO.Gameplay
             _health.OnChange -= OnHealthChanged;
             _mana.OnChange -= OnManaChanged;
             _level.OnChange -= OnLevelChanged;
+            _experience.OnChange -= OnExperienceChanged;
             _maxHealthBonus.OnChange -= OnMaxChanged;
             _maxManaBonus.OnChange -= OnMaxChanged;
+            _auraHealthBonus.OnChange -= OnMaxChanged;
+            _auraManaBonus.OnChange -= OnMaxChanged;
         }
 
         /// <summary>
@@ -161,6 +180,23 @@ namespace MMO.Gameplay
             _level.Value = Mathf.Max(0, level);
         }
 
+        /// <summary>Server: grant quest or event experience. The player XP curve is not part of this step.</summary>
+        [Server]
+        public void AddExperience(int amount)
+        {
+            if (amount <= 0)
+                return;
+
+            _experience.Value += amount;
+        }
+
+        /// <summary>Server: restore experience from a loaded save.</summary>
+        [Server]
+        public void ApplyExperience(int experience)
+        {
+            _experience.Value = Mathf.Max(0, experience);
+        }
+
         /// <summary>
         /// Server: overwrite vitals and level from a loaded save record, clamped to the caps in
         /// force. Equipment bonuses are applied afterwards by <c>PlayerInventory.Restore</c>, so a
@@ -191,8 +227,10 @@ namespace MMO.Gameplay
         [Server]
         public void Respawn()
         {
-            _health.Value = EffectiveMaxHealth;
-            _mana.Value = EffectiveMaxMana;
+            // Auras clear on death, so the revived pool is the base plus equipment only. Using an
+            // active debuff's negative aura cap here could leave the respawn at zero health.
+            _health.Value = Mathf.Max(0, MaxHealth + _maxHealthBonus.Value);
+            _mana.Value = Mathf.Max(0, MaxMana + _maxManaBonus.Value);
         }
 
         /// <summary>
@@ -209,6 +247,21 @@ namespace MMO.Gameplay
         {
             _maxHealthBonus.Value = Mathf.Max(0, maxHealthBonus);
             _maxManaBonus.Value = Mathf.Max(0, maxManaBonus);
+
+            _health.Value = ComputeNewHealth(_health.Value, 0, EffectiveMaxHealth);
+            _mana.Value = ComputeNewMana(_mana.Value, 0, EffectiveMaxMana);
+        }
+
+        /// <summary>
+        /// Replaces the aura-derived stat bonuses. Called by <see cref="MMO.Content.AuraController"/>
+        /// whenever the active set changes; kept separate from equipment so equipping gear cannot
+        /// wipe a buff, and a debuff can lower a cap without being treated as negative gear.
+        /// </summary>
+        [Server]
+        public void ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)
+        {
+            _auraHealthBonus.Value = maxHealthBonus;
+            _auraManaBonus.Value = maxManaBonus;
 
             _health.Value = ComputeNewHealth(_health.Value, 0, EffectiveMaxHealth);
             _mana.Value = ComputeNewMana(_mana.Value, 0, EffectiveMaxMana);
@@ -284,6 +337,11 @@ namespace MMO.Gameplay
                 return;
 
             LevelChanged?.Invoke();
+        }
+
+        private void OnExperienceChanged(int previous, int current, bool asServer)
+        {
+            ExperienceChanged?.Invoke();
         }
 
         private void OnMaxChanged(int previous, int current, bool asServer)

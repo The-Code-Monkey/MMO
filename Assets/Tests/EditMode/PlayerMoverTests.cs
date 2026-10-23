@@ -130,6 +130,17 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void SetAuraSpeedMultiplier_IsServerOnly()
+        {
+            MethodInfo method = typeof(PlayerMover).GetMethod("SetAuraSpeedMultiplier",
+                BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.IsNotNull(method, "Auras scale the mover through their own multiplier.");
+            Assert.IsNotNull(method.GetCustomAttribute<ServerAttribute>(),
+                "A client that can clear its own root can walk through crowd control.");
+        }
+
+        [Test]
         public void SetFlight_IsServerOnly()
         {
             MethodInfo method = typeof(PlayerMover).GetMethod("SetFlight",

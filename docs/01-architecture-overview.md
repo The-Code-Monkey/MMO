@@ -69,6 +69,7 @@ Inside `MMO.Runtime` the code is organised by feature folder, and each folder ha
 | `Assets/Scripts/Gameplay` | `MMO.Gameplay` | Player stats, combat, abilities, gathering, resource nodes, NPCs. |
 | `Assets/Scripts/Inventory` | `MMO.Inventory` | The grid bag, equipment slots, item definitions and the networked inventory. |
 | `Assets/Scripts/Crafting` | `MMO.Crafting` | Recipes, stations and crafting validation. |
+| `Assets/Scripts/Content` | `MMO.Content` | Quest, dialogue, loot and aura data plus their pure rules and registries. |
 | `Assets/Scripts/Net` | `MMO.Net` | FishNet wiring: the join gate, prefab factories/spawners, zone transfers, the `WorldBootstrap` and its scene markers. |
 | `Assets/Scripts/Persistence` | `MMO.Persistence` | Save records, the Nakama repository, the REST client, login/token rules. |
 | `Assets/Scripts/Social` | `MMO.Social` | Parties, guilds and the social hub. |

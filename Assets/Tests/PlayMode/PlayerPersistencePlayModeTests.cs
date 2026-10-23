@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FishNet.Managing;
+using FishNet.Object;
+using MMO.Content;
 using MMO.Gameplay;
 using MMO.Net;
 using MMO.Persistence;
@@ -162,10 +164,93 @@ namespace MMO.Tests
             yield return WaitForSavedLevel(accountId, 14);
         }
 
+        [UnityTest]
+        public IEnumerator SpawnRestoresXpAndQuestState_AndDisconnectPersistsThem()
+        {
+            _repo = new InMemoryPlayerRepository();
+            _service.Configure(_repo);
+
+            string accountId = _manager.GetComponent<JoinRequestClient>().AccountId;
+            _repo.Records[accountId] = new PlayerSaveRecord
+            {
+                UserId = accountId,
+                Experience = 77,
+                CompletedQuestIds = new List<string> { "done_quest" },
+                QuestProgress = new List<QuestProgressEntry>
+                {
+                    new()
+                    {
+                        QuestId = "active_quest",
+                        Kind = QuestObjectiveKind.Kill,
+                        TargetName = "Wolf",
+                        Count = 1,
+                    },
+                },
+            };
+
+            NetworkManagerTestHelper.StartHost(_manager);
+            yield return NetworkManagerTestHelper.WaitForHostAuthenticated(_manager);
+            yield return NetworkManagerTestHelper.WaitForPlayerObject(_manager);
+
+            NetworkObject player = NetworkManagerTestHelper.FindPlayerObject(_manager);
+            PlayerStats stats = player.GetComponent<PlayerStats>();
+            PlayerQuestLog quests = player.GetComponent<PlayerQuestLog>();
+
+            Assert.IsNotNull(quests, "The player prefab must carry PlayerQuestLog for persistence.");
+            Assert.AreEqual(77, stats.Experience);
+            Assert.IsTrue(quests.IsCompleted("done_quest"));
+            Assert.IsTrue(quests.IsActive("active_quest"));
+            Assert.AreEqual(1, quests.Progress.Count, "The active objective row must be restored.");
+
+            stats.AddExperience(5);
+            _manager.ClientManager.StopConnection();
+
+            yield return WaitForSavedContent(accountId, 82, "done_quest", "active_quest");
+        }
+
         private bool IsClientAuthenticated()
         {
             var connection = _manager.ClientManager.Connection;
             return connection != null && connection.IsAuthenticated;
+        }
+
+        private IEnumerator WaitForSavedContent(
+            string accountId,
+            int experience,
+            string completedQuestId,
+            string activeQuestId,
+            int maxFrames = 600)
+        {
+            for (int i = 0; i < maxFrames; i++)
+            {
+                if (_repo.Records.TryGetValue(accountId, out PlayerSaveRecord record) &&
+                    record != null &&
+                    record.Experience == experience &&
+                    record.CompletedQuestIds != null &&
+                    record.CompletedQuestIds.Contains(completedQuestId) &&
+                    HasProgress(record.QuestProgress, activeQuestId))
+                {
+                    yield break;
+                }
+
+                yield return null;
+            }
+
+            Assert.Fail($"XP/quest state for '{accountId}' never reached the backend.");
+        }
+
+        private static bool HasProgress(IReadOnlyList<QuestProgressEntry> progress, string questId)
+        {
+            if (progress == null)
+                return false;
+
+            for (int i = 0; i < progress.Count; i++)
+            {
+                if (progress[i].QuestId == questId)
+                    return true;
+            }
+
+            return false;
         }
 
         private IEnumerator WaitForSavedLevel(string accountId, int level, int maxFrames = 600)

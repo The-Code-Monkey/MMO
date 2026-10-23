@@ -1,5 +1,7 @@
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Content;
+using MMO.Inventory;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -28,11 +30,14 @@ namespace MMO.Gameplay
 
         private NavMeshAgent _agent;
         private NPCStats _stats;
+        private AuraController _auras;
         private readonly ThreatTable _threat = new();
         private double _nextAttackTime;
         private Vector3 _spawnPosition;
 
         public ThreatTable Threat => _threat;
+
+        private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
 
         public override void OnStartNetwork()
         {
@@ -48,6 +53,9 @@ namespace MMO.Gameplay
             _stats = GetComponent<NPCStats>();
             _spawnPosition = transform.position;
 
+            if (_stats != null)
+                _stats.Damaged += OnDamaged;
+
             // NavMeshAgent is server-only: clients never run pathing.
             if (_agent == null)
             {
@@ -56,12 +64,27 @@ namespace MMO.Gameplay
                 return;
             }
 
+            // The prefab ships the agent disabled and only enables it on a baked zone NavMesh.
+            // That keeps a test scene (and any unposed spawn) from logging placement errors.
+            _agent.enabled = false;
+            if (!NavMesh.SamplePosition(transform.position, out NavMeshHit hit, 2f, NavMesh.AllAreas))
+            {
+                Debug.LogWarning($"[EnemyBrain] {name} has no NavMesh nearby; AI disabled.");
+                enabled = false;
+                return;
+            }
+
+            transform.position = hit.position;
+            _agent.enabled = true;
             _agent.updateRotation = true;
             _agent.updatePosition = true;
         }
 
         public override void OnStopNetwork()
         {
+            if (_stats != null)
+                _stats.Damaged -= OnDamaged;
+
             base.OnStopNetwork();
         }
 
@@ -75,6 +98,14 @@ namespace MMO.Gameplay
                 _agent.isStopped = true;
                 return;
             }
+
+            if (Auras != null && Auras.BlocksActions)
+            {
+                _agent.isStopped = true;
+                return;
+            }
+
+            bool rooted = Auras != null && Auras.BlocksMovement;
 
             string targetId = _threat.CurrentTarget;
             if (string.IsNullOrEmpty(targetId))
@@ -105,9 +136,13 @@ namespace MMO.Gameplay
 
             if (distance <= _attackRange)
             {
-                // In range: stop and auto-attack
+                // In range: stop and auto-attack. A root stops the feet, not the swing.
                 _agent.isStopped = true;
                 TryAutoAttack(targetTransform);
+            }
+            else if (rooted)
+            {
+                _agent.isStopped = true;
             }
             else if (distance <= _chaseRange)
             {
@@ -125,6 +160,12 @@ namespace MMO.Gameplay
 
         private void ReturnToSpawnIfNeeded()
         {
+            if (Auras != null && Auras.BlocksMovement)
+            {
+                _agent.isStopped = true;
+                return;
+            }
+
             float distToSpawn = Vector3.Distance(transform.position, _spawnPosition);
             if (distToSpawn > 1f)
             {
@@ -139,24 +180,58 @@ namespace MMO.Gameplay
 
         private Transform FindTargetTransform(string entityId)
         {
-            // In a real implementation, this would look up the entity by ID.
-            // For now, we search by name as a simple approximation.
-            // This should be replaced with a proper entity registry.
+            // Object id is the stable key; the name fallback keeps the existing taunt path and
+            // hand-authored callers working. A real entity registry can replace both later.
             var candidates = FindObjectsByType<NPCStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             for (int i = 0; i < candidates.Length; i++)
             {
-                if (candidates[i].name == entityId)
+                if (MatchesEntity(candidates[i], entityId))
                     return candidates[i].transform;
             }
 
             var players = FindObjectsByType<PlayerStats>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             for (int i = 0; i < players.Length; i++)
             {
-                if (players[i].name == entityId)
+                if (MatchesEntity(players[i], entityId))
                     return players[i].transform;
             }
 
             return null;
+        }
+
+        private static bool MatchesEntity(NetworkBehaviour behaviour, string entityId)
+        {
+            if (behaviour == null)
+                return false;
+
+            if (behaviour.name == entityId)
+                return true;
+
+            NetworkObject networkObject = behaviour.NetworkObject;
+            return networkObject != null && networkObject.ObjectId.ToString() == entityId;
+        }
+
+        private void OnDamaged(PlayerInventory source, int amount)
+        {
+            if (!IsServer || source == null)
+                return;
+
+            NetworkObject sourceObject = source.NetworkObject;
+            string sourceId = sourceObject != null ? sourceObject.ObjectId.ToString() : source.name;
+            if (!string.IsNullOrEmpty(sourceId))
+                _threat.Add(sourceId, ThreatRules.ThreatFor(AbilityLogic.TargetedDamage, amount));
+        }
+
+        /// <summary>
+        /// Server: restore the brain after a spawn controller revives this enemy. Threat from the
+        /// previous life must not carry over.
+        /// </summary>
+        [Server]
+        public void ResetForRespawn()
+        {
+            _threat.Clear();
+            _nextAttackTime = 0;
+            _spawnPosition = transform.position;
         }
 
         private void TryAutoAttack(Transform targetTransform)

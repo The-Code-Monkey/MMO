@@ -1,5 +1,6 @@
 using FishNet.Connection;
 using FishNet.Object;
+using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -109,7 +110,8 @@ namespace MMO.Client
                 createEventSystem: true,
                 createGuildBankFrame: false,
                 crafting: GetComponent<PlayerCrafting>(),
-                mount: GetComponent<PlayerMount>());
+                mount: GetComponent<PlayerMount>(),
+                dialogue: GetComponent<PlayerDialogue>());
 
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
 
