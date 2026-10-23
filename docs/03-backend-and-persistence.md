@@ -34,16 +34,19 @@ The unit that travels to and from the database is `PlayerSaveRecord`
 
 | Field | Type | Meaning | Line |
 |---|---|---|---|
-| `UserId` | `string` | The player's account id. This is the database key. | 49 |
-| `SchemaVersion` | `int` | Format version, currently `1`. Lets future code migrate old saves. | 51 |
-| `Level` | `int` | Player level. | 53 |
-| `Health` | `int` | Current health, clamped to the cap when applied. | 56 |
-| `Mana` | `int` | Current mana. | 58 |
-| `Position` | `Vector3` | Reserved. Round-trips but is not applied yet (there is no movement save/load). | 61 |
-| `StorageVersion` | `string` | The backend's revision hash. Not player data; used for safe concurrent writes. | 64 |
-| `Items` | `List<ItemSaveData>` | Both inventory containers flattened into one list (bag + worn). | 66 |
+| `UserId` | `string` | The player's account id. This is the database key. | 62 |
+| `SchemaVersion` | `int` | Format version, currently `2`. Lets future code migrate old saves. | 64 |
+| `Level` | `int` | Player level. | 66 |
+| `Health` | `int` | Current health, clamped to the cap when applied. | 69 |
+| `Mana` | `int` | Current mana. | 71 |
+| `Experience` | `int` | Quest/event XP. There is no player level curve yet. | 74 |
+| `Position` | `Vector3` | Reserved. Round-trips but is not applied yet (there is no movement save/load). | 77 |
+| `StorageVersion` | `string` | The backend's revision hash. Not player data; used for safe concurrent writes. | 80 |
+| `Items` | `List<ItemSaveData>` | Both inventory containers flattened into one list (bag + worn). | 85 |
+| `CompletedQuestIds` | `List<string>` | Quest ids that have already paid their reward. | 88 |
+| `QuestProgress` | `List<QuestProgressEntry>` | Active objective counters. | 91 |
 
-Each inventory entry is an `ItemSaveData` (`PlayerSaveRecord.cs:15`):
+Each inventory entry is an `ItemSaveData` (`PlayerSaveRecord.cs:16`):
 
 | Field | Meaning |
 |---|---|
@@ -61,13 +64,15 @@ The default values match the gameplay constants: `Level = PlayerStats.DefaultLev
 `PlayerSaveMapper` (`Assets/Scripts/Persistence/PlayerSaveMapper.cs`) is the **only** code that
 converts between live gameplay components and the record, and it is pure, so it is unit tested.
 
-- `PlayerSaveMapper.Capture(...)` (`PlayerSaveMapper.cs:21`) takes plain values and lists — level,
-  health, mana, gold, position, the bag list and the equipment list — and produces a
-  `PlayerSaveRecord`. It skips empty items and marks bag items with `EquipmentSlot = -1`.
-- `PlayerSaveMapper.Apply(...)` (`PlayerSaveMapper.cs:69`) reads a record back into two lists
+- `PlayerSaveMapper.Capture(...)` (`PlayerSaveMapper.cs:22`) takes plain values and lists — level,
+  health, mana, experience, gold, position, the bag/equipment lists and optional quest content —
+  and produces a `PlayerSaveRecord`. It skips empty items and marks bag items with
+  `EquipmentSlot = -1`.
+- `PlayerSaveMapper.Apply(...)` (`PlayerSaveMapper.cs:96`) reads a record back into two lists
   (`out List<ItemInstance> bag`, `out List<ItemInstance> equipment`), reports how many items were
-  **skipped**, and returns the stored gold. Item durability is restored clamped to the definition's
-  current maximum (`:112`).
+  **skipped**, and returns the stored gold. The content overload (`:111`) also returns experience,
+  completed quest ids and quest progress. Item durability is restored clamped to the definition's
+  current maximum.
 
 A skipped item is one the local game cannot resolve — a saved item name with no matching
 `ItemDefinition`, or a worn slot index that no longer exists. Skipping rather than crashing means a

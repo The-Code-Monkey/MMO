@@ -190,6 +190,13 @@ namespace MMO.Gameplay
             _experience.Value += amount;
         }
 
+        /// <summary>Server: restore experience from a loaded save.</summary>
+        [Server]
+        public void ApplyExperience(int experience)
+        {
+            _experience.Value = Mathf.Max(0, experience);
+        }
+
         /// <summary>
         /// Server: overwrite vitals and level from a loaded save record, clamped to the caps in
         /// force. Equipment bonuses are applied afterwards by <c>PlayerInventory.Restore</c>, so a

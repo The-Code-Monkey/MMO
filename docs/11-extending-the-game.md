@@ -187,9 +187,9 @@ public sealed class PlayerCooking : NetworkBehaviour
 ## 9. Add a field to the save
 
 1. Add the field to `PlayerSaveRecord` (`Assets/Scripts/Persistence/PlayerSaveRecord.cs`).
-2. Capture it in `PlayerSaveMapper.Capture` (`PlayerSaveMapper.cs:21`).
-3. Apply it in `PlayerSaveMapper.Apply` (`PlayerSaveMapper.cs:69`) and, if it belongs to a live
-   component, in `PlayerSaveTrigger.OnStartNetwork` (`PlayerSaveTrigger.cs:51`).
+2. Capture it in `PlayerSaveMapper.Capture` (`PlayerSaveMapper.cs:22`).
+3. Apply it in the content overload of `PlayerSaveMapper.Apply` (`PlayerSaveMapper.cs:111`) and, if
+   it belongs to a live component, in `PlayerSaveTrigger.OnStartNetwork`.
 4. Bump `PlayerSaveRecord.CurrentSchemaVersion` if old saves need migrating.
 5. Add an EditMode round-trip test.
 
@@ -203,6 +203,55 @@ Party and guild actions are pure rules (`PartyRules`, `GuildRules`) plus a netwo
 3. Add the matching operation to `SocialHubService` (read-modify-write with the CAS retry loop) and
    `ISocialRepository` if it needs storage.
 4. See [13](13-social-party-and-guild.md) for the whole picture.
+
+## 11. Add content systems
+
+The four content frameworks live under `Assets/Scripts/Content` and are documented in
+[15](15-content-systems.md).
+
+### Add a quest
+
+1. Create `Assets > Create > MMO > Quest Data`; set a unique `QuestId`, objectives, prerequisites,
+   `RewardXp` and an optional `RewardTable`.
+2. Use the standard keys: `Kill` → `NPCStats.TargetName`, `Collect` → `ItemDefinition.ItemName`,
+   `Interact` → `DialogueNode.NodeId`, `ResourceDefinition.name`, `CraftingStationType.ToString()` or
+   a `LootChest` name.
+3. Start it on the server with `PlayerQuestLog.TryStartQuest`; objective updates complete and reward
+   it once. Use `TryComplete` for an explicit turn-in.
+4. Add pure-rule tests in `QuestRulesTests` and a shell test in `QuestDialoguePlayModeTests`.
+
+### Add a dialogue
+
+1. Create `Assets > Create > MMO > Dialogue Node`; set the node id, speaker, text and choices. Each
+   choice can link to another node and carry an `OfferQuest`/`TurnInQuest` action.
+2. Put `DialogueNpc` on a networked prefab with a collider and point it at the root node.
+3. The server validates the choice index; the client only receives `DialoguePayload` (speaker, text,
+   choice labels) and renders it through `DialogueView`.
+
+### Add a loot table
+
+1. Create `Assets > Create > MMO > Weighted Loot Table`.
+2. Add entries with an item, a **probability** (`0..1`) and an inclusive min/max count. Chances are
+   independent: 0.5 means 50% regardless of the other entries. This is not a normalized weight.
+3. Point an `NpcLoot` at the table for mob drops, or set it on a `LootChest`.
+4. Overflow goes to a `LootBag`; test it with `LootRulesTests` and `LootPlayModeTests`.
+
+### Add an aura
+
+1. Create `Assets > Create > MMO > Aura Data` and choose a kind, duration, tick interval, magnitude,
+   stack cap and optional stat.
+2. Apply it from server code through `AuraController.Apply`, or create an `Ability Data` with
+   `ApplyAura` and set its `Aura` field.
+3. Auras clear on death and are session-only; there is no buff-bar UI or aura persistence.
+4. Add rule tests in `AuraRulesTests` and shell tests in `AuraPlayModeTests`.
+
+### Tune an enemy camp
+
+1. Select the scene's `EnemyMarker` and set `MinAlive`/`MaxAlive`, `PerPlayer`,
+   `RespawnSeconds`, `WanderRadius` and `ActivationRadius`.
+2. The marker gets a `SpawnController` on server start; it counts nearby players, spawns up to the
+   target, respawns defeats after the timer and never exceeds `MaxAlive`.
+3. `SpawnRules` is the pure arithmetic; `SpawnControllerPlayModeTests` covers the live behaviour.
 
 ## Common tasks
 

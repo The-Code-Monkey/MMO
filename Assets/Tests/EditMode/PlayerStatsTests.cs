@@ -247,7 +247,7 @@ namespace MMO.Tests
             foreach (string name in new[]
                      {
                          "TakeDamage", "Heal", "SpendMana", "RestoreMana",
-                         "SetLevel", "AddExperience", "ApplyEquipmentBonuses", "ApplyAuraBonuses",
+                         "SetLevel", "AddExperience", "ApplyExperience", "ApplyEquipmentBonuses", "ApplyAuraBonuses",
                      })
             {
                 MethodInfo method = GetMutator(name);

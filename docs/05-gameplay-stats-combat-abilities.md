@@ -49,26 +49,27 @@ Every mutation is a `[Server]` method:
 - `SpendMana(int)` (`:161`) and `RestoreMana(int)` (`:167`),
 - `SetLevel(int)` (`:178`),
 - `AddExperience(int)` (`:185`) — quest/event XP, server-only.
-- `ApplySave(int health, int mana, int level)` (`:199`) — used when a save record is loaded. It
+- `ApplyExperience(int)` (`:195`) — restores XP from a save.
+- `ApplySave(int health, int mana, int level)` (`:206`) — used when a save record is loaded. It
   clamps health and mana to the effective caps.
-- `Respawn()` (`:221`) — restores health and mana to the base plus equipment caps. Called by the
+- `Respawn()` (`:228`) — restores health and mana to the base plus equipment caps. Called by the
   death resolver for **every** death, whatever the tier (see
   [section 1a](#1a-death-and-the-risk-tiers)). Auras clear on death, so they are deliberately not
   part of the respawn pool.
-- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:239`) — used when gear changes. If
+- `ApplyEquipmentBonuses(int maxHealthBonus, int maxManaBonus)` (`:246`) — used when gear changes. If
   a bonus shrinks, current values are pulled down with it.
-- `ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)` (`:254`) — used when the active aura set
+- `ApplyAuraBonuses(int maxHealthBonus, int maxManaBonus)` (`:261`) — used when the active aura set
   changes; separate from equipment so one cannot wipe the other.
 
 The arithmetic itself lives in pure static helpers so it can be tested directly:
-`ComputeNewHealth` (`:290`), `ComputeHealedHealth` (`:295`), `ComputeNewMana` (`:300`) and
-`ComputeRestoredMana` (`:305`). They all clamp the result, so a negative damage amount cannot heal
+`ComputeNewHealth` (`:297`), `ComputeHealedHealth` (`:302`), `ComputeNewMana` (`:307`) and
+`ComputeRestoredMana` (`:312`). They all clamp the result, so a negative damage amount cannot heal
 and a negative heal cannot damage.
 
 ### The client request path
 
-A client may ask to damage someone through `RequestDamage(int)` (`:267`), which returns unless the
-caller owns the player, then sends `RpcRequestDamage` (`:276`). The server handler re-checks that the
+A client may ask to damage someone through `RequestDamage(int)` (`:274`), which returns unless the
+caller owns the player, then sends `RpcRequestDamage` (`:283`). The server handler re-checks that the
 sender is the owner before calling `TakeDamage`. That double check (FishNet also enforces ownership)
 is the house style: never trust the client.
 

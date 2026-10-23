@@ -115,6 +115,33 @@ Spawning is server-only: the controller checks `NetworkManager.IsServerStarted`,
 scene contains no controller at all. There is no fixed `TargetDummySpawner` in a production
 `NetworkManager`; the class remains for tests and manual scene wiring.
 
+## 4. Loot and auras
+
+`WeightedLootTable` (`Assets/Scripts/Content/WeightedLootTable.cs`) holds `LootEntry` rows with an
+item, a **drop chance** in `0..1`, and an inclusive min/max count. Each entry rolls independently, so
+50% leather and 1% epic mount are exactly those probabilities; the table is not a normalized weight
+set. `LootRules.Roll` uses an injected `System.Random`, which keeps the roll deterministic in tests.
+
+`NpcLoot` rolls the table on `NPCStats.Died` and awards the killer through `LootAwarder`. A full bag
+falls back to a `LootBag`; `LootChest` uses the same award path and opens only once. Details of the
+bag and ownership path are in [06](06-inventory-and-equipment.md).
+
+`AuraData`/`AuraRules`/`AuraController` live alongside them. Auras are server-applied, tick-based and
+session-only: DoT/HoT, stun/root, temporary health/mana/speed changes, and a replicated snapshot list
+for a future buff bar. The gameplay side is in
+[05](05-gameplay-stats-combat-abilities.md#5a-auras--buffs-debuffs-and-crowd-control).
+
+## Deferred
+
+- No quest-log UI, no buff-bar UI and no aura persistence.
+- No player XP curve or level-up from XP; XP is stored and granted only.
+- No generic `IStat` system; auras affect health, mana and movement speed only.
+- No chest or dialogue NPC prefab/scene placement; both are reusable components for #75.
+- No normalized weighted loot or "roll N from a table"; entries are independent chances.
+- `EnemyBrain` still resolves target names by `name`/object id; quest and loot credit use direct
+  `PlayerInventory` references, so they do not depend on that lookup.
+- No boss loot integration; #83 can consume `WeightedLootTable`.
+
 ## Common tasks
 
 - **Add a quest.** Create `Assets > Create > MMO > Quest Data`, give it a unique `QuestId`, add
@@ -132,3 +159,7 @@ scene contains no controller at all. There is no fixed `TargetDummySpawner` in a
   `SpawnController`; no prefab change is needed.
 - **Test a spawn budget.** Use `SpawnRules.TargetAlive` directly; `SpawnControllerPlayModeTests`
   covers the live density, cap and respawn behaviour.
+- **Add a loot table.** Create `Assets > Create > MMO > Weighted Loot Table`; remember entries are
+  independent chances, not a normalized total. Attach it to `NpcLoot` or `LootChest`.
+- **Add an aura.** Create `Assets > Create > MMO > Aura Data`; apply it through `AuraController` or an
+  `ApplyAura` ability. Auras are not persisted.

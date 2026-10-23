@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using MMO.Content;
 using MMO.Inventory;
 using UnityEngine;
 
@@ -26,7 +27,10 @@ namespace MMO.Persistence
             long gold,
             Vector3 position,
             IReadOnlyList<ItemInstance> bag,
-            IReadOnlyList<ItemInstance> equipment)
+            IReadOnlyList<ItemInstance> equipment,
+            int experience = 0,
+            IReadOnlyList<string> completedQuestIds = null,
+            IReadOnlyList<QuestProgressEntry> questProgress = null)
         {
             var record = new PlayerSaveRecord
             {
@@ -34,9 +38,32 @@ namespace MMO.Persistence
                 Level = level,
                 Health = health,
                 Mana = mana,
+                Experience = Mathf.Max(0, experience),
                 Gold = gold,
                 Position = position,
             };
+
+            if (completedQuestIds != null)
+            {
+                for (int i = 0; i < completedQuestIds.Count; i++)
+                {
+                    if (!string.IsNullOrEmpty(completedQuestIds[i]))
+                        record.CompletedQuestIds.Add(completedQuestIds[i]);
+                }
+            }
+
+            if (questProgress != null)
+            {
+                for (int i = 0; i < questProgress.Count; i++)
+                {
+                    QuestProgressEntry entry = questProgress[i];
+                    if (!string.IsNullOrEmpty(entry.QuestId))
+                    {
+                        entry.Count = Mathf.Max(0, entry.Count);
+                        record.QuestProgress.Add(entry);
+                    }
+                }
+            }
 
             if (bag != null)
             {
@@ -73,15 +100,59 @@ namespace MMO.Persistence
             out int skippedItems,
             out long gold)
         {
+            Apply(record, out bag, out equipment, out skippedItems, out gold,
+                out _, out _, out _);
+        }
+
+        /// <summary>
+        /// Rebuilds the containers and returns the XP and quest content alongside them. The
+        /// original overload above stays in place for callers that only care about items.
+        /// </summary>
+        public static void Apply(
+            PlayerSaveRecord record,
+            out List<ItemInstance> bag,
+            out List<ItemInstance> equipment,
+            out int skippedItems,
+            out long gold,
+            out int experience,
+            out List<string> completedQuestIds,
+            out List<QuestProgressEntry> questProgress)
+        {
             bag = new List<ItemInstance>();
             equipment = new List<ItemInstance>();
             skippedItems = 0;
             gold = 0;
+            experience = 0;
+            completedQuestIds = new List<string>();
+            questProgress = new List<QuestProgressEntry>();
 
             if (record == null)
                 return;
 
             gold = record.Gold;
+            experience = Mathf.Max(0, record.Experience);
+
+            if (record.CompletedQuestIds != null)
+            {
+                for (int i = 0; i < record.CompletedQuestIds.Count; i++)
+                {
+                    if (!string.IsNullOrEmpty(record.CompletedQuestIds[i]))
+                        completedQuestIds.Add(record.CompletedQuestIds[i]);
+                }
+            }
+
+            if (record.QuestProgress != null)
+            {
+                for (int i = 0; i < record.QuestProgress.Count; i++)
+                {
+                    QuestProgressEntry entry = record.QuestProgress[i];
+                    if (!string.IsNullOrEmpty(entry.QuestId))
+                    {
+                        entry.Count = Mathf.Max(0, entry.Count);
+                        questProgress.Add(entry);
+                    }
+                }
+            }
 
             if (record.Items == null)
                 return;
