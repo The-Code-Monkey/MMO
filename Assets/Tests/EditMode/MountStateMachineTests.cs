@@ -30,7 +30,8 @@ namespace MMO.Tests
         [Test]
         public void Mounting_BecomesMounted_AfterCastTime()
         {
-            MountStateMachine machine = Mounted(NewMount(flying: false, castSeconds: 1.5f), now: 0d);
+            MountStateMachine machine = new(NewMount(flying: false, castSeconds: 1.5f));
+            machine.RequestMount(now: 0d);
 
             Assert.AreEqual(MountState.Mounting, machine.State);
             Assert.AreEqual(MountState.Mounting, machine.Tick(1.49d));

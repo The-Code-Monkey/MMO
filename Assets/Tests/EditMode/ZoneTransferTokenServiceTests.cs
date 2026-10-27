@@ -1,3 +1,4 @@
+using System.Reflection;
 using MMO.Net;
 using NUnit.Framework;
 using UnityEngine;
@@ -19,6 +20,12 @@ namespace MMO.Tests
         {
             _go = new GameObject("TokenServiceUnderTest");
             _service = _go.AddComponent<ZoneTransferTokenService>();
+
+            // EditMode never runs MonoBehaviour lifecycle callbacks on AddComponent; invoke the
+            // one Unity would call on enable so the test sees what a real scene sees.
+            typeof(ZoneTransferTokenService)
+                .GetMethod("OnEnable", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_service, null);
         }
 
         [TearDown]
@@ -53,8 +60,10 @@ namespace MMO.Tests
         [Test]
         public void OnDestroy_ClearsTheInstance()
         {
-            Object.DestroyImmediate(_go);
-            _go = null;
+            // EditMode does not drive the MonoBehaviour lifecycle, so call the callback Unity would.
+            typeof(ZoneTransferTokenService)
+                .GetMethod("OnDestroy", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(_service, null);
 
             Assert.IsNull(ZoneTransferTokenService.Instance);
         }

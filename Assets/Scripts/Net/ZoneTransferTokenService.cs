@@ -35,7 +35,7 @@ namespace MMO.Net
         /// <summary>Lifetime given to tokens that do not carry their own expiry.</summary>
         public float TokenTtlSeconds => _tokenTtlSeconds;
 
-        private void Awake()
+        private void OnEnable()
         {
             Instance = this;
 
@@ -48,11 +48,13 @@ namespace MMO.Net
 
         private void OnDestroy()
         {
-            if (Instance == this)
+            // ReferenceEquals, not ==: Unity's destroyed-object operator can read a dying instance
+            // as unequal to itself, which would leave the static pointing at a destroyed object.
+            if (ReferenceEquals(Instance, this))
                 Instance = null;
         }
 
-        /// <summary>Swaps in a store; production wires the default in <see cref="Awake"/>, tests inject a double.</summary>
+        /// <summary>Swaps in a store; production wires the default in <see cref="OnEnable"/>, tests inject a double.</summary>
         public void Configure(IZoneTransferTokenStore store) => Store = store;
     }
 }

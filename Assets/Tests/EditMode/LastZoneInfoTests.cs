@@ -31,8 +31,10 @@ namespace MMO.Tests
             DateTime after = DateTime.UtcNow;
 
             Assert.IsNotEmpty(zone.SavedAt);
-            Assert.LessOrEqual(before, zone.SavedAt);
-            Assert.GreaterOrEqual(after.AddSeconds(1), zone.SavedAt);
+            DateTime stamp = DateTime.Parse(zone.SavedAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal);
+            Assert.LessOrEqual(before.AddSeconds(-1), stamp);
+            Assert.GreaterOrEqual(after.AddSeconds(1), stamp);
         }
 
         [Test]

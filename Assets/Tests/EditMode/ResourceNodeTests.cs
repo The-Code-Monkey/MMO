@@ -54,7 +54,7 @@ namespace MMO.Tests
             // SyncVar would be state a client could hold that the server does not own.
             var syncVars = new List<FieldInfo>();
 
-            foreach (FieldInfo field in typeof(ResourceNode).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            foreach (FieldInfo field in typeof(ResourceNode).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 if (field.FieldType.IsGenericType &&
                     field.FieldType.GetGenericTypeDefinition() == typeof(SyncVar<>))

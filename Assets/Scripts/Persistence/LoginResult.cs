@@ -40,6 +40,6 @@ namespace MMO.Persistence
             => new(true, token, userId, username, lastZone, null);
 
         public static LoginResult Fail(string error)
-            => new(false, null, null, null, null, error ?? "Sign-in failed.");
+            => new(false, null, null, null, null, string.IsNullOrWhiteSpace(error) ? "Sign-in failed." : error);
     }
 }

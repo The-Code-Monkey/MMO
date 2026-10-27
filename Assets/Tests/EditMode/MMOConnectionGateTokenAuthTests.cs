@@ -7,6 +7,7 @@ using MMO.Net;
 using MMO.Persistence;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace MMO.Tests
@@ -140,11 +141,11 @@ namespace MMO.Tests
 
             Assert.AreEqual(BackedUserId, loader.AccountId,
                 "The save is loaded under the backend's user id, never the account id the client claimed.");
-            Assert.AreEqual(BackedUserId, loadedAccount);
 
             loader.Complete(new PlayerSaveRecord { UserId = BackedUserId, Level = 3 });
             await Task.Delay(50);
 
+            Assert.AreEqual(BackedUserId, loadedAccount);
             Assert.AreEqual(true, capture.Approved);
             Assert.AreEqual(0, _gate.PendingHandshakes,
                 "A settled join must be cleared so the reaper never turns it back.");
@@ -183,6 +184,7 @@ namespace MMO.Tests
         public async Task ValidatorThrowing_FailsClosed()
         {
             var capture = new VerdictCapture(_gate);
+            LogAssert.Expect(LogType.Error, "Token validation failed: backend down");
 
             _gate.OnRemoteConnection(Connection);
             _gate.HandleJoinRequest(Connection, "Bob", "acc-1", ValidToken);

@@ -228,8 +228,7 @@ namespace MMO.Tests
         private PlayerGathering AttachGathering()
         {
             GameObject go = Track(new GameObject("PlayerGatheringUnderTest"));
-            go.AddComponent<NetworkObject>();
-            return go.AddComponent<PlayerGathering>();
+            return NetworkBehaviourTestFactory.Attach<PlayerGathering>(go);
         }
 
         private GameObject Track(GameObject go)

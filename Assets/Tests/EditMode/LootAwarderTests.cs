@@ -19,7 +19,7 @@ namespace MMO.Tests
         public void SetUp()
         {
             _player = new GameObject("LootAwarderPlayer");
-            _inventory = _player.AddComponent<PlayerInventory>();
+            _inventory = NetworkBehaviourTestFactory.Attach<PlayerInventory>(_player);
         }
 
         [TearDown]

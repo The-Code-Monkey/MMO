@@ -122,7 +122,11 @@ namespace MMO.Tests
         [Test]
         public void Available_WithNullBag_BehavesLikeAnEmptyBag()
         {
-            var recipes = new[] { Recipe("Iron Sword", CraftingStationType.Anvil, 1) };
+            var recipes = new[]
+            {
+                Recipe("Iron Sword", CraftingStationType.Anvil, 1,
+                    Ingredients(TestItemDefinitions.Create("Iron Ore"), 2)),
+            };
 
             IReadOnlyList<RecipeOffer> offers = CraftingOfferRules.Available(
                 recipes, CraftingStationType.Anvil, level: 1, bag: null);

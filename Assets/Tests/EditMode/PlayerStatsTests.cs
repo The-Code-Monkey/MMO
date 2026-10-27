@@ -179,7 +179,7 @@ namespace MMO.Tests
             // them and re-sends the server's value to everyone regardless of what a client sent.
             var syncVars = new List<FieldInfo>();
 
-            foreach (FieldInfo field in typeof(PlayerStats).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            foreach (FieldInfo field in typeof(PlayerStats).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 if (field.FieldType.IsGenericType &&
                     field.FieldType.GetGenericTypeDefinition() == typeof(SyncVar<>))

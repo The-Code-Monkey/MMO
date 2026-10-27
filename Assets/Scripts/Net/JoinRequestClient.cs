@@ -37,7 +37,7 @@ namespace MMO.Net
         /// in PlayerPrefs so the same reeled-in player keeps the same database record across
         /// sessions.
         /// </summary>
-        public string AccountId => _accountId;
+        public string AccountId => string.IsNullOrEmpty(_accountId) ? _accountId = EnsureAccountId() : _accountId;
 
         /// <summary>
         /// Single-shot zone-transfer authorization, armed by <see cref="ZoneTransferClient"/> just
@@ -95,7 +95,7 @@ namespace MMO.Net
             => new JoinRequestBroadcast
             {
                 PlayerName = _playerName,
-                AccountId = _accountId,
+                AccountId = AccountId,
                 AuthToken = _authToken,
                 TransferToken = _transferToken,
             };

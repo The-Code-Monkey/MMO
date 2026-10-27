@@ -193,7 +193,7 @@ namespace MMO.Tests
             Assert.AreEqual(3, grid.Height, "The partial row is visible under the two full rows.");
             Assert.AreEqual(10, grid.CellCount, "Eight rectangular cells plus two extras.");
             Assert.IsTrue(grid.Contains(0, 2, 2, 1));
-            Assert.IsFalse(grid.Contains(1, 2, 1, 1), "A 2-wide item cannot start in the last extra cell.");
+            Assert.IsFalse(grid.Contains(1, 2, 2, 1), "A 2-wide item cannot start in the last extra cell.");
             Assert.IsFalse(grid.Contains(2, 2, 1, 1), "The unused corner of the partial row is not a cell.");
             Assert.IsFalse(grid.Contains(0, 3, 1, 1));
         }

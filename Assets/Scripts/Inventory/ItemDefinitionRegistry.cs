@@ -94,11 +94,26 @@ namespace MMO.Inventory
 
             // Either never registered or registered and then destroyed; Unity's null overload
             // above tells those apart from a real miss.
-            ItemDefinition loaded = Resources.Load<ItemDefinition>(itemName);
+            ItemDefinition loaded = Resources.Load<ItemDefinition>($"{ItemsFolder}/{itemName}");
             if (loaded != null)
+            {
                 Registered[itemName] = loaded;
+                return loaded;
+            }
 
-            return loaded;
+            // An asset file need not match its authored ItemName (Iron_Helm.asset carries
+            // "Iron Helm"), so look the whole folder up and let each asset register itself, then
+            // retry the key. Only reached on a direct miss, so the common path stays one load.
+            foreach (ItemDefinition candidate in Resources.LoadAll<ItemDefinition>(ItemsFolder))
+            {
+                if (candidate != null && candidate.ItemName == itemName)
+                {
+                    Registered[itemName] = candidate;
+                    return candidate;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

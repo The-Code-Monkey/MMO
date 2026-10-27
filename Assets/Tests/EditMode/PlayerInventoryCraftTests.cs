@@ -20,7 +20,7 @@ namespace MMO.Tests
         public void TryCraft_MissingOre_ReturnsFalseAndBagUnchanged()
         {
             GameObject go = new GameObject("Player");
-            PlayerInventory inv = go.AddComponent<PlayerInventory>();
+            PlayerInventory inv = NetworkBehaviourTestFactory.Attach<PlayerInventory>(go);
 
             ItemDefinition ore = TestItemDefinitions.Create("Iron Ore");
             ItemDefinition sword = TestItemDefinitions.Create("Iron Sword");
@@ -47,7 +47,7 @@ namespace MMO.Tests
         public void TryCraft_ConsumesOreAndAddsSword()
         {
             GameObject go = new GameObject("Player");
-            PlayerInventory inv = go.AddComponent<PlayerInventory>();
+            PlayerInventory inv = NetworkBehaviourTestFactory.Attach<PlayerInventory>(go);
 
             ItemDefinition ore = TestItemDefinitions.Create("Iron Ore");
             ItemDefinition sword = TestItemDefinitions.Create("Iron Sword");

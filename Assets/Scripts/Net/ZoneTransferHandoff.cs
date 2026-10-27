@@ -62,7 +62,7 @@ namespace MMO.Net
         /// </summary>
         public async Task<ZoneTransferBroadcast?> RunAsync(string accountId, string reason = null, CancellationToken ct = default)
         {
-            if (string.IsNullOrEmpty(accountId))
+            if (string.IsNullOrWhiteSpace(accountId))
                 return null;
 
             if (!await _forceSave(accountId))
