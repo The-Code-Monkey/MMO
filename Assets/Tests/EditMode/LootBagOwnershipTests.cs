@@ -22,11 +22,11 @@ namespace MMO.Tests.EditMode
         {
             _registry = new ItemOwnershipRegistry();
 
-            _lootBag = new GameObject("LootBag").AddComponent<LootBag>();
+            _lootBag = NetworkBehaviourTestFactory.Create<LootBag>("LootBag");
             _lootBag.SetInteractRange(10f);
             _lootBag._registry = _registry;
 
-            _inventory = new GameObject("Player").AddComponent<PlayerInventory>();
+            _inventory = NetworkBehaviourTestFactory.Create<PlayerInventory>("Player");
             _inventory.SetHolderId(_playerHolderId);
             _inventory._registry = _registry;
         }

@@ -49,7 +49,7 @@ namespace MMO.Tests
             var slotNames = new System.Collections.Generic.List<FieldInfo>();
 
             foreach (FieldInfo field in typeof(PlayerAbilities).GetFields(
-                         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
             {
                 if (field.FieldType.IsGenericType &&
                     field.FieldType.GetGenericTypeDefinition() == typeof(SyncVar<>))

@@ -85,7 +85,7 @@ namespace MMO.Tests
             // so a health bar client shows the number the server chose — the issue's real requirement.
             var syncVars = new List<FieldInfo>();
 
-            foreach (FieldInfo field in typeof(TargetDummy).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            foreach (FieldInfo field in typeof(TargetDummy).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 if (field.FieldType.IsGenericType &&
                     field.FieldType.GetGenericTypeDefinition() == typeof(SyncVar<>))

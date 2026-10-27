@@ -153,7 +153,7 @@ namespace MMO.Tests
             // sent.
             var syncVars = new List<FieldInfo>();
 
-            foreach (FieldInfo field in typeof(NPCStats).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            foreach (FieldInfo field in typeof(NPCStats).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 if (field.FieldType.IsGenericType &&
                     field.FieldType.GetGenericTypeDefinition() == typeof(SyncVar<>))

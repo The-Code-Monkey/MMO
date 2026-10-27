@@ -105,7 +105,9 @@ namespace MMO.Tests
             var source = new GuildBankTabSource(BankWith((0, Item()), (1, Item())));
             source.SelectTab(1);
 
-            source.SetBank(BankWith((0, Item("Sword"))));
+            GuildBankRecord singleTab = BankWith((0, Item("Sword")));
+            singleTab.Tabs.RemoveRange(1, singleTab.Tabs.Count - 1);
+            source.SetBank(singleTab);
 
             Assert.AreEqual(0, source.TabIndex);
         }

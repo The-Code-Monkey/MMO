@@ -43,12 +43,18 @@ namespace MMO.Net
             if (failed)
                 return OrchestrationState.Failed;
 
-            if ((state == OrchestrationState.Requested || state == OrchestrationState.Starting) &&
-                elapsedSeconds > timeoutSeconds)
-                return OrchestrationState.TimedOut;
+            // A terminal state never leaves, even if a later input disagrees.
+            if (state == OrchestrationState.Failed ||
+                state == OrchestrationState.TimedOut ||
+                state == OrchestrationState.Ready)
+                return state;
 
+            // Healthy wins over the timeout clock: a slow container that finally came up is ready.
             if (containerHealthy)
                 return OrchestrationState.Ready;
+
+            if (elapsedSeconds > timeoutSeconds)
+                return OrchestrationState.TimedOut;
 
             if (state == OrchestrationState.Requested)
                 return OrchestrationState.Starting;

@@ -71,7 +71,9 @@ namespace MMO.Tests
         public void DefeatedPhase_IsTerminal()
         {
             var boss = new BossStateMachine();
-            boss.Evaluate(healthFraction: 0f, liveAdds: 0, secondsInPhase: 1);
+            boss.Evaluate(healthFraction: 0.60f, liveAdds: 0, secondsInPhase: 1); // Adds
+            boss.Evaluate(healthFraction: 0.25f, liveAdds: 0, secondsInPhase: 1); // Enrage
+            boss.Evaluate(healthFraction: 0f, liveAdds: 0, secondsInPhase: 1); // Defeated
 
             Assert.AreEqual(BossPhase.Defeated, boss.Evaluate(healthFraction: -1f, liveAdds: 0, secondsInPhase: 1));
         }

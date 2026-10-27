@@ -82,11 +82,13 @@ namespace MMO.Tests
             Assert.AreEqual(9001, inner.Port);
         }
 
+        [System.Serializable]
         private sealed class WriteMirror
         {
             public System.Collections.Generic.List<WriteObject> objects;
         }
 
+        [System.Serializable]
         private sealed class WriteObject
         {
             public string collection;

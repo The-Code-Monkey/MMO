@@ -19,7 +19,7 @@ namespace MMO.Tests.EditMode
         public void SetUp()
         {
             _registry = new ItemOwnershipRegistry();
-            _inventory = new GameObject().AddComponent<PlayerInventory>();
+            _inventory = NetworkBehaviourTestFactory.Create<PlayerInventory>("PlayerInventoryUnderTest");
             _inventory.SetHolderId(_holderId);
             _inventory._registry = _registry;
         }
@@ -112,8 +112,8 @@ namespace MMO.Tests.EditMode
             recipeSO.FindProperty("_outputCount").intValue = 1;
             var ingredientsProp = recipeSO.FindProperty("_ingredients");
             ingredientsProp.arraySize = 1;
-            ingredientsProp.GetArrayElementAtIndex(0).FindPropertyRelative("_item").objectReferenceValue = ironDef;
-            ingredientsProp.GetArrayElementAtIndex(0).FindPropertyRelative("_count").intValue = 2;
+            ingredientsProp.GetArrayElementAtIndex(0).FindPropertyRelative("Item").objectReferenceValue = ironDef;
+            ingredientsProp.GetArrayElementAtIndex(0).FindPropertyRelative("Count").intValue = 2;
             recipeSO.ApplyModifiedPropertiesWithoutUndo();
 
             _inventory.TryAddItem(ironDef);

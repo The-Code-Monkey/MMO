@@ -156,7 +156,7 @@ namespace MMO.Tests
 
             await _hub.SyncAsync();
 
-            Assert.IsNull(_social.Parties["p1"].RaidInstanceId,
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p1"].RaidInstanceId),
                 "Reconcile must clear a pointer with no matching membership entry.");
             Assert.IsFalse(raised, "A stale pointer must not trigger a handoff.");
         }

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MMO.Persistence;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace MMO.Tests
@@ -86,7 +87,7 @@ namespace MMO.Tests
             _service.MarkDirty("u-1", immediate: false);
 
             double now = Time.unscaledTimeAsDouble;
-            Assert.AreEqual(0, await _service.ProcessDueSavesAsync(now + 2d), "Inside the debounce window nothing writes.");
+            Assert.AreEqual(0, await _service.ProcessDueSavesAsync(now + 1d), "Inside the debounce window nothing writes.");
             Assert.AreEqual(1, await _service.ProcessDueSavesAsync(now + 60d), "After the window the burst flushes once.");
             Assert.AreEqual(1, _repo.Records["u-1"].Level);
         }
@@ -127,7 +128,9 @@ namespace MMO.Tests
             _service.MarkDirty("u-1", immediate: true);
 
             double now = Time.unscaledTimeAsDouble;
+            LogAssert.Expect(LogType.Error, "[Persistence] Failed to save 'u-1': injected save failure");
             Assert.AreEqual(0, await _service.ProcessDueSavesAsync(now + 2d), "A failed write is not counted as flushed.");
+            LogAssert.Expect(LogType.Error, "[Persistence] Failed to save 'u-1': injected save failure");
             Assert.AreEqual(0, await _service.ProcessDueSavesAsync(now + 4d), "Still dirty, still re-debounced, still retried.");
 
             _repo.ThrowOnSave = false;
@@ -173,9 +176,10 @@ namespace MMO.Tests
             _repo.ThrowOnSave = true;
             _service.RegisterLivePlayer("u-1", Capture("u-1", 4));
 
+            LogAssert.Expect(LogType.Error, "[Persistence] Failed to save 'u-1': injected save failure");
             bool saved = await _service.FlushAsync("u-1");
-
             Assert.IsFalse(saved, "A handoff must know the save did not land.");
+            LogAssert.Expect(LogType.Error, "[Persistence] Failed to save 'u-1': injected save failure");
             Assert.AreEqual(0, await _service.FlushAsync(), "Still dirty, still failing.");
             Assert.IsFalse(_repo.Records.ContainsKey("u-1"));
 

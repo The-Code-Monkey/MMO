@@ -115,7 +115,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(RaidRule.RaidFull, rule);
             CollectionAssert.AreEqual(new[] { "p1" }, _raids.Instances[raid.InstanceId].MemberPartyIds);
-            Assert.IsNull(_social.Parties["p2"].RaidInstanceId);
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p2"].RaidInstanceId));
         }
 
         [Test]
@@ -174,7 +174,7 @@ namespace MMO.Tests
             Assert.AreEqual(RaidRule.Ok, rule);
             RaidInstanceRecord stored = _raids.Instances[raid.InstanceId];
             CollectionAssert.AreEqual(new[] { "p1" }, stored.MemberPartyIds);
-            Assert.IsNull(_social.Parties["p2"].RaidInstanceId);
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p2"].RaidInstanceId));
         }
 
         [Test]
@@ -202,7 +202,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(RaidRule.Ok, rule);
             Assert.IsFalse(_raids.Instances.ContainsKey(raid.InstanceId));
-            Assert.IsNull(_social.Parties["p1"].RaidInstanceId);
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p1"].RaidInstanceId));
         }
 
         [Test]
@@ -226,7 +226,7 @@ namespace MMO.Tests
             RaidInstanceRecord stored = _raids.Instances[raid.InstanceId];
             Assert.IsNotNull(stored);
             CollectionAssert.AreEqual(new[] { "p1" }, stored.MemberPartyIds);
-            Assert.IsNull(_social.Parties["p2"].RaidInstanceId);
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p2"].RaidInstanceId));
         }
 
         #endregion
@@ -268,8 +268,8 @@ namespace MMO.Tests
 
             Assert.AreEqual(RaidRule.Ok, rule);
             Assert.IsFalse(_raids.Instances.ContainsKey(raid.InstanceId));
-            Assert.IsNull(_social.Parties["p1"].RaidInstanceId);
-            Assert.IsNull(_social.Parties["p2"].RaidInstanceId);
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p1"].RaidInstanceId));
+            Assert.IsTrue(string.IsNullOrEmpty(_social.Parties["p2"].RaidInstanceId));
         }
 
         [Test]

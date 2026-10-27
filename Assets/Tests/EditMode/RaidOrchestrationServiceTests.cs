@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using MMO.Net;
 using MMO.Social;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace MMO.Tests
 {
@@ -94,11 +96,12 @@ namespace MMO.Tests
                 async (party, ct) => { fallbackCalled = true; return (RaidRule.Ok, new RaidInstanceRecord { InstanceId = "fallback-instance" }); },
                 TimeoutSeconds);
 
+            LogAssert.Expect(LogType.Error, "[RaidOrchestration] StartAsync failed: Simulated orchestrator failure.. Falling back to host selection.");
             var result = await service.EnterRaidAsync(MakeParty(), CancellationToken.None);
 
             Assert.AreEqual(RaidRule.Ok, result.Rule);
             Assert.IsTrue(fallbackCalled);
-            Assert.IsTrue(client.Started);
+            Assert.IsFalse(client.Started, "The start threw, so no container was ever started.");
         }
 
         [Test]
@@ -177,6 +180,7 @@ namespace MMO.Tests
                 async (party, ct) => { fallbackCalled = true; return (RaidRule.Ok, new RaidInstanceRecord { InstanceId = "fallback-instance" }); },
                 TimeoutSeconds);
 
+            LogAssert.Expect(LogType.Error, "[RaidOrchestration] Failed to register zone: Simulated save failure. Stopping container and falling back.");
             var result = await service.EnterRaidAsync(MakeParty(), CancellationToken.None);
 
             Assert.AreEqual(RaidRule.Ok, result.Rule);

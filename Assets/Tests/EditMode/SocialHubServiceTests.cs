@@ -79,7 +79,7 @@ namespace MMO.Tests
             Assert.IsFalse(string.IsNullOrEmpty(_repo.Indexes["a"].PartyId));
             Assert.AreEqual("alice", _repo.Indexes["b"].PendingPartyInvite.FromPlayerName);
             Assert.AreEqual(_repo.Indexes["a"].PartyId, _repo.Indexes["b"].PendingPartyInvite.PartyId);
-            Assert.IsNull(_repo.Indexes["b"].PartyId, "The target is still free until they accept.");
+            Assert.IsTrue(string.IsNullOrEmpty(_repo.Indexes["b"].PartyId), "The target is still free until they accept.");
         }
 
         [Test]
@@ -110,7 +110,7 @@ namespace MMO.Tests
             string partyId = _repo.Indexes["a"].PartyId;
             Assert.IsTrue(PartyRules.IsMember(_repo.Parties[partyId], "b"));
             Assert.AreEqual(partyId, _repo.Indexes["b"].PartyId);
-            Assert.IsTrue(_repo.Indexes["b"].PendingPartyInvite.PartyId == null, "The invite is consumed.");
+            Assert.IsTrue(string.IsNullOrEmpty(_repo.Indexes["b"].PendingPartyInvite.PartyId), "The invite is consumed.");
         }
 
         [Test]
@@ -152,7 +152,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(PartyRule.Ok, result);
             Assert.IsFalse(_repo.Parties.ContainsKey("p1"), "The last member leaving disbands the party.");
-            Assert.IsNull(_repo.Indexes["a"].PartyId);
+            Assert.IsTrue(string.IsNullOrEmpty(_repo.Indexes["a"].PartyId));
         }
 
         [Test]
@@ -175,7 +175,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(PartyRule.Ok, result);
             Assert.IsFalse(PartyRules.IsMember(_repo.Parties["p1"], "b"));
-            Assert.IsNull(_repo.Indexes["b"].PartyId);
+            Assert.IsTrue(string.IsNullOrEmpty(_repo.Indexes["b"].PartyId));
         }
 
         [Test]
@@ -259,7 +259,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(GuildRule.Ok, result);
             Assert.IsFalse(_repo.Guilds.ContainsKey(guildId));
-            Assert.IsNull(_repo.Indexes["a"].GuildId);
+            Assert.IsTrue(string.IsNullOrEmpty(_repo.Indexes["a"].GuildId));
         }
 
         #endregion
@@ -679,7 +679,8 @@ namespace MMO.Tests
                 if (store.TryGetValue(key, out TValue existing))
                 {
                     string current = VersionOf(existing);
-                    if (version != current)
+                    // JsonUtility turns a null StorageVersion into "", so treat null and "" as the same version.
+                    if (!string.Equals(version ?? string.Empty, current ?? string.Empty, System.StringComparison.Ordinal))
                         return Task.FromException(new StorageVersionConflictException("version mismatch"));
                 }
                 else if (!string.IsNullOrEmpty(version))

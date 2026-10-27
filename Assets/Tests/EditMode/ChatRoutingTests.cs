@@ -114,10 +114,10 @@ namespace MMO.Tests
             int delivered = 0;
             a.DeliverChat = _ => delivered++;
 
-            _chat.RouteInbound(new SocialBusEnvelope { t = "chat", ch = "zone", target = "other" });
+            _chat.RouteInbound(new SocialBusEnvelope { t = "chat", ch = "zone", target = "other", from = "c" });
             Assert.AreEqual(0, delivered);
 
-            _chat.RouteInbound(new SocialBusEnvelope { t = "chat", ch = "zone", target = _roster.LocalZoneId });
+            _chat.RouteInbound(new SocialBusEnvelope { t = "chat", ch = "zone", target = _roster.LocalZoneId, from = "c" });
             Assert.AreEqual(1, delivered);
         }
 

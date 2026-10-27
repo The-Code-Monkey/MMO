@@ -111,8 +111,10 @@ namespace MMO.Tests
 
                 Assert.AreEqual(1, markers.GetComponentsInChildren<EnemyMarker>().Length,
                     "One dummy to learn the combat loop on.");
-                Assert.AreEqual(0, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
-                Assert.AreEqual(0, markers.GetComponentsInChildren<CraftingStationMarker>().Length);
+                Assert.AreEqual(1, markers.GetComponentsInChildren<ResourceNodeMarker>().Length,
+                    "The tutorial ships an iron vein to gather from.");
+                Assert.AreEqual(1, markers.GetComponentsInChildren<CraftingStationMarker>().Length,
+                    "The tutorial ships a furnace so the ore-to-ingot recipe is reachable.");
             });
         }
 
