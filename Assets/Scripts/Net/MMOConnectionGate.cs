@@ -57,6 +57,8 @@ namespace MMO.Net
         [SerializeField] private MMOConnectionSettings _settings = new();
 
         private readonly JoinHandshakeTracker _tracker = new();
+        private JoinGateReaper _reaper;
+        private JoinGateVerdicts _verdicts;
 
         /// <summary>
         /// Consumed by FishNet's ServerManager. Approving promotes the connection,
@@ -433,34 +435,11 @@ namespace MMO.Net
         /// </summary>
         public void Apply(NetworkConnection connection, JoinDecision decision)
         {
-            if (connection == null)
-                return;
-
-            int applyClientId = connection.ClientId;
-            if (decision.Approved)
-            {
-                Debug.Log($"[JoinGate] Admitted client {applyClientId}.");
-            }
-            else
-            {
-                Debug.Log($"[JoinGate] Refused client {applyClientId}: {decision.Reason}");
-                SendRejection(connection, decision.Reason);
-            }
-
-            _tracker.End(connection.ClientId);
-            OnAuthenticationResult?.Invoke(connection, decision.Approved);
-        }
-
-        private void SendRejection(NetworkConnection connection, string reason)
-        {
-            if (NetworkManager == null || NetworkManager.ServerManager == null)
-                return;
-
-            NetworkManager.ServerManager.Broadcast(connection, new JoinResultBroadcast
-            {
-                Approved = false,
-                Reason = reason
-            }, requireAuthenticated: false);
+            _verdicts ??= new JoinGateVerdicts(
+                _tracker,
+                () => NetworkManager,
+                (conn, approved) => OnAuthenticationResult?.Invoke(conn, approved));
+            _verdicts.Apply(connection, decision);
         }
 
         /// <summary>
@@ -470,35 +449,21 @@ namespace MMO.Net
         /// <returns>How many pending handshakes had expired.</returns>
         public int ReapTimedOutConnections(double now)
         {
-            List<int> expired = _tracker.Expired(now, _settings.HandshakeTimeoutSeconds);
-
-            // Reaping only means anything while a server is up; with no ServerManager
-            // there is nothing to disconnect, but the count is still worth reporting.
-            if (NetworkManager != null && NetworkManager.ServerManager != null)
-            {
-                for (int i = 0; i < expired.Count; i++)
-                {
-                    if (NetworkManager.ServerManager.Clients.TryGetValue(expired[i], out NetworkConnection conn))
-                        Apply(conn, JoinDecision.Reject(JoinPolicy.ReasonTimedOut));
-                }
-            }
-
-            return expired.Count;
+            _reaper ??= new JoinGateReaper(
+                _tracker,
+                () => NetworkManager,
+                () => _settings.HandshakeTimeoutSeconds,
+                Apply);
+            return _reaper.Reap(now);
         }
 
         private int CountAuthenticatedClients()
         {
-            if (NetworkManager == null || NetworkManager.ServerManager == null)
-                return 0;
-
-            int count = 0;
-            foreach (NetworkConnection conn in NetworkManager.ServerManager.Clients.Values)
-            {
-                if (conn.IsAuthenticated)
-                    count++;
-            }
-
-            return count;
+            _verdicts ??= new JoinGateVerdicts(
+                _tracker,
+                () => NetworkManager,
+                (conn, approved) => OnAuthenticationResult?.Invoke(conn, approved));
+            return _verdicts.CountAuthenticatedClients();
         }
 
         private void Update()
