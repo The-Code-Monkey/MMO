@@ -1,9 +1,12 @@
--- auction_buy: atomic purchase of an auction listing.
+-- auction_buy: purchase of an auction listing.
 --
 -- Runs on the Nakama server (Lua runtime). Reads the listing, validates it is active,
--- checks the buyer's gold (wallet), transfers gold from buyer to seller, marks the
--- listing as sold, and writes a transaction record. All within a single Lua execution
--- so no partial state can persist.
+-- checks the buyer's gold (wallet), then claims the listing first with a version-guarded
+-- (CAS) write to "Sold" so exactly one buyer wins. Only the winner moves gold from buyer
+-- to seller; the wallet writes are the commit point. The transaction record and index
+-- updates that follow are audit metadata: if any of them fails, the purchase is still
+-- valid and the error is logged, not surfaced as a CONFLICT (which would strand the moved
+-- gold with no recovery path for the caller).
 --
 -- The listing and wallet objects are version-guarded: if another RPC call moves the
 -- same object between our read and write, Nakama returns 409 and the caller retries.
@@ -162,9 +165,10 @@ local function auction_buy(context, payload)
     }
     local tx_version = write_object(TRANSACTION_COLLECTION, transaction_id, transaction, "*", "", 1, 1)
     if not tx_version then
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+        nk.logger_error("auction_buy: transaction record write failed for " .. listing_id .. " (audit gap)")
+    else
+        transaction.StorageVersion = tx_version
     end
-    transaction.StorageVersion = tx_version
 
     -- 4. Update buyer's index (add to purchase history)
     local buyer_index_obj = read_object(INDEX_COLLECTION, buyer_id, "")
@@ -183,7 +187,7 @@ local function auction_buy(context, payload)
     end
     local buyer_index_version = write_object(INDEX_COLLECTION, buyer_id, buyer_index, buyer_index_obj and buyer_index_obj.version or "*", "", 1, 1)
     if not buyer_index_version then
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+        nk.logger_error("auction_buy: buyer index write failed for " .. buyer_id .. " (audit gap)")
     end
 
     -- 5. Update seller's index (remove from active)
@@ -200,7 +204,7 @@ local function auction_buy(context, payload)
             seller_index.ActiveListingIds = new_active
             local seller_index_version = write_object(INDEX_COLLECTION, listing.SellerAccountId, seller_index, seller_index_obj.version, "", 1, 1)
             if not seller_index_version then
-                return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+                nk.logger_error("auction_buy: seller index write failed for " .. listing.SellerAccountId .. " (audit gap)")
             end
         end
     end

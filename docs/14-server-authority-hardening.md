@@ -191,7 +191,7 @@ item *impossible to hold twice*.
 | Scope | What settles it |
 |---|---|
 | One process (a zone) | `ItemOwnershipRegistry` — the single writer; a duplicate grant is refused. |
-| Two processes (two zones, one item) | The backend's compare-and-swap / single transaction (#59). Auction state is written with a `StorageVersion` and a losing race throws `Persistence.StorageVersionConflictException`, which the caller retries. The gold/item transfer for a purchase is the atomic Nakama Lua RPC `auction_buy` (module `nakama/modules/auction_buy.lua`). |
+| Two processes (two zones, one item) | The backend's compare-and-swap / single transaction (#59). Auction state is written with a `StorageVersion` and a losing race throws `Persistence.StorageVersionConflictException`, which the caller retries. The gold/item transfer for a purchase is the Nakama Lua RPC `auction_buy` (module `nakama/modules/auction_buy.lua`): it claims the listing with a CAS write first so exactly one buyer wins, then moves gold as the commit point. The transaction record and index writes that follow are best-effort audit metadata — a failure there is logged, not surfaced as a `CONFLICT` (which would strand the already-moved gold). |
 
 The registry makes the in-process race impossible; the backend CAS makes the cross-process race
 settle in exactly one winner.
