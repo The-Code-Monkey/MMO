@@ -345,6 +345,9 @@ namespace MMO.Tests
             public Task<TerritoryRecord> LoadTerritoryAsync(string territoryId, CancellationToken ct = default) => Task.FromResult<TerritoryRecord>(null);
             public Task SaveTerritoryAsync(TerritoryRecord record, CancellationToken ct = default) => Task.CompletedTask;
             public Task<List<PresenceRecord>> LoadPresencesAsync(IReadOnlyList<string> accountIds, CancellationToken ct = default) => Task.FromResult(new List<PresenceRecord>());
+                        public Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default) => Task.FromResult<MailInbox>(null);
+            public Task SaveInboxAsync(MailInbox record, CancellationToken ct = default) => Task.CompletedTask;
+
             public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
             {
                 if (ThrowOnNotify)

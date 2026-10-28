@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MMO.Inventory;
@@ -118,6 +119,7 @@ namespace MMO.Auction
                     ListedAtTicks = nowTicks,
                     ExpiresAtTicks = expiresTicks,
                     Status = AuctionListingStatus.Active,
+                    SellerZoneId = _socialHub.ZoneId,
                 };
 
                 await _repository.SaveListingAsync(listing, ct);
@@ -224,6 +226,11 @@ namespace MMO.Auction
                 // Notify clients
                 _socialHub.NotifyAuctionListingSold(buyerAccountId, listing.SellerAccountId, updatedListing, transaction);
                 _socialHub.NotifyAuctionPurchaseCompleted(buyerAccountId, transaction);
+
+                // Deliver the escrowed item to the buyer. Same-zone buyers get it in their bag;
+                // cross-zone (or full-bag) buyers get a mail they claim on their own zone, so the
+                // item is never stranded on the seller's cluster.
+                await DeliverPurchaseAsync(buyerAccountId, updatedListing, ct);
 
                 return AuctionResult.Ok(listingId: listingId, listing: updatedListing);
             }
@@ -342,6 +349,26 @@ namespace MMO.Auction
                 return new List<AuctionListingRecord>();
 
             return await _repository.SearchListingsAsync(itemNameFilter, maxPrice, page, pageSize, ct);
+        }
+
+        /// <summary>
+        /// Realm-wide search through the pure <see cref="AuctionSearch"/> kernel: every active
+        /// listing across zones is mapped to a <see cref="SearchRow"/>, then filtered, sorted and
+        /// paged server-side. Expiry is re-checked against the truth on purchase.
+        /// </summary>
+        public async Task<List<SearchRow>> SearchAsync(AuctionQuery query, CancellationToken ct = default)
+        {
+            if (!HasAuctionHouse())
+                return new List<SearchRow>();
+
+            List<AuctionListingRecord> listings = await _repository.ListActiveListingsAsync(ct);
+
+            var rows = new List<SearchRow>(listings.Count);
+            for (int i = 0; i < listings.Count; i++)
+                rows.Add(ToSearchRow(listings[i]));
+
+            long now = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+            return AuctionSearch.Apply(rows, query ?? new AuctionQuery(), now).ToList();
         }
 
         /// <summary>Gets purchase history for a player.</summary>
@@ -677,6 +704,97 @@ namespace MMO.Auction
             if (!_socialHub.TryGetLocalPlayer(accountId, out PlayerGuild player) || player == null)
                 return null;
             return player.Inventory;
+        }
+
+        private static SearchRow ToSearchRow(AuctionListingRecord listing)
+        {
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
+            return new SearchRow
+            {
+                ListingId = listing.ListingId,
+                SellerAccountId = listing.SellerAccountId,
+                SellerPlayerName = listing.SellerPlayerName,
+                ItemName = listing.ItemName,
+                Category = CategoryOf(def),
+                Tier = def != null ? def.RequiredLevel : 0,
+                AskingPrice = listing.PricePerUnit,
+                StackCount = listing.StackCount,
+                ListedAtTicks = listing.ListedAtTicks,
+                ExpiresAtTicks = listing.ExpiresAtTicks,
+                SellerZoneId = listing.SellerZoneId,
+            };
+        }
+
+        private static string CategoryOf(ItemDefinition def)
+        {
+            if (def == null)
+                return "Other";
+
+            if (def.EquipSlot != EquipmentSlot.None)
+                return def.EquipSlot.ToString();
+
+            if (def.ToolKind != ToolKind.None)
+                return def.ToolKind.ToString();
+
+            return "Other";
+        }
+
+        /// <summary>
+        /// Grants the won item to the buyer: same-zone, with bag space, straight into the bag;
+        /// otherwise into a claimable mail. An item is always exactly one holder — escrow, then bag
+        /// or mailbox, never both.
+        /// </summary>
+        private async Task DeliverPurchaseAsync(
+            string buyerAccountId, AuctionListingRecord listing, CancellationToken ct)
+        {
+            string buyerZone = _socialHub.ZoneId;
+            bool crossZone = !string.IsNullOrEmpty(listing.SellerZoneId) && listing.SellerZoneId != buyerZone;
+
+            if (!crossZone && TryGrantToBag(buyerAccountId, listing))
+                return;
+
+            var attachments = new List<ItemSaveData>
+            {
+                new ItemSaveData
+                {
+                    ItemName = listing.ItemName,
+                    InstanceId = ItemInstance.NewInstanceId(),
+                    Width = listing.ItemWidth,
+                    Height = listing.ItemHeight,
+                    StackCount = listing.StackCount,
+                    Durability = 0,
+                    EquipmentSlot = -1,
+                },
+            };
+
+            await _socialHub.SendMailAsync(
+                buyerAccountId,
+                "auction",
+                "Auction purchase",
+                $"You won listing {listing.ListingId}.",
+                currency: 0,
+                attachments: attachments,
+                ct: ct);
+        }
+
+        private bool TryGrantToBag(string buyerAccountId, AuctionListingRecord listing)
+        {
+            PlayerInventory bag = GetPlayerBag(buyerAccountId);
+            if (bag == null)
+                return false;
+
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
+            if (def == null)
+                return false;
+
+            ItemInstance item = ItemInstance.Create(def, 0, 0, listing.StackCount);
+            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
+            if (!grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
+                return false;
+
+            item.GridX = x;
+            item.GridY = y;
+            return bag.TryAddExistingItem(item, x, y);
         }
 
         private AuctionRule MapErrorToRule(string errorCode)

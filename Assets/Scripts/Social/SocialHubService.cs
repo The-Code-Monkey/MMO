@@ -42,6 +42,9 @@ namespace MMO.Social
         /// <summary>How long to wait before trying the backend again after a failed connect.</summary>
         [SerializeField, Min(1)] private float _connectRetrySeconds = 10f;
 
+        /// <summary>How often to sweep each local player's inbox for claimable mail.</summary>
+        [SerializeField, Min(1f)] private float _mailSweepInterval = 5f;
+
         [SerializeField] private string _zoneId = "local";
 
         /// <summary>Address the zone advertises as its raid instance host when it allocates one.</summary>
@@ -109,6 +112,7 @@ namespace MMO.Social
         private float _nextSyncTime;
         private float _nextPresenceTime;
         private float _nextFriendRefreshTime;
+        private float _nextMailSweepTime;
         private float _nextConnectAttemptTime;
         private float _nextZoneHeartbeatTime;
 
@@ -475,6 +479,7 @@ namespace MMO.Social
             _nextSyncTime = Time.time + _syncInterval;
             _nextPresenceTime = Time.time + _presenceInterval;
             _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
+            _nextMailSweepTime = Time.time + _mailSweepInterval;
             // Register with the zone registry on the first connected tick, not one interval later,
             // so peers can select this zone as soon as it is up (#57).
             _nextZoneHeartbeatTime = 0f;
@@ -556,6 +561,13 @@ namespace MMO.Social
             {
                 _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
                 _ = RefreshLocalFriendsAsync();
+            }
+
+            // Grant claimable mail (auction deliveries, refunds) into local players' bags/wallets.
+            if (Time.time >= _nextMailSweepTime)
+            {
+                _nextMailSweepTime = Time.time + _mailSweepInterval;
+                _ = SweepInboxesAsync();
             }
         }
 
@@ -1682,6 +1694,61 @@ namespace MMO.Social
             return result;
         }
 
+        /// <summary>
+        /// Leader-only: sets a claimed territory's tax rate. The value is clamped to the ceiling and
+        /// the write is CAS'd like any other territory mutation; the change is broadcast so the
+        /// claim UI repaints.
+        /// </summary>
+        public async Task<TerritoryRule> SetTerritoryTaxAsync(string accountId, string territoryId, int taxRateBp)
+        {
+            if (!await EnsureConnectedAsync())
+                return TerritoryRule.BackendUnavailable;
+
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(territoryId))
+                return TerritoryRule.NoGuild;
+
+            SocialIndexRecord index;
+            GuildRecord guild;
+            try
+            {
+                index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return TerritoryRule.NoGuild;
+
+                guild = await _repository.LoadGuildAsync(index.GuildId, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Territory tax membership read failed: {e.Message}");
+                return TerritoryRule.BackendUnavailable;
+            }
+
+            if (guild == null || guild.LeaderId != accountId)
+                return TerritoryRule.NotOwner;
+
+            TerritoryRecord saved = null;
+            TerritoryRule result = await RetryTerritoryAsync(async () =>
+            {
+                TerritoryRecord record = await _repository.LoadTerritoryAsync(
+                    territoryId, CancellationToken.None);
+
+                if (record == null || record.OwnerGuildId != index.GuildId)
+                    return TerritoryRule.NotOwner;
+
+                record.TaxRateBp = TaxationRules.ClampTax(taxRateBp);
+                record.SetAtTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+                await _repository.SaveTerritoryAsync(record, CancellationToken.None);
+
+                saved = record;
+                return TerritoryRule.Ok;
+            });
+
+            if (result == TerritoryRule.Ok && saved != null)
+                TerritoryChanged?.Invoke(saved);
+
+            return result;
+        }
+
         private async Task<TerritoryRule> RetryTerritoryAsync(Func<Task<TerritoryRule>> attempt)
         {
             for (int i = 0; i < _casRetries; i++)
@@ -1702,6 +1769,294 @@ namespace MMO.Social
             }
 
             return TerritoryRule.Conflict;
+        }
+
+        #endregion
+
+        #region Mail intents
+
+        /// <summary>
+        /// Delivers a message to the recipient's inbox, offline-first: the write lands whether or
+        /// not the recipient is currently online, and the login sweep surfaces it later. System
+        /// mail (auction delivery) and player-to-player mail share this path.
+        /// </summary>
+        public async Task<MailRule> SendMailAsync(
+            string toAccountId,
+            string fromAccountId,
+            string subject,
+            string body,
+            long currency = 0,
+            IReadOnlyList<ItemSaveData> attachments = null,
+            long expiresAtTicks = 0,
+            CancellationToken ct = default)
+        {
+            if (!await EnsureConnectedAsync())
+                return MailRule.BackendUnavailable;
+
+            if (string.IsNullOrEmpty(toAccountId))
+                return MailRule.NotFound;
+
+            MailRule result = await RetryMailAsync(async () =>
+            {
+                MailInbox inbox = await _repository.LoadInboxAsync(toAccountId, ct) ?? new MailInbox { AccountId = toAccountId };
+
+                if (!MailRules.CanSend(inbox.Messages.Count))
+                    return MailRule.InboxFull;
+
+                var message = new MailMessage
+                {
+                    MailId = Guid.NewGuid().ToString("N"),
+                    FromAccountId = fromAccountId,
+                    Subject = subject ?? string.Empty,
+                    Body = body ?? string.Empty,
+                    SentAtTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks,
+                    ExpiresAtTicks = expiresAtTicks,
+                    State = MailState.Unread,
+                    Currency = currency,
+                };
+
+                if (attachments != null)
+                {
+                    int count = Math.Min(attachments.Count, MailRules.MaxAttachments);
+                    for (int i = 0; i < count; i++)
+                        message.Attachments.Add(attachments[i]);
+                }
+
+                inbox.Messages.Add(message);
+                await _repository.SaveInboxAsync(inbox, ct);
+                return MailRule.Ok;
+            }, ct);
+
+            return result;
+        }
+
+        /// <summary>
+        /// Claims a local player's message: verifies it is claimable, reserves bag space, marks it
+        /// claimed under one CAS write, then grants the attachments and currency to the live player.
+        /// A full bag or a lost CAS race leaves the message unclaimed, never a lost item.
+        /// </summary>
+        public async Task<MailRule> ClaimMailAsync(string accountId, string mailId, CancellationToken ct = default)
+        {
+            if (!await EnsureConnectedAsync())
+                return MailRule.BackendUnavailable;
+
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(mailId))
+                return MailRule.NotFound;
+
+            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+                return MailRule.NotFound;
+
+            PlayerInventory bag = player.Inventory;
+            _localWallets.TryGetValue(accountId ?? string.Empty, out PlayerWallet wallet);
+
+            MailMessage claimed = null;
+            MailRule result = await RetryMailAsync(async () =>
+            {
+                MailInbox inbox = await _repository.LoadInboxAsync(accountId, ct);
+                if (inbox == null)
+                    return MailRule.NotFound;
+
+                MailMessage message = FindMessage(inbox, mailId);
+                if (message == null)
+                    return MailRule.NotFound;
+
+                long now = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+                if (!MailRules.Claimable(message, now))
+                    return MailRule.NotClaimable;
+
+                // Reserve space before the write: a bag that cannot hold the items leaves the
+                // message untouched, so an item is never destroyed by a failed grant.
+                PlayerSaveMapper.ApplyBank(message.Attachments, out List<ItemInstance> items, out _);
+                if (!CanFitAll(bag, items))
+                    return MailRule.BagFull;
+
+                message.State = MailState.Claimed;
+                await _repository.SaveInboxAsync(inbox, ct);
+
+                claimed = message;
+                return MailRule.Ok;
+            }, ct);
+
+            if (result == MailRule.Ok && claimed != null)
+            {
+                GrantAttachments(bag, claimed.Attachments);
+                if (wallet != null && claimed.Currency > 0)
+                    wallet.AddGold(claimed.Currency);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// The reconcile-grant path: claims every claimable message for a local player in one CAS
+        /// write, then grants the accumulated items and currency. A message whose items do not fit
+        /// is left for a later sweep rather than dropped. Returns the number of messages claimed.
+        /// </summary>
+        public async Task<int> ClaimAllMailAsync(string accountId, CancellationToken ct = default)
+        {
+            if (!await EnsureConnectedAsync())
+                return 0;
+
+            if (string.IsNullOrEmpty(accountId)
+                || !_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player)
+                || player == null)
+                return 0;
+
+            PlayerInventory bag = player.Inventory;
+            _localWallets.TryGetValue(accountId ?? string.Empty, out PlayerWallet wallet);
+
+            var grantedAttachments = new List<ItemSaveData>();
+            long grantedCurrency = 0;
+            int claimedCount = 0;
+
+            MailRule result = await RetryMailAsync(async () =>
+            {
+                MailInbox inbox = await _repository.LoadInboxAsync(accountId, ct);
+                if (inbox == null)
+                    return MailRule.NotFound;
+
+                long now = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+                var pending = new List<ItemInstance>();
+                var pendingAttachments = new List<ItemSaveData>();
+                long pendingCurrency = 0;
+                int claimed = 0;
+
+                for (int i = 0; i < inbox.Messages.Count; i++)
+                {
+                    MailMessage message = inbox.Messages[i];
+                    if (!MailRules.Claimable(message, now))
+                        continue;
+
+                    PlayerSaveMapper.ApplyBank(message.Attachments, out List<ItemInstance> items, out _);
+                    var candidate = new List<ItemInstance>(pending);
+                    candidate.AddRange(items);
+                    if (!CanFitAll(bag, candidate))
+                        continue;
+
+                    pending = candidate;
+                    pendingAttachments.AddRange(message.Attachments);
+                    pendingCurrency += message.Currency;
+                    message.State = MailState.Claimed;
+                    claimed++;
+                }
+
+                if (claimed == 0)
+                    return MailRule.NotFound;
+
+                await _repository.SaveInboxAsync(inbox, ct);
+
+                grantedAttachments = pendingAttachments;
+                grantedCurrency = pendingCurrency;
+                claimedCount = claimed;
+                return MailRule.Ok;
+            }, ct);
+
+            if (result == MailRule.Ok)
+            {
+                GrantAttachments(bag, grantedAttachments);
+                if (wallet != null && grantedCurrency > 0)
+                    wallet.AddGold(grantedCurrency);
+            }
+
+            return claimedCount;
+        }
+
+        private async Task SweepInboxesAsync()
+        {
+            if (_local.Count == 0)
+                return;
+
+            foreach (string accountId in new List<string>(_local.Keys))
+            {
+                try
+                {
+                    await ClaimAllMailAsync(accountId, CancellationToken.None);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Social] Mail sweep failed for {accountId}: {e.Message}");
+                }
+            }
+        }
+
+        private static MailMessage FindMessage(MailInbox inbox, string mailId)
+        {
+            for (int i = 0; i < inbox.Messages.Count; i++)
+            {
+                if (inbox.Messages[i].MailId == mailId)
+                    return inbox.Messages[i];
+            }
+
+            return null;
+        }
+
+        private static bool CanFitAll(PlayerInventory bag, List<ItemInstance> items)
+        {
+            if (bag == null || items == null || items.Count == 0)
+                return true;
+
+            var copy = new List<ItemInstance>(bag.Items);
+            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
+            for (int i = 0; i < items.Count; i++)
+            {
+                ItemInstance item = items[i];
+                if (!grid.TryFindFreeSpace(copy, item.Width, item.Height, out int x, out int y))
+                    return false;
+
+                item.GridX = x;
+                item.GridY = y;
+                copy.Add(item);
+            }
+
+            return true;
+        }
+
+        private static void GrantAttachments(PlayerInventory bag, List<ItemSaveData> attachments)
+        {
+            if (bag == null || attachments == null)
+                return;
+
+            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
+            for (int i = 0; i < attachments.Count; i++)
+            {
+                ItemDefinition definition = ItemDefinitionRegistry.Resolve(attachments[i].ItemName);
+                if (definition == null)
+                    continue;
+
+                ItemInstance item = ItemInstance.Create(definition, 0, 0, attachments[i].StackCount);
+                if (grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
+                {
+                    item.GridX = x;
+                    item.GridY = y;
+                    bag.TryAddExistingItem(item, x, y);
+                }
+            }
+        }
+
+        private async Task<MailRule> RetryMailAsync(Func<Task<MailRule>> attempt, CancellationToken ct = default)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    return await attempt();
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await BackoffAsync(i);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Social] Mail mutation failed: {e.Message}");
+                    return MailRule.BackendUnavailable;
+                }
+            }
+
+            return MailRule.Conflict;
         }
 
         #endregion

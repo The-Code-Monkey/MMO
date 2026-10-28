@@ -20,6 +20,7 @@ namespace MMO.Social
         Ok,
         NoGuild,
         AlreadyOwner,
+        NotOwner,
         NotAttackable,
         BackendUnavailable,
         Conflict,

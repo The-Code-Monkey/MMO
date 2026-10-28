@@ -30,6 +30,9 @@ namespace MMO.Persistence
         public int Width;
         public int Height;
 
+        /// <summary>Stack size when the item is stackable; zero for a single/unstacked item.</summary>
+        public int StackCount;
+
         /// <summary>Remaining durability at save time; zero for an indestructible item.</summary>
         public int Durability;
 

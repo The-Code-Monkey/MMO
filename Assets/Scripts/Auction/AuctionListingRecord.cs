@@ -26,6 +26,10 @@ namespace MMO.Auction
         public long ExpiresAtTicks;
         public AuctionListingStatus Status;
         public string BuyerAccountId;
+
+        /// <summary>The zone the seller listed from; routes cross-zone delivery to the buyer's inbox.</summary>
+        public string SellerZoneId;
+
         public string StorageVersion;
     }
 
