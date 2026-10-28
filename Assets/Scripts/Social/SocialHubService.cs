@@ -85,6 +85,7 @@ namespace MMO.Social
         private SocialReconciler _reconciler;
         private RaidIntentsService _raidIntents;
         private SocialBackendConnection _connection;
+        private SocialRealtimeRouter _realtime;
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
 
@@ -95,8 +96,6 @@ namespace MMO.Social
         private IRaidInstanceRepository _raidRepository;
         private IZoneRegistryRepository _zoneRepository;
         private NakamaRestClient _rest;
-        private ISocialBus _socketBus;
-        private ChatService _chat;
         private RaidInstanceService _raidService;
         private RaidOrchestrationService _orchestrationService;
         private IOrchestratorClient _orchestratorClient;
@@ -110,10 +109,14 @@ namespace MMO.Social
         private float _nextZoneHeartbeatTime;
 
         /// <summary>Raised on the main thread for every inbound bus envelope (chat or notify).</summary>
-        public event Action<SocialBusEnvelope> EnvelopeReceived;
+        public event Action<SocialBusEnvelope> EnvelopeReceived
+        {
+            add => _realtime.EnvelopeReceived += value;
+            remove => _realtime.EnvelopeReceived -= value;
+        }
 
         /// <summary>Chat routing, coded against this hub as its roster and bus.</summary>
-        public ChatService Chat => _chat;
+        public ChatService Chat => _realtime.Chat;
 
         /// <summary>The shared REST client the socket and the notify hook use, or null in tests.</summary>
         public NakamaRestClient Rest => _rest;
@@ -121,10 +124,10 @@ namespace MMO.Social
         /// <summary>The auction service for player-driven trading.</summary>
         public AuctionService Auction => _auctionService;
 
-        bool ISocialBus.IsConnected => _socketBus != null && _socketBus.IsConnected;
+        bool ISocialBus.IsConnected => _realtime.IsConnected;
 
         bool ISocialBus.TrySend(SocialBusEnvelope envelope)
-            => _socketBus != null && _socketBus.TrySend(envelope);
+            => _realtime.TrySend(envelope);
 
         /// <summary>Raised with the authoritative party whenever any party this zone hosts changes.</summary>
         public event Action<PartyRecord> PartyChanged;
@@ -199,9 +202,10 @@ namespace MMO.Social
             _localPlayers = new LocalPlayerRegistry(() => _zoneId);
             _hints = new SocialHintClient(() => _rest);
             _connection = new SocialBackendConnection(() => _rest, _connectRetrySeconds);
+            _realtime = new SocialRealtimeRouter(_localPlayers, () => _friends, () => _reconciler);
+            _realtime.EnsureChat(this);
             _localPlayers.Registered += OnLocalRegistered;
             _localPlayers.Unregistered += OnLocalUnregistered;
-            EnsureChat();
             if (_repository == null)
             {
                 _rest = new NakamaRestClient(new BackendSettings());
@@ -215,8 +219,7 @@ namespace MMO.Social
 
         private void OnDestroy()
         {
-            if (_socketBus != null)
-                _socketBus.EnvelopeReceived -= OnEnvelope;
+            _realtime?.Detach();
 
             if (Instance == this)
                 Instance = null;
@@ -372,12 +375,6 @@ namespace MMO.Social
                 SyncAsync);
         }
 
-        private void EnsureChat()
-        {
-            if (_chat == null)
-                _chat = new ChatService(this, this);
-        }
-
         #region Realtime backbone
 
         /// <summary>
@@ -387,18 +384,10 @@ namespace MMO.Social
         /// </summary>
         public void AttachSocket(NakamaSocialSocket socket)
         {
-            if (_socketBus != null)
-                _socketBus.EnvelopeReceived -= OnEnvelope;
+            _realtime.Attach(this, socket);
 
-            _socketBus = socket;
-
-            if (_socketBus != null)
-            {
-                _socketBus.EnvelopeReceived += OnEnvelope;
+            if (socket != null)
                 _ = AnnounceLocalPresenceAsync();
-            }
-
-            EnsureChat();
         }
 
         /// <summary>Attaches the shared REST client the notify hook uses for <c>social_notify</c>.</summary>
@@ -443,40 +432,6 @@ namespace MMO.Social
         /// <summary>Gets the wallet for a local player (for gold checks).</summary>
         public bool TryGetWallet(string accountId, out PlayerWallet wallet)
             => _localPlayers.TryGetWallet(accountId, out wallet);
-
-        private void OnEnvelope(SocialBusEnvelope envelope)
-        {
-            if (envelope == null)
-                return;
-
-            EnvelopeReceived?.Invoke(envelope);
-
-            switch (envelope.t)
-            {
-                case "chat":
-                    _chat?.RouteInbound(envelope);
-                    break;
-
-                case "friend":
-                case "party":
-                case "guild":
-                    if (envelope.accounts == null)
-                        break;
-
-                    foreach (string accountId in envelope.accounts)
-                    {
-                        if (_localPlayers.Contains(accountId))
-                            _ = _friends.PushAsync(accountId);
-                    }
-                    break;
-
-                // A peer zone allocated or completed a raid: re-run the reconcile pass early so a
-                // hosted member begins (or stops) its transfer before the next 2 s tick.
-                case SocialNotification.WireType:
-                    _ = OnSocialNotification(SocialNotification.FromEnvelope(envelope));
-                    break;
-            }
-        }
 
         private async Task AnnounceLocalPresenceAsync()
         {
@@ -605,7 +560,7 @@ namespace MMO.Social
         /// </summary>
         private void EnsureSocket()
         {
-            if (_socketBus != null || _rest == null)
+            if (_realtime.IsAttached || _rest == null)
                 return;
 
             NakamaSocialSocket socket = GetComponent<NakamaSocialSocket>();
