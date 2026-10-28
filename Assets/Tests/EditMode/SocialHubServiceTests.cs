@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using MMO.Auction;
 using MMO.Persistence;
 using MMO.Social;
 using NUnit.Framework;
@@ -614,6 +616,27 @@ namespace MMO.Tests
             Assert.AreEqual(TerritoryRule.NotAttackable, result);
             Assert.AreEqual(0, _repo.TerritorySaveCalls);
             Assert.AreEqual("g1", _repo.Territories["t1"].OwnerGuildId);
+        }
+
+        [Test]
+        public async Task AuctionCreditSellerAsync_FullInbox_StillDeliversCurrencyMail()
+        {
+            var inbox = new MailInbox { AccountId = "seller" };
+            for (int i = 0; i < MailRules.MaxInbox; i++)
+                inbox.Messages.Add(new MailMessage { MailId = "existing-" + i });
+            _repo.Inboxes["seller"] = inbox;
+
+            var rest = new NakamaRestClient();
+            var auction = new AuctionService(new NakamaAuctionRepository(rest), rest, _hub);
+            MethodInfo creditSeller = typeof(AuctionService).GetMethod(
+                "CreditSellerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(creditSeller);
+
+            await (Task)creditSeller.Invoke(auction, new object[] { "seller", 125L, CancellationToken.None });
+
+            MailInbox saved = _repo.Inboxes["seller"];
+            Assert.AreEqual(MailRules.MaxInbox + 1, saved.Messages.Count);
+            Assert.AreEqual(125L, saved.Messages[saved.Messages.Count - 1].Currency);
         }
 
         #endregion

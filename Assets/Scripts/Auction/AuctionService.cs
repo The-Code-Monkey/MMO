@@ -1084,14 +1084,18 @@ namespace MMO.Auction
                 return;
             }
 
-            await _socialHub.SendMailAsync(
+            MailRule result = await _socialHub.SendMailAsync(
                 sellerAccountId,
                 "auction",
                 "Auction sale",
                 "Your auction sale was completed.",
                 currency: gold,
                 attachments: null,
+                ignoreInboxCap: true,
                 ct: ct);
+
+            if (result != MailRule.Ok)
+                Debug.LogError($"[Auction] Could not credit seller {sellerAccountId} with {gold} gold by mail: {result}.");
         }
 
         private bool HasBagSpace(PlayerInventory bag, ItemInstance item)
