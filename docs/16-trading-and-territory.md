@@ -141,6 +141,21 @@ the backpack. Right-click a bank cell to withdraw, a backpack cell to deposit. A
 Tellers are scene `BankTellerMarker`s spawned by `WorldBootstrap`; `ZoneSceneBaker` places one
 personal and one guild teller in SafeZone.
 
+### Auction delivery
+
+Both auction paths hand the item to its buyer through the same rule
+(`AuctionDeliveryRules.Choose`, `Assets/Scripts/Auction/AuctionDeliveryRules.cs`): the bag when the
+buyer is on this zone with room, otherwise a claimable mail. The rule is pure, so the EditMode
+suite covers every branch.
+
+Buy-order fulfillment resolves the target *before* the Lua transfer. If the buyer has no bag room
+and the inbox is at `MailRules.MaxInbox`, the fulfillment is refused with
+`AuctionRule.DeliveryBlocked`; the item stays with the seller and the buyer keeps the reserved gold.
+After the transfer the item is delivered first and removed from the seller's bag second, so a
+successful sale can never leave the item stranded in the buy-order record. A delivery that fails
+after the transfer (a lost race) is logged by `DeliverItemAsync` because the item then has no
+holder.
+
 ## Common tasks
 
 - **Tune trade range.** Edit `PlayerTrade.Range`. The client picker uses the same constant, but the

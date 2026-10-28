@@ -547,6 +547,13 @@ namespace MMO.Auction
             if (sellCount < 1)
                 return AuctionResult.Fail(AuctionRule.InvalidStackCount);
 
+            // The buyer must be able to take delivery before the item leaves the seller. A buyer
+            // whose bag and inbox are both full would otherwise lose the item after paying.
+            ItemInstance deliveryItem = ItemInstance.Create(def, 0, 0, sellCount);
+            AuctionDeliveryTarget deliveryTarget = await ResolveDeliveryTargetAsync(buyOrder.BuyerAccountId, deliveryItem, ct);
+            if (deliveryTarget == AuctionDeliveryTarget.Reject)
+                return AuctionResult.Fail(AuctionRule.DeliveryBlocked);
+
             // Call atomic Lua RPC to transfer item and gold
             string payload = JsonUtility.ToJson(new FulfillBuyOrderPayload
             {
@@ -566,6 +573,21 @@ namespace MMO.Auction
                 {
                     return AuctionResult.Fail(MapErrorToRule(fulfillResponse?.errorCode));
                 }
+
+                // Hand the escrowed stack to the buyer before it leaves the seller's bag, so a
+                // successful fulfillment can never strand it in the buy-order record (#174).
+                ItemInstance soldItem = item;
+                soldItem.StackCount = sellCount;
+                if (sellCount < availableCount)
+                    soldItem.InstanceId = ItemInstance.NewInstanceId();
+
+                await DeliverItemAsync(
+                    buyOrder.BuyerAccountId,
+                    soldItem,
+                    deliveryTarget,
+                    "Auction purchase",
+                    $"Your buy order {buyOrderId} was filled.",
+                    ct);
 
                 // Update seller's bag
                 if (sellCount >= availableCount)
@@ -766,34 +788,92 @@ namespace MMO.Auction
         private async Task DeliverPurchaseAsync(
             string buyerAccountId, AuctionListingRecord listing, CancellationToken ct)
         {
-            string buyerZone = _socialHub.ZoneId;
-            bool crossZone = !string.IsNullOrEmpty(listing.SellerZoneId) && listing.SellerZoneId != buyerZone;
-
-            if (!crossZone && TryGrantToBag(buyerAccountId, listing))
-                return;
-
-            var attachments = new List<ItemSaveData>
+            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
+            if (def == null)
             {
-                new ItemSaveData
-                {
-                    ItemName = listing.ItemName,
-                    InstanceId = ItemInstance.NewInstanceId(),
-                    Width = listing.ItemWidth,
-                    Height = listing.ItemHeight,
-                    StackCount = listing.StackCount,
-                    Durability = 0,
-                    EquipmentSlot = -1,
-                },
-            };
+                Debug.LogError($"[Auction] Cannot deliver listing {listing.ListingId}: unknown item {listing.ItemName}.");
+                return;
+            }
 
-            await _socialHub.SendMailAsync(
+            ItemInstance item = ItemInstance.Create(def, 0, 0, listing.StackCount);
+            AuctionDeliveryTarget target = await ResolveDeliveryTargetAsync(buyerAccountId, item, ct);
+            if (target == AuctionDeliveryTarget.Reject)
+            {
+                Debug.LogError($"[Auction] Cannot deliver listing {listing.ListingId} to {buyerAccountId}: bag and inbox full.");
+                return;
+            }
+
+            await DeliverItemAsync(
                 buyerAccountId,
-                "auction",
+                item,
+                target,
                 "Auction purchase",
                 $"You won listing {listing.ListingId}.",
+                ct);
+        }
+
+        /// <summary>
+        /// Decides where the buyer can receive an item: their bag when they are on this zone and
+        /// have room, otherwise their mailbox. <see cref="AuctionDeliveryTarget.Reject"/> means
+        /// neither can take it, so the caller must not move the item.
+        /// </summary>
+        private async Task<AuctionDeliveryTarget> ResolveDeliveryTargetAsync(
+            string accountId, ItemInstance item, CancellationToken ct)
+        {
+            PlayerInventory bag = GetPlayerBag(accountId);
+            bool buyerOnThisZone = bag != null;
+            bool hasBagSpace = buyerOnThisZone && HasBagSpace(bag, item);
+            int inboxCount = buyerOnThisZone && hasBagSpace
+                ? 0
+                : await _socialHub.GetInboxCountAsync(accountId, ct);
+            return AuctionDeliveryRules.Choose(buyerOnThisZone, hasBagSpace, inboxCount);
+        }
+
+        /// <summary>
+        /// Hands the item to the buyer at the resolved target, falling back to mail when a bag
+        /// grant loses a race. Returns false when neither accepted it; the caller logs, because a
+        /// false here means the item has nowhere to go.
+        /// </summary>
+        private async Task<bool> DeliverItemAsync(
+            string accountId,
+            ItemInstance item,
+            AuctionDeliveryTarget target,
+            string subject,
+            string body,
+            CancellationToken ct)
+        {
+            if (target == AuctionDeliveryTarget.Bag && TryGrantToBag(accountId, item))
+                return true;
+
+            var attachments = new List<ItemSaveData> { ToSaveData(item) };
+            MailRule rule = await _socialHub.SendMailAsync(
+                accountId,
+                "auction",
+                subject,
+                body,
                 currency: 0,
                 attachments: attachments,
                 ct: ct);
+
+            if (rule == MailRule.Ok)
+                return true;
+
+            Debug.LogError($"[Auction] Could not deliver {item.ItemName} x{item.StackCount} to {accountId}: {rule}. The item is stranded.");
+            return false;
+        }
+
+        private static ItemSaveData ToSaveData(ItemInstance item)
+        {
+            return new ItemSaveData
+            {
+                ItemName = item.ItemName,
+                InstanceId = string.IsNullOrEmpty(item.InstanceId) ? ItemInstance.NewInstanceId() : item.InstanceId,
+                Width = item.Width,
+                Height = item.Height,
+                StackCount = item.StackCount,
+                Durability = item.Durability,
+                EquipmentSlot = -1,
+            };
         }
 
         private async Task CreditSellerAsync(string sellerAccountId, long gold, CancellationToken ct)
@@ -817,17 +897,21 @@ namespace MMO.Auction
                 ct: ct);
         }
 
-        private bool TryGrantToBag(string buyerAccountId, AuctionListingRecord listing)
+        private bool HasBagSpace(PlayerInventory bag, ItemInstance item)
         {
-            PlayerInventory bag = GetPlayerBag(buyerAccountId);
-            if (bag == null)
+            if (bag == null || item.IsEmpty)
                 return false;
 
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
-            if (def == null)
+            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
+            return grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out _, out _);
+        }
+
+        private bool TryGrantToBag(string accountId, ItemInstance item)
+        {
+            PlayerInventory bag = GetPlayerBag(accountId);
+            if (bag == null || item.IsEmpty)
                 return false;
 
-            ItemInstance item = ItemInstance.Create(def, 0, 0, listing.StackCount);
             var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
             if (!grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
                 return false;

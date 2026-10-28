@@ -1776,6 +1776,22 @@ namespace MMO.Social
         #region Mail intents
 
         /// <summary>
+        /// Reads how many messages the recipient's inbox currently holds. Auction delivery uses it
+        /// to check for room before an item leaves the seller, so a full inbox cannot strand it.
+        /// </summary>
+        public async Task<int> GetInboxCountAsync(string accountId, CancellationToken ct = default)
+        {
+            if (!await EnsureConnectedAsync())
+                return MailRules.MaxInbox;
+
+            if (string.IsNullOrEmpty(accountId))
+                return 0;
+
+            MailInbox inbox = await _repository.LoadInboxAsync(accountId, ct);
+            return inbox?.Messages?.Count ?? 0;
+        }
+
+        /// <summary>
         /// Delivers a message to the recipient's inbox, offline-first: the write lands whether or
         /// not the recipient is currently online, and the login sweep surfaces it later. System
         /// mail (auction delivery) and player-to-player mail share this path.
