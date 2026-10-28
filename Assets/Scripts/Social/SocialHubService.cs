@@ -84,6 +84,7 @@ namespace MMO.Social
         private RaidHandoffService _raidHandoff;
         private SocialReconciler _reconciler;
         private RaidIntentsService _raidIntents;
+        private SocialBackendConnection _connection;
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
 
@@ -101,14 +102,11 @@ namespace MMO.Social
         private IOrchestratorClient _orchestratorClient;
         private AuctionService _auctionService;
         private NetworkManager _manager;
-        private bool _connected;
         private bool _subscribed;
-        private Task<bool> _connectTask;
         private float _nextSyncTime;
         private float _nextPresenceTime;
         private float _nextFriendRefreshTime;
         private float _nextMailSweepTime;
-        private float _nextConnectAttemptTime;
         private float _nextZoneHeartbeatTime;
 
         /// <summary>Raised on the main thread for every inbound bus envelope (chat or notify).</summary>
@@ -190,7 +188,7 @@ namespace MMO.Social
         }
 
         /// <summary>Whether the backend is currently reachable (fakes are considered always up).</summary>
-        public bool IsConnected => _connected;
+        public bool IsConnected => _connection != null && _connection.IsConnected;
 
         /// <summary>Whether this zone has an auction house (is a central trading hub).</summary>
         public bool HasAuctionHouse => _auctionHouseZoneConfig != null && _auctionHouseZoneConfig.HasAuctionHouse(_zoneId);
@@ -200,6 +198,7 @@ namespace MMO.Social
             Instance = this;
             _localPlayers = new LocalPlayerRegistry(() => _zoneId);
             _hints = new SocialHintClient(() => _rest);
+            _connection = new SocialBackendConnection(() => _rest, _connectRetrySeconds);
             _localPlayers.Registered += OnLocalRegistered;
             _localPlayers.Unregistered += OnLocalUnregistered;
             EnsureChat();
@@ -310,12 +309,12 @@ namespace MMO.Social
             if (repository is NakamaSocialRepository nakama)
             {
                 _rest = nakama.Rest;
-                _connected = _rest.IsConnected;
+                _connection.SetInitialState(_rest.IsConnected);
             }
             else
             {
                 _rest = null;
-                _connected = true;
+                _connection.SetInitialState(true);
             }
 
             if (_raidRepository == null && _rest != null)
@@ -546,7 +545,7 @@ namespace MMO.Social
             // Connecting is driven by the server-start event and by on-demand mutations; the tick
             // loop only reconciles once the backend is actually up, so an unreachable backend does
             // not hot-loop a reconnect every frame.
-            if (_repository == null || _manager == null || !_manager.IsServerStarted || !_connected)
+            if (_repository == null || _manager == null || !_manager.IsServerStarted || _connection == null || !_connection.IsConnected)
                 return;
 
             // Advertise this zone to the registry even before any player joins, so a dedicated
@@ -626,42 +625,7 @@ namespace MMO.Social
         }
 
         private Task<bool> EnsureConnectedAsync()
-        {
-            if (_connected)
-                return Task.FromResult(true);
-
-            if (_rest == null)
-                return Task.FromResult(false);
-
-            if (_connectTask != null)
-                return _connectTask;
-
-            // De-bounce a dead backend: the reconcile tick would otherwise re-attempt on every
-            // pass, and each attempt is a network call with its own timeout.
-            if (Time.realtimeSinceStartup < _nextConnectAttemptTime)
-                return Task.FromResult(false);
-
-            _nextConnectAttemptTime = Time.realtimeSinceStartup + _connectRetrySeconds;
-            _connectTask = ConnectCoreAsync();
-            return _connectTask;
-        }
-
-        private async Task<bool> ConnectCoreAsync()
-        {
-            try
-            {
-                await _rest.ConnectAsync(CancellationToken.None);
-                _connected = true;
-                Debug.Log("[Social] Connected to the backend.");
-                return true;
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Backend unavailable; social features are read-only until it returns. {e.Message}");
-                _connectTask = null;
-                return false;
-            }
-        }
+            => _connection != null ? _connection.EnsureConnectedAsync() : Task.FromResult(false);
 
         #endregion
 
