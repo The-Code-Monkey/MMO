@@ -45,7 +45,8 @@ namespace MMO.Net
             NetworkObject targetDummyPrefab = null,
             NetworkObject craftingStationPrefab = null,
             NetworkObject lootBagPrefab = null,
-            NetworkObject resourceNodePrefab = null)
+            NetworkObject resourceNodePrefab = null,
+            NetworkObject bankTellerPrefab = null)
         {
             settings ??= new MMOConnectionSettings();
 
@@ -71,7 +72,7 @@ namespace MMO.Net
                 manager.SpawnablePrefabs = prefabs;
 
                 prefabSet = NetworkPrefabSet.Resolve(
-                    playerPrefab, targetDummyPrefab, craftingStationPrefab, lootBagPrefab, resourceNodePrefab);
+                    playerPrefab, targetDummyPrefab, craftingStationPrefab, lootBagPrefab, resourceNodePrefab, bankTellerPrefab);
                 prefabSet.Register(prefabs);
 
                 gate = go.AddComponent<MMOConnectionGate>();

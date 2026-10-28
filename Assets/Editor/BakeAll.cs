@@ -18,6 +18,9 @@ namespace MMO.Editor
             // Rebuild the crafting station prefab so it includes the NavMeshObstacle
             // with correct carving dimensions (fixes walk-through issue).
             CraftingStationBaker.EnsureCraftingStationPrefab();
+            LootBagBaker.EnsureLootBagPrefab();
+            ResourceNodeBaker.EnsureResourceNodePrefab();
+            BankTellerBaker.EnsureBankTellerPrefab();
 
             // Rebuild scenes in an order that matches the expected startup flow.
             // MainMenu references the prefabs above and must be camera-free.

@@ -36,6 +36,10 @@ namespace MMO.Editor
 
         public static NetworkObject EnsureBankTellerPrefab()
         {
+            NetworkObject existing = LoadBankTellerPrefab();
+            if (existing != null)
+                return existing;
+
             EnsureFolder();
 
             NetworkObject built = BankTellerPrefabFactory.Create();
@@ -77,6 +81,13 @@ namespace MMO.Editor
 
             BankTellerPrefabFactory.Register(manager.SpawnablePrefabs, teller);
             return teller;
+        }
+
+        /// <summary>The saved prefab's NetworkObject, or null when it has not been baked yet.</summary>
+        public static NetworkObject LoadBankTellerPrefab()
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabAssetPath);
+            return asset != null ? asset.GetComponent<NetworkObject>() : null;
         }
 
         public static bool DeleteBankTellerPrefab()

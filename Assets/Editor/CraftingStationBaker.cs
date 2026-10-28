@@ -31,6 +31,10 @@ namespace MMO.Editor
 
         public static NetworkObject EnsureCraftingStationPrefab()
         {
+            NetworkObject existing = LoadCraftingStationPrefab();
+            if (existing != null)
+                return existing;
+
             EnsureFolder();
 
             NetworkObject built = CraftingStationPrefabFactory.Create();
@@ -52,6 +56,13 @@ namespace MMO.Editor
             {
                 Object.DestroyImmediate(built.gameObject);
             }
+        }
+
+        /// <summary>The saved prefab's NetworkObject, or null when it has not been baked yet.</summary>
+        public static NetworkObject LoadCraftingStationPrefab()
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabAssetPath);
+            return asset != null ? asset.GetComponent<NetworkObject>() : null;
         }
 
         public static NetworkObject WireCraftingStation(NetworkManager manager)

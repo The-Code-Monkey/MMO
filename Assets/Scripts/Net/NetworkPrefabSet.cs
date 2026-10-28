@@ -22,7 +22,8 @@ namespace MMO.Net
             NetworkObject targetDummyPrefab,
             NetworkObject craftingStationPrefab,
             NetworkObject lootBagPrefab,
-            NetworkObject resourceNodePrefab)
+            NetworkObject resourceNodePrefab,
+            NetworkObject bankTellerPrefab = null)
         {
             var set = new NetworkPrefabSet();
             set.Player = playerPrefab ?? set.Build(PlayerPrefabFactory.Create());
@@ -31,7 +32,7 @@ namespace MMO.Net
             set.LootBag = lootBagPrefab ?? set.Build(LootBagPrefabFactory.Create());
             set.ResourceNode = resourceNodePrefab ?? set.Build(ResourceNodePrefabFactory.Create());
             // The server spawns a teller per authored marker; only the id must be shared.
-            set.BankTeller = set.Build(BankTellerPrefabFactory.Create());
+            set.BankTeller = bankTellerPrefab ?? set.Build(BankTellerPrefabFactory.Create());
             return set;
         }
 
