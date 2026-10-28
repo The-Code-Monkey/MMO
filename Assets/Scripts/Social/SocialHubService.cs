@@ -87,6 +87,7 @@ namespace MMO.Social
         private SocialBackendConnection _connection;
         private SocialRealtimeRouter _realtime;
         private SocialTickScheduler _ticker;
+        private readonly SocialAuctionNotifier _auctionNotifier = new SocialAuctionNotifier();
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
 
@@ -159,25 +160,53 @@ namespace MMO.Social
         public event Action<string, PendingGuildInvite> GuildInviteReceived;
 
         /// <summary>Raised when a new auction listing is created by a local player.</summary>
-        public event Action<string, AuctionListingRecord> AuctionListingCreated;
+        public event Action<string, AuctionListingRecord> AuctionListingCreated
+        {
+            add => _auctionNotifier.ListingCreated += value;
+            remove => _auctionNotifier.ListingCreated -= value;
+        }
 
         /// <summary>Raised when an auction listing is sold (buyer and seller notified).</summary>
-        public event Action<string, string, AuctionListingRecord, AuctionTransactionRecord> AuctionListingSold;
+        public event Action<string, string, AuctionListingRecord, AuctionTransactionRecord> AuctionListingSold
+        {
+            add => _auctionNotifier.ListingSold += value;
+            remove => _auctionNotifier.ListingSold -= value;
+        }
 
         /// <summary>Raised when an auction listing is cancelled by the seller.</summary>
-        public event Action<string, AuctionListingRecord> AuctionListingCancelled;
+        public event Action<string, AuctionListingRecord> AuctionListingCancelled
+        {
+            add => _auctionNotifier.ListingCancelled += value;
+            remove => _auctionNotifier.ListingCancelled -= value;
+        }
 
         /// <summary>Raised when a purchase is completed and the buyer receives the item.</summary>
-        public event Action<string, AuctionTransactionRecord> AuctionPurchaseCompleted;
+        public event Action<string, AuctionTransactionRecord> AuctionPurchaseCompleted
+        {
+            add => _auctionNotifier.PurchaseCompleted += value;
+            remove => _auctionNotifier.PurchaseCompleted -= value;
+        }
 
         /// <summary>Raised when a new buy order is created by a local player.</summary>
-        public event Action<string, AuctionBuyOrderRecord> AuctionBuyOrderCreated;
+        public event Action<string, AuctionBuyOrderRecord> AuctionBuyOrderCreated
+        {
+            add => _auctionNotifier.BuyOrderCreated += value;
+            remove => _auctionNotifier.BuyOrderCreated -= value;
+        }
 
         /// <summary>Raised when a buy order is fulfilled (seller and buyer notified).</summary>
-        public event Action<string, string, AuctionBuyOrderRecord, AuctionTransactionRecord> AuctionBuyOrderFulfilled;
+        public event Action<string, string, AuctionBuyOrderRecord, AuctionTransactionRecord> AuctionBuyOrderFulfilled
+        {
+            add => _auctionNotifier.BuyOrderFulfilled += value;
+            remove => _auctionNotifier.BuyOrderFulfilled -= value;
+        }
 
         /// <summary>Raised when a buy order is cancelled by the buyer.</summary>
-        public event Action<string, AuctionBuyOrderRecord> AuctionBuyOrderCancelled;
+        public event Action<string, AuctionBuyOrderRecord> AuctionBuyOrderCancelled
+        {
+            add => _auctionNotifier.BuyOrderCancelled += value;
+            remove => _auctionNotifier.BuyOrderCancelled -= value;
+        }
 
         /// <summary>The zone label stamped into presence so a member's host zone can be resolved.</summary>
         public string ZoneId
@@ -762,45 +791,31 @@ namespace MMO.Social
 
         /// <summary>Notifies the seller's client that their listing was created.</summary>
         internal void NotifyAuctionListingCreated(string sellerAccountId, AuctionListingRecord listing)
-        {
-            AuctionListingCreated?.Invoke(sellerAccountId, listing);
-        }
+            => _auctionNotifier.RaiseListingCreated(sellerAccountId, listing);
 
         /// <summary>Notifies both buyer and seller that a listing was sold.</summary>
         internal void NotifyAuctionListingSold(string buyerAccountId, string sellerAccountId, AuctionListingRecord listing, AuctionTransactionRecord transaction)
-        {
-            AuctionListingSold?.Invoke(buyerAccountId, sellerAccountId, listing, transaction);
-        }
+            => _auctionNotifier.RaiseListingSold(buyerAccountId, sellerAccountId, listing, transaction);
 
         /// <summary>Notifies the seller that their listing was cancelled.</summary>
         internal void NotifyAuctionListingCancelled(string sellerAccountId, AuctionListingRecord listing)
-        {
-            AuctionListingCancelled?.Invoke(sellerAccountId, listing);
-        }
+            => _auctionNotifier.RaiseListingCancelled(sellerAccountId, listing);
 
         /// <summary>Notifies the buyer that their purchase completed and item was delivered.</summary>
         internal void NotifyAuctionPurchaseCompleted(string buyerAccountId, AuctionTransactionRecord transaction)
-        {
-            AuctionPurchaseCompleted?.Invoke(buyerAccountId, transaction);
-        }
+            => _auctionNotifier.RaisePurchaseCompleted(buyerAccountId, transaction);
 
         /// <summary>Notifies the buyer's client that their buy order was created.</summary>
         internal void NotifyAuctionBuyOrderCreated(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
-        {
-            AuctionBuyOrderCreated?.Invoke(buyerAccountId, buyOrder);
-        }
+            => _auctionNotifier.RaiseBuyOrderCreated(buyerAccountId, buyOrder);
 
         /// <summary>Notifies both seller and buyer that a buy order was fulfilled.</summary>
         internal void NotifyAuctionBuyOrderFulfilled(string sellerAccountId, string buyerAccountId, AuctionBuyOrderRecord buyOrder, AuctionTransactionRecord transaction)
-        {
-            AuctionBuyOrderFulfilled?.Invoke(sellerAccountId, buyerAccountId, buyOrder, transaction);
-        }
+            => _auctionNotifier.RaiseBuyOrderFulfilled(sellerAccountId, buyerAccountId, buyOrder, transaction);
 
         /// <summary>Notifies the buyer that their buy order was cancelled.</summary>
         internal void NotifyAuctionBuyOrderCancelled(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
-        {
-            AuctionBuyOrderCancelled?.Invoke(buyerAccountId, buyOrder);
-        }
+            => _auctionNotifier.RaiseBuyOrderCancelled(buyerAccountId, buyOrder);
 
         #endregion
 
