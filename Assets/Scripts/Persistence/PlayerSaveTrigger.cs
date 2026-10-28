@@ -39,6 +39,7 @@ namespace MMO.Persistence
         private string _accountId;
         private bool _subscribed;
         private readonly WalletReservationReconciler _walletReconciler = new WalletReservationReconciler();
+        private readonly PlayerSaveSignalBinder _signals = new PlayerSaveSignalBinder();
         private float _joinRetryUntil;
         private bool _joinTimeoutLogged;
 
@@ -96,18 +97,9 @@ namespace MMO.Persistence
                 record, _accountId, _stats, _inventory, _quests, _wallet, _bank);
 
             service.RegisterLivePlayer(_accountId, Capture);
-            _stats.LevelChanged += OnLevelChanged;
-            _stats.ExperienceChanged += OnExperienceChanged;
-            _inventory.ContainersChanged += OnInventoryChanged;
-            if (_quests != null)
-                _quests.ProgressChanged += OnQuestProgressChanged;
-            if (_wallet != null)
-            {
-                _wallet.BalancesChanged += OnWalletChanged;
-                _wallet.BankChanged += OnWalletChanged;
-            }
-            if (_bank != null)
-                _bank.BankChanged += OnWalletChanged;
+            _signals.Bind(
+                _stats, _inventory, _quests, _wallet, _bank,
+                OnLevelChanged, OnDebouncedChanged);
             _subscribed = true;
         }
 
@@ -137,28 +129,7 @@ namespace MMO.Persistence
         }
 
         private void UnsubscribeFromChanges()
-        {
-            if (_stats != null)
-            {
-                _stats.LevelChanged -= OnLevelChanged;
-                _stats.ExperienceChanged -= OnExperienceChanged;
-            }
-
-            if (_inventory != null)
-                _inventory.ContainersChanged -= OnInventoryChanged;
-
-            if (_quests != null)
-                _quests.ProgressChanged -= OnQuestProgressChanged;
-
-            if (_wallet != null)
-            {
-                _wallet.BalancesChanged -= OnWalletChanged;
-                _wallet.BankChanged -= OnWalletChanged;
-            }
-
-            if (_bank != null)
-                _bank.BankChanged -= OnWalletChanged;
-        }
+            => _signals.Unbind();
 
         public override void OnStopNetwork()
         {
@@ -172,21 +143,7 @@ namespace MMO.Persistence
 
                     // The state is still live during this callback, so snapshot it now: the async
                     // flush that follows may run after the object is gone.
-                    PlayerSaveRecord finalRecord = PlayerSaveMapper.Capture(
-                        _accountId,
-                        _stats.Level,
-                        _stats.Health,
-                        _stats.Mana,
-                        _wallet != null ? _wallet.Gold : 0,
-                        transform.position,
-                        _inventory.Items,
-                        _inventory.Equipment,
-                        _stats.Experience,
-                        _quests != null ? _quests.CompletedQuestIds : null,
-                        _quests != null ? _quests.Progress : null);
-                    _wallet?.CaptureToSave(finalRecord);
-                    _bank?.CaptureToSave(finalRecord);
-                    service.QueueFinalSave(_accountId, finalRecord);
+                    service.QueueFinalSave(_accountId, Capture());
 
                     service.UnregisterLivePlayer(_accountId);
                     service.ForgetClient(Owner != null ? Owner.ClientId : -1);
@@ -226,26 +183,8 @@ namespace MMO.Persistence
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: true);
         }
 
-        private void OnExperienceChanged()
-        {
-            if (_subscribed && !string.IsNullOrEmpty(_accountId))
-                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
-        }
-
-        private void OnInventoryChanged()
-        {
-            if (_subscribed && !string.IsNullOrEmpty(_accountId))
-                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
-        }
-
-        private void OnQuestProgressChanged()
-        {
-            if (_subscribed && !string.IsNullOrEmpty(_accountId))
-                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
-        }
-
-        /// <summary>Any wallet or bank-vault change marks the player dirty; the next flush captures it.</summary>
-        private void OnWalletChanged()
+        /// <summary>Any inventory, quest, wallet or bank change marks the player dirty for debounce.</summary>
+        private void OnDebouncedChanged()
         {
             if (_subscribed && !string.IsNullOrEmpty(_accountId))
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
