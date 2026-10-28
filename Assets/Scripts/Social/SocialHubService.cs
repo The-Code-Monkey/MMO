@@ -76,6 +76,11 @@ namespace MMO.Social
         private SocialHintClient _hints;
         private PresenceService _presence;
         private TerritoryService _territory;
+        private MailService _mail;
+        private FriendService _friends;
+        private GuildService _guildService;
+        private PartyService _partyService;
+        private GuildBankService _guildBank;
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
         /// <summary>Last raid instance a local member was told to transfer to, so a sync does not repeat it.</summary>
@@ -255,6 +260,38 @@ namespace MMO.Social
                 EnsureConnectedAsync,
                 _casRetries,
                 record => TerritoryChanged?.Invoke(record));
+            _mail = new MailService(
+                () => _repository,
+                EnsureConnectedAsync,
+                _localPlayers,
+                _casRetries);
+            _friends = new FriendService(
+                () => _repository,
+                EnsureConnectedAsync,
+                _localPlayers,
+                _hints,
+                _casRetries);
+            _guildService = new GuildService(
+                () => _repository,
+                EnsureConnectedAsync,
+                _accounts,
+                SyncAsync,
+                (accountId, invite) => GuildInviteReceived?.Invoke(accountId, invite),
+                _casRetries);
+            _partyService = new PartyService(
+                () => _repository,
+                EnsureConnectedAsync,
+                _accounts,
+                TeardownRaidAsync,
+                SyncAsync,
+                (accountId, invite) => PartyInviteReceived?.Invoke(accountId, invite),
+                _casRetries);
+            _guildBank = new GuildBankService(
+                _repository,
+                EnsureConnectedAsync,
+                _localPlayers,
+                bank => BankChanged?.Invoke(bank),
+                _casRetries);
             _raidRepository = raidRepository;
             _zoneRepository = zoneRepository;
 
@@ -411,7 +448,7 @@ namespace MMO.Social
                     foreach (string accountId in envelope.accounts)
                     {
                         if (_localPlayers.Contains(accountId))
-                            _ = PushFriendsAsync(accountId);
+                            _ = _friends.PushAsync(accountId);
                     }
                     break;
 
@@ -525,14 +562,14 @@ namespace MMO.Social
             if (Time.time >= _nextFriendRefreshTime)
             {
                 _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
-                _ = RefreshLocalFriendsAsync();
+                _ = _friends.RefreshLocalAsync();
             }
 
             // Grant claimable mail (auction deliveries, refunds) into local players' bags/wallets.
             if (Time.time >= _nextMailSweepTime)
             {
                 _nextMailSweepTime = Time.time + _mailSweepInterval;
-                _ = SweepInboxesAsync();
+                _ = _mail.SweepAsync();
             }
         }
 
@@ -616,969 +653,79 @@ namespace MMO.Social
         #region Party intents
 
         /// <summary>Invites the named player to the inviter's party, creating one if needed.</summary>
-        public async Task<PartyRule> InviteAsync(string inviterId, string targetName)
-        {
-            if (!await EnsureConnectedAsync())
-                return PartyRule.BackendUnavailable;
-
-            string targetId = await _repository.ResolveNameAsync(SocialAccountResolver.Normalize(targetName), CancellationToken.None);
-            if (string.IsNullOrEmpty(targetId))
-                return PartyRule.TargetNotFound;
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            PresenceRecord targetPresence = await _repository.LoadPresenceAsync(targetId, CancellationToken.None);
-            bool targetOnline = targetPresence != null && targetPresence.IsHeartbeatFresh(now);
-
-            PartyRule inviteResult = await RetryPartyAsync(async () =>
-            {
-                SocialIndexRecord inviterIndex = await _accounts.LoadOrCreateIndexAsync(inviterId);
-                SocialIndexRecord targetIndex = await _accounts.LoadOrCreateIndexAsync(targetId);
-
-                PartyRecord inviterParty = null;
-                if (!string.IsNullOrEmpty(inviterIndex.PartyId))
-                    inviterParty = await _repository.LoadPartyAsync(inviterIndex.PartyId, CancellationToken.None);
-
-                PartyRule rule = PartyRules.CanInvite(inviterId, inviterParty, targetIndex, targetOnline);
-                if (rule != PartyRule.Ok)
-                    return rule;
-
-                if (inviterParty == null)
-                {
-                    // Claim the pointer before the party exists: a conflict on this index save
-                    // aborts the attempt with no party written, so a retry cannot orphan one. A
-                    // crash between the two writes leaves the pointer dangling, which the reconcile
-                    // pass repairs — never a leaked party.
-                    string partyId = Guid.NewGuid().ToString("N");
-                    inviterIndex.PartyId = partyId;
-                    await _repository.SaveIndexAsync(inviterIndex, CancellationToken.None);
-
-                    inviterParty = new PartyRecord { PartyId = partyId, LeaderId = inviterId };
-                    inviterParty.Members.Add(_accounts.NewMember(inviterId, now));
-                    await _repository.SavePartyAsync(inviterParty, CancellationToken.None);
-                }
-
-                string fromName = await _accounts.ResolveDisplayNameAsync(inviterId);
-                targetIndex.PendingPartyInvite = new PendingPartyInvite
-                {
-                    FromAccountId = inviterId,
-                    FromPlayerName = fromName,
-                    PartyId = inviterParty.PartyId,
-                    ExpiresAtTicks = now.Add(PartyRules.InviteTtl).UtcDateTime.Ticks,
-                };
-                await _repository.SaveIndexAsync(targetIndex, CancellationToken.None);
-                return PartyRule.Ok;
-            });
-
-            if (inviteResult == PartyRule.Ok)
-            {
-                PendingPartyInvite invite = default;
-                SocialIndexRecord target = await _repository.LoadIndexAsync(targetId, CancellationToken.None);
-                if (target != null)
-                    invite = target.PendingPartyInvite;
-
-                PartyInviteReceived?.Invoke(targetId, invite);
-            }
-
-            return inviteResult;
-        }
+        public Task<PartyRule> InviteAsync(string inviterId, string targetName)
+            => _partyService.InviteAsync(inviterId, targetName);
 
         /// <summary>Accepts the party invite this account holds.</summary>
-        public async Task<PartyRule> AcceptAsync(string accountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return PartyRule.BackendUnavailable;
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            PartyRule result = await RetryPartyAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                PartyRecord party = null;
-                if (index != null && !string.IsNullOrEmpty(index.PendingPartyInvite.PartyId))
-                    party = await _repository.LoadPartyAsync(index.PendingPartyInvite.PartyId, CancellationToken.None);
-
-                PartyRule rule = PartyRules.CanAccept(party, index, now);
-                if (rule != PartyRule.Ok)
-                    return rule;
-
-                PartyRules.Accept(party, _accounts.NewMember(accountId, now));
-                await _repository.SavePartyAsync(party, CancellationToken.None);
-
-                index.PartyId = party.PartyId;
-                index.PendingPartyInvite = default;
-                await _repository.SaveIndexAsync(index, CancellationToken.None);
-                return PartyRule.Ok;
-            });
-
-            if (result == PartyRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
+        public Task<PartyRule> AcceptAsync(string accountId)
+            => _partyService.AcceptAsync(accountId);
 
         /// <summary>Declines the party invite this account holds.</summary>
-        public async Task<PartyRule> DeclineAsync(string accountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return PartyRule.BackendUnavailable;
+        public Task<PartyRule> DeclineAsync(string accountId)
+            => _partyService.DeclineAsync(accountId);
 
-            return await RetryPartyAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || index.PendingPartyInvite.ExpiresAtTicks <= 0)
-                    return PartyRule.NoParty;
+        /// <summary>Leaves the party this account belongs to.</summary>
+        public Task<PartyRule> LeaveAsync(string accountId)
+            => _partyService.LeaveAsync(accountId);
 
-                index.PendingPartyInvite = default;
-                await _repository.SaveIndexAsync(index, CancellationToken.None);
-                return PartyRule.Ok;
-            });
-        }
-
-        /// <summary>Leaves the party this account belongs to, disbanding it when it was the last member.</summary>
-        public async Task<PartyRule> LeaveAsync(string accountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return PartyRule.BackendUnavailable;
-
-            PartyRule result = await RetryPartyAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.PartyId))
-                    return PartyRule.NoParty;
-
-                PartyRecord party = await _repository.LoadPartyAsync(index.PartyId, CancellationToken.None);
-                if (party == null)
-                {
-                    index.PartyId = null;
-                    index.PendingPartyInvite = default;
-                    await _repository.SaveIndexAsync(index, CancellationToken.None);
-                    return PartyRule.Ok;
-                }
-
-                PartyRecord remaining = PartyRules.Remove(party, accountId);
-                if (remaining == null)
-                {
-                    await TeardownRaidAsync(party);
-                    await _repository.DeletePartyAsync(party.PartyId, CancellationToken.None);
-                }
-                else
-                    await _repository.SavePartyAsync(remaining, CancellationToken.None);
-
-                index.PartyId = null;
-                index.PendingPartyInvite = default;
-                await _repository.SaveIndexAsync(index, CancellationToken.None);
-                return PartyRule.Ok;
-            });
-
-            if (result == PartyRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
-
-        /// <summary>Leader-only: removes <paramref name="targetId"/> from the leader's party.</summary>
-        public async Task<PartyRule> KickAsync(string leaderId, string targetId)
-        {
-            if (!await EnsureConnectedAsync())
-                return PartyRule.BackendUnavailable;
-
-            PartyRule result = await RetryPartyAsync(async () =>
-            {
-                SocialIndexRecord leaderIndex = await _repository.LoadIndexAsync(leaderId, CancellationToken.None);
-                if (leaderIndex == null || string.IsNullOrEmpty(leaderIndex.PartyId))
-                    return PartyRule.NoParty;
-
-                PartyRecord party = await _repository.LoadPartyAsync(leaderIndex.PartyId, CancellationToken.None);
-                PartyRule rule = PartyRules.CanKick(party, leaderId, targetId);
-                if (rule != PartyRule.Ok)
-                    return rule;
-
-                PartyRecord remaining = PartyRules.Remove(party, targetId);
-                if (remaining == null)
-                {
-                    await TeardownRaidAsync(party);
-                    await _repository.DeletePartyAsync(party.PartyId, CancellationToken.None);
-                }
-                else
-                    await _repository.SavePartyAsync(remaining, CancellationToken.None);
-
-                SocialIndexRecord targetIndex = await _repository.LoadIndexAsync(targetId, CancellationToken.None);
-                if (targetIndex != null)
-                {
-                    targetIndex.PartyId = null;
-                    targetIndex.PendingPartyInvite = default;
-                    await _repository.SaveIndexAsync(targetIndex, CancellationToken.None);
-                }
-
-                return PartyRule.Ok;
-            });
-
-            if (result == PartyRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
+        /// <summary>Leader-only: removes the target from the leader's party.</summary>
+        public Task<PartyRule> KickAsync(string leaderId, string targetId)
+            => _partyService.KickAsync(leaderId, targetId);
 
         #endregion
 
         #region Guild intents
 
         /// <summary>Creates a guild with this account as its leader.</summary>
-        public async Task<GuildRule> CreateGuildAsync(string accountId, string guildName)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildRule.BackendUnavailable;
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            GuildRule result = await RetryPartyAsyncGuild(async () =>
-            {
-                SocialIndexRecord index = await _accounts.LoadOrCreateIndexAsync(accountId);
-                GuildRule rule = GuildRules.CanCreate(accountId, guildName, index);
-                if (rule != GuildRule.Ok)
-                    return rule;
-
-                // Claim the pointer before the guild exists, for the same reason the party invite
-                // claims the leader's index first: a conflict aborts cleanly and the reconcile pass
-                // repairs a pointer whose guild write never landed.
-                string guildId = Guid.NewGuid().ToString("N");
-                index.GuildId = guildId;
-                index.PendingGuildInvite = default;
-                await _repository.SaveIndexAsync(index, CancellationToken.None);
-
-                var guild = new GuildRecord
-                {
-                    GuildId = guildId,
-                    Name = guildName.Trim(),
-                    LeaderId = accountId,
-                };
-                guild.Members.Add(new GuildMemberRecord
-                {
-                    AccountId = accountId,
-                    PlayerName = await _accounts.ResolveDisplayNameAsync(accountId),
-                    Rank = (int)GuildRank.Leader,
-                    JoinedAtTicks = now.UtcDateTime.Ticks,
-                });
-                await _repository.SaveGuildAsync(guild, CancellationToken.None);
-                return GuildRule.Ok;
-            });
-
-            if (result == GuildRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
+        public Task<GuildRule> CreateGuildAsync(string accountId, string guildName)
+            => _guildService.CreateAsync(accountId, guildName);
 
         /// <summary>Leader/officer-only: invites the named player to the inviter's guild.</summary>
-        public async Task<GuildRule> InviteToGuildAsync(string inviterId, string targetName)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildRule.BackendUnavailable;
-
-            string targetId = await _repository.ResolveNameAsync(SocialAccountResolver.Normalize(targetName), CancellationToken.None);
-            if (string.IsNullOrEmpty(targetId))
-                return GuildRule.TargetNotFound;
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            PresenceRecord targetPresence = await _repository.LoadPresenceAsync(targetId, CancellationToken.None);
-            bool targetOnline = targetPresence != null && targetPresence.IsHeartbeatFresh(now);
-
-            GuildRule result = await RetryPartyAsyncGuild(async () =>
-            {
-                SocialIndexRecord inviterIndex = await _repository.LoadIndexAsync(inviterId, CancellationToken.None);
-                SocialIndexRecord targetIndex = await _accounts.LoadOrCreateIndexAsync(targetId);
-
-                GuildRecord guild = null;
-                if (inviterIndex != null && !string.IsNullOrEmpty(inviterIndex.GuildId))
-                    guild = await _repository.LoadGuildAsync(inviterIndex.GuildId, CancellationToken.None);
-
-                GuildRule rule = GuildRules.CanInvite(inviterId, guild, targetIndex, targetOnline);
-                if (rule != GuildRule.Ok)
-                    return rule;
-
-                targetIndex.PendingGuildInvite = new PendingGuildInvite
-                {
-                    FromAccountId = inviterId,
-                    FromPlayerName = await _accounts.ResolveDisplayNameAsync(inviterId),
-                    GuildId = guild.GuildId,
-                    ExpiresAtTicks = now.Add(GuildRules.InviteTtl).UtcDateTime.Ticks,
-                };
-                await _repository.SaveIndexAsync(targetIndex, CancellationToken.None);
-                return GuildRule.Ok;
-            });
-
-            if (result == GuildRule.Ok)
-            {
-                SocialIndexRecord target = await _repository.LoadIndexAsync(targetId, CancellationToken.None);
-                if (target != null)
-                    GuildInviteReceived?.Invoke(targetId, target.PendingGuildInvite);
-            }
-
-            return result;
-        }
+        public Task<GuildRule> InviteToGuildAsync(string inviterId, string targetName)
+            => _guildService.InviteAsync(inviterId, targetName);
 
         /// <summary>Accepts the guild invite this account holds.</summary>
-        public async Task<GuildRule> AcceptGuildInviteAsync(string accountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildRule.BackendUnavailable;
+        public Task<GuildRule> AcceptGuildInviteAsync(string accountId)
+            => _guildService.AcceptInviteAsync(accountId);
 
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            GuildRule result = await RetryPartyAsyncGuild(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                GuildRecord guild = null;
-                if (index != null && !string.IsNullOrEmpty(index.PendingGuildInvite.GuildId))
-                    guild = await _repository.LoadGuildAsync(index.PendingGuildInvite.GuildId, CancellationToken.None);
-
-                GuildRule rule = GuildRules.CanAccept(guild, index, now);
-                if (rule != GuildRule.Ok)
-                    return rule;
-
-                GuildRules.Accept(guild, new GuildMemberRecord
-                {
-                    AccountId = accountId,
-                    PlayerName = await _accounts.ResolveDisplayNameAsync(accountId),
-                    Rank = (int)GuildRank.Member,
-                    JoinedAtTicks = now.UtcDateTime.Ticks,
-                });
-                await _repository.SaveGuildAsync(guild, CancellationToken.None);
-
-                index.GuildId = guild.GuildId;
-                index.PendingGuildInvite = default;
-                await _repository.SaveIndexAsync(index, CancellationToken.None);
-                return GuildRule.Ok;
-            });
-
-            if (result == GuildRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
-
-        /// <summary>Leaves the guild this account belongs to, disbanding it when it was the last member.</summary>
-        public async Task<GuildRule> LeaveGuildAsync(string accountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildRule.BackendUnavailable;
-
-            GuildRule result = await RetryPartyAsyncGuild(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return GuildRule.NoGuild;
-
-                GuildRecord guild = await _repository.LoadGuildAsync(index.GuildId, CancellationToken.None);
-                if (guild == null)
-                {
-                    index.GuildId = null;
-                    index.PendingGuildInvite = default;
-                    await _repository.SaveIndexAsync(index, CancellationToken.None);
-                    return GuildRule.Ok;
-                }
-
-                GuildRecord remaining = GuildRules.Remove(guild, accountId);
-                if (remaining == null)
-                    await _repository.DeleteGuildAsync(guild.GuildId, CancellationToken.None);
-                else
-                    await _repository.SaveGuildAsync(remaining, CancellationToken.None);
-
-                index.GuildId = null;
-                index.PendingGuildInvite = default;
-                await _repository.SaveIndexAsync(index, CancellationToken.None);
-                return GuildRule.Ok;
-            });
-
-            if (result == GuildRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
+        /// <summary>Leaves the guild this account belongs to.</summary>
+        public Task<GuildRule> LeaveGuildAsync(string accountId)
+            => _guildService.LeaveAsync(accountId);
 
         /// <summary>Leader-only: promotes the target one rank.</summary>
-        public async Task<GuildRule> PromoteAsync(string leaderId, string targetId)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildRule.BackendUnavailable;
-
-            GuildRule result = await RetryPartyAsyncGuild(async () =>
-            {
-                SocialIndexRecord leaderIndex = await _repository.LoadIndexAsync(leaderId, CancellationToken.None);
-                if (leaderIndex == null || string.IsNullOrEmpty(leaderIndex.GuildId))
-                    return GuildRule.NoGuild;
-
-                GuildRecord guild = await _repository.LoadGuildAsync(leaderIndex.GuildId, CancellationToken.None);
-                GuildRule rule = GuildRules.CanPromote(guild, leaderId, targetId);
-                if (rule != GuildRule.Ok)
-                    return rule;
-
-                GuildRules.Promote(guild, targetId);
-                await _repository.SaveGuildAsync(guild, CancellationToken.None);
-                return GuildRule.Ok;
-            });
-
-            if (result == GuildRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
+        public Task<GuildRule> PromoteAsync(string leaderId, string targetId)
+            => _guildService.PromoteAsync(leaderId, targetId);
 
         /// <summary>Leader/officer-only: removes the target from the guild.</summary>
-        public async Task<GuildRule> KickFromGuildAsync(string actorId, string targetId)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildRule.BackendUnavailable;
-
-            GuildRule result = await RetryPartyAsyncGuild(async () =>
-            {
-                SocialIndexRecord actorIndex = await _repository.LoadIndexAsync(actorId, CancellationToken.None);
-                if (actorIndex == null || string.IsNullOrEmpty(actorIndex.GuildId))
-                    return GuildRule.NoGuild;
-
-                GuildRecord guild = await _repository.LoadGuildAsync(actorIndex.GuildId, CancellationToken.None);
-                GuildRule rule = GuildRules.CanKick(guild, actorId, targetId);
-                if (rule != GuildRule.Ok)
-                    return rule;
-
-                GuildRecord remaining = GuildRules.Remove(guild, targetId);
-                if (remaining == null)
-                    await _repository.DeleteGuildAsync(guild.GuildId, CancellationToken.None);
-                else
-                    await _repository.SaveGuildAsync(remaining, CancellationToken.None);
-
-                SocialIndexRecord targetIndex = await _repository.LoadIndexAsync(targetId, CancellationToken.None);
-                if (targetIndex != null)
-                {
-                    targetIndex.GuildId = null;
-                    targetIndex.PendingGuildInvite = default;
-                    await _repository.SaveIndexAsync(targetIndex, CancellationToken.None);
-                }
-
-                return GuildRule.Ok;
-            });
-
-            if (result == GuildRule.Ok)
-                await SyncAsync();
-
-            return result;
-        }
+        public Task<GuildRule> KickFromGuildAsync(string actorId, string targetId)
+            => _guildService.KickAsync(actorId, targetId);
 
         #endregion
 
         #region Guild bank intents
 
-        /// <summary>
-        /// Moves the item at the bag cell into the guild bank's tab. One CAS read-modify-write on
-        /// the bank object: the bag change happens only after the write wins, so the bag can never
-        /// lose an item the bank did not gain.
-        /// </summary>
-        public async Task<GuildBankResult> DepositAsync(string accountId, int tabIndex, int bagX, int bagY)
-        {
-            if (!await EnsureConnectedAsync())
-                return new GuildBankResult(GuildBankRule.BackendUnavailable);
+        /// <summary>Moves the item at the bag cell into the guild bank's tab.</summary>
+        public Task<GuildBankResult> DepositAsync(string accountId, int tabIndex, int bagX, int bagY)
+            => _guildBank.DepositAsync(accountId, tabIndex, bagX, bagY);
 
-            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
-                return new GuildBankResult(GuildBankRule.NoGuild);
+        /// <summary>Moves the item at the bank cell into the member's bag.</summary>
+        public Task<GuildBankResult> WithdrawAsync(string accountId, int tabIndex, int gridX, int gridY, int stackCount = -1)
+            => _guildBank.WithdrawAsync(accountId, tabIndex, gridX, gridY, stackCount);
 
-            PlayerInventory bag = player.Inventory;
-            if (bag == null)
-                return new GuildBankResult(GuildBankRule.NoGuild);
-
-            string guildId = null;
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            GuildBankResult result = await RetryBankAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return new GuildBankResult(GuildBankRule.NoGuild);
-
-                guildId = index.GuildId;
-                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-
-                // Resolve through the cell against the live SyncList, never a client-supplied index:
-                // the bag may have shifted between the click and this call.
-                int itemIndex = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight)
-                    .FindAt(bag.Items, bagX, bagY);
-                if (itemIndex < 0)
-                    return new GuildBankResult(GuildBankRule.InvalidItem);
-
-                ItemInstance item = bag.Items[itemIndex];
-                GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
-                GuildBankRule rule = GuildBankRules.CanDeposit(guild, bank, accountId, tabIndex, item, now);
-                if (rule != GuildBankRule.Ok)
-                    return new GuildBankResult(rule);
-
-                if (!GuildBankRules.Deposit(bank, tabIndex, item, rank, now))
-                    return new GuildBankResult(GuildBankRule.TabFull);
-
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                await AppendLedgerAsync(guildId, accountId, GuildBankLedgerAction.Deposit, tabIndex, item, bagX, bagY);
-                return new GuildBankResult(GuildBankRule.Ok, item);
-            });
-
-            if (result.Rule == GuildBankRule.Ok)
-            {
-                // The bank is durable. Only now may the bag lose the item, so a failed write can
-                // never strand an item outside both containers.
-                bag.RemoveItemAt(bagX, bagY);
-                await PushBankAsync(guildId);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Moves the item at the tab cell into the requesting member's bag. Bag space is reserved
-        /// before the CAS; if the add still loses a race, the item is CAS-ed back into the bank.
-        /// </summary>
-        public async Task<GuildBankResult> WithdrawAsync(string accountId, int tabIndex, int gridX, int gridY, int stackCount = -1)
-        {
-            if (!await EnsureConnectedAsync())
-                return new GuildBankResult(GuildBankRule.BackendUnavailable);
-
-            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
-                return new GuildBankResult(GuildBankRule.NoGuild);
-
-            PlayerInventory bag = player.Inventory;
-            if (bag == null)
-                return new GuildBankResult(GuildBankRule.NoGuild);
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            string guildId = null;
-            int cellX = 0;
-            int cellY = 0;
-            ItemInstance withdrawn = default;
-
-            GuildBankResult result = await RetryBankAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return new GuildBankResult(GuildBankRule.NoGuild);
-
-                guildId = index.GuildId;
-                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-
-                GuildBankRule rule = GuildBankRules.CanWithdraw(guild, bank, accountId, tabIndex, gridX, gridY, now);
-                if (rule != GuildBankRule.Ok)
-                    return new GuildBankResult(rule);
-
-                // Reserve bag space *before* the CAS: a full bag must refuse without touching the bank.
-                GuildBankTab tab = GuildBankRules.FindTab(bank, tabIndex);
-                ItemInstance candidate = GuildBankRules.ItemAt(tab, gridX, gridY);
-                var bagGrid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
-                if (candidate.IsEmpty ||
-                    !bagGrid.TryFindFreeSpace(bag.Items, candidate.Width, candidate.Height, out int freeX, out int freeY))
-                    return new GuildBankResult(GuildBankRule.BagFull);
-
-                if (!GuildBankRules.Withdraw(guild, bank, accountId, tabIndex, gridX, gridY, now, out withdrawn))
-                    return new GuildBankResult(GuildBankRule.NothingToWithdraw);
-
-                cellX = freeX;
-                cellY = freeY;
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                await AppendLedgerAsync(guildId, accountId, GuildBankLedgerAction.Withdraw, tabIndex, withdrawn, gridX, gridY);
-                return new GuildBankResult(GuildBankRule.Ok, withdrawn);
-            });
-
-            if (result.Rule == GuildBankRule.Ok)
-            {
-                if (!bag.TryAddExistingItem(withdrawn, cellX, cellY))
-                {
-                    // The bag shifted between the space check and now (another request landed on the
-                    // same player): put the item back so nothing is lost, then tell the player.
-                    await ReturnToBankAsync(guildId, tabIndex, withdrawn);
-                    return new GuildBankResult(GuildBankRule.BagFull);
-                }
-
-                await PushBankAsync(guildId);
-            }
-
-            return result;
-        }
-
-        /// <summary>Leader-only: replaces a rank's deposit/withdraw permissions on the bank.</summary>
-        public async Task<GuildBankRule> SetBankPermissionAsync(
+        /// <summary>Leader/officer-only: edits a rank's bank permissions.</summary>
+        public Task<GuildBankRule> SetBankPermissionAsync(
             string accountId, GuildRank rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit,
             long withdrawValueLimit = GuildBankRules.UnlimitedValue, long depositValueLimit = GuildBankRules.UnlimitedValue)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildBankRule.BackendUnavailable;
+            => _guildBank.SetBankPermissionAsync(
+                accountId, rank, allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit);
 
-            if (!GuildBankRules.IsValidPermission(allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit))
-                return GuildBankRule.InvalidPermission;
+        /// <summary>Moves currency from the member's wallet into the guild vault.</summary>
+        public Task<GuildBankRule> DepositCurrencyAsync(string accountId, string currencyId, long amount)
+            => _guildBank.DepositCurrencyAsync(accountId, currencyId, amount);
 
-            string guildId = null;
-            GuildBankRule result = await RetryBankPermissionAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return GuildBankRule.NoGuild;
-
-                guildId = index.GuildId;
-                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
-                GuildBankRule rule = GuildBankRules.CanEditPermissions(guild, accountId);
-                if (rule != GuildBankRule.Ok)
-                    return rule;
-
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-                GuildBankRules.SetPermission(bank, rank, allowDeposit, allowWithdraw, withdrawLimit, withdrawValueLimit, depositValueLimit);
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                return GuildBankRule.Ok;
-            });
-
-            if (result == GuildBankRule.Ok)
-                await PushBankAsync(guildId);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Moves currency from the member's wallet into the guild vault. The vault is written first;
-        /// only once that write wins does the wallet lose the currency, so a failed write can never
-        /// create currency. The wallet is checked for the funds before the CAS.
-        /// </summary>
-        public async Task<GuildBankRule> DepositCurrencyAsync(string accountId, string currencyId, long amount)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildBankRule.BackendUnavailable;
-
-            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
-                return GuildBankRule.NoGuild;
-
-            if (!TryGetWallet(accountId, out PlayerWallet wallet) || wallet == null)
-                return GuildBankRule.NoGuild;
-
-            if (string.IsNullOrEmpty(currencyId) || amount <= 0)
-                return GuildBankRule.InvalidAmount;
-
-            if (wallet.GetBalance(currencyId) < amount)
-                return GuildBankRule.InsufficientFunds;
-
-            string guildId = null;
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            GuildBankRule result = await RetryBankPermissionAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return GuildBankRule.NoGuild;
-
-                guildId = index.GuildId;
-                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-
-                GuildBankRule rule = GuildBankRules.CanDepositCurrency(guild, bank, accountId, currencyId, amount, now);
-                if (rule != GuildBankRule.Ok)
-                    return rule;
-
-                GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
-                if (!GuildBankRules.DepositCurrency(bank, currencyId, amount, rank, now))
-                    return GuildBankRule.InvalidAmount;
-
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                await AppendCurrencyLedgerAsync(guildId, accountId, GuildBankLedgerAction.Deposit, currencyId, amount);
-                return GuildBankRule.Ok;
-            });
-
-            if (result == GuildBankRule.Ok)
-            {
-                // The vault is durable. Only now may the wallet lose the currency; if it somehow
-                // cannot, take the amount back out of the vault so no currency is created.
-                if (!wallet.Remove(currencyId, amount))
-                {
-                    await RemoveCurrencyFromBankAsync(guildId, currencyId, amount);
-                    return GuildBankRule.Conflict;
-                }
-
-                await PushBankAsync(guildId);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Moves currency from the guild vault into the member's wallet. The vault is debited first;
-        /// if the wallet cannot accept it (overflow), the amount is returned to the vault.
-        /// </summary>
-        public async Task<GuildBankRule> WithdrawCurrencyAsync(string accountId, string currencyId, long amount)
-        {
-            if (!await EnsureConnectedAsync())
-                return GuildBankRule.BackendUnavailable;
-
-            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
-                return GuildBankRule.NoGuild;
-
-            if (!TryGetWallet(accountId, out PlayerWallet wallet) || wallet == null)
-                return GuildBankRule.NoGuild;
-
-            if (string.IsNullOrEmpty(currencyId) || amount <= 0)
-                return GuildBankRule.InvalidAmount;
-
-            string guildId = null;
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            GuildBankRule result = await RetryBankPermissionAsync(async () =>
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return GuildBankRule.NoGuild;
-
-                guildId = index.GuildId;
-                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-
-                GuildBankRule rule = GuildBankRules.CanWithdrawCurrency(guild, bank, accountId, currencyId, amount, now);
-                if (rule != GuildBankRule.Ok)
-                    return rule;
-
-                GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
-                if (!GuildBankRules.WithdrawCurrency(bank, currencyId, amount, rank, now))
-                    return GuildBankRule.InsufficientFunds;
-
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                await AppendCurrencyLedgerAsync(guildId, accountId, GuildBankLedgerAction.Withdraw, currencyId, amount);
-                return GuildBankRule.Ok;
-            });
-
-            if (result == GuildBankRule.Ok)
-            {
-                if (!wallet.Add(currencyId, amount))
-                {
-                    await ReturnCurrencyToBankAsync(guildId, currencyId, amount);
-                    return GuildBankRule.Conflict;
-                }
-
-                await PushBankAsync(guildId);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Takes currency back out of the vault when the wallet debit that was supposed to follow a
-        /// deposit failed; best effort, and it never spends a rank's quota.
-        /// </summary>
-        private async Task RemoveCurrencyFromBankAsync(string guildId, string currencyId, long amount)
-        {
-            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
-                return;
-
-            await RetryBankAsync(async () =>
-            {
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-                if (!GuildBankRules.WithdrawCurrency(bank, currencyId, amount, GuildRank.None, DateTimeOffset.UtcNow))
-                    return new GuildBankResult(GuildBankRule.InsufficientFunds);
-
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                return new GuildBankResult(GuildBankRule.Ok);
-            });
-
-            await PushBankAsync(guildId);
-        }
-
-        /// <summary>Puts currency back into the vault after a wallet credit race lost; best effort.</summary>
-        private async Task ReturnCurrencyToBankAsync(string guildId, string currencyId, long amount)
-        {
-            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
-                return;
-
-            await RetryBankAsync(async () =>
-            {
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-                if (!GuildBankRules.DepositCurrency(bank, currencyId, amount, GuildRank.None, DateTimeOffset.UtcNow))
-                    return new GuildBankResult(GuildBankRule.InvalidAmount);
-
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                return new GuildBankResult(GuildBankRule.Ok);
-            });
-
-            await PushBankAsync(guildId);
-        }
-
-        private async Task AppendCurrencyLedgerAsync(
-            string guildId, string actorAccountId, GuildBankLedgerAction action, string currencyId, long amount)
-        {
-            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
-                return;
-
-            try
-            {
-                GuildBankLedgerRecord ledger = await _repository.LoadGuildBankLedgerAsync(guildId, CancellationToken.None);
-                if (ledger == null)
-                {
-                    ledger = new GuildBankLedgerRecord
-                    {
-                        GuildId = guildId,
-                        Entries = new List<GuildBankLedgerEntry>(),
-                    };
-                }
-                else if (ledger.Entries == null)
-                {
-                    ledger.Entries = new List<GuildBankLedgerEntry>();
-                }
-
-                ledger.Entries.Add(new GuildBankLedgerEntry
-                {
-                    GuildId = guildId,
-                    ActorAccountId = actorAccountId,
-                    Action = action,
-                    TabIndex = -1,
-                    ItemName = currencyId,
-                    Width = 0,
-                    Height = 0,
-                    GridX = 0,
-                    GridY = 0,
-                    StackCount = 0,
-                    ValuePerUnit = 1,
-                    TotalValue = amount,
-                    TimestampTicks = DateTimeOffset.UtcNow.UtcTicks,
-                    AffectedCells = new List<int>(),
-                });
-
-                await _repository.SaveGuildBankLedgerAsync(ledger, CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Guild bank ledger append failed: {e.Message}");
-            }
-        }
-
-        private async Task<GuildBankRecord> LoadOrCreateBankAsync(string guildId)
-        {
-            if (string.IsNullOrEmpty(guildId))
-                return null;
-
-            GuildBankRecord bank = await _repository.LoadGuildBankAsync(guildId, CancellationToken.None);
-            if (bank == null)
-                bank = GuildBankRules.CreateDefault(guildId);
-            else
-                GuildBankRules.EnsureDefaults(bank);
-
-            return bank;
-        }
-
-        /// <summary>Reloads the authoritative bank and pushes it to every local member of the guild.</summary>
-        private async Task PushBankAsync(string guildId)
-        {
-            if (string.IsNullOrEmpty(guildId))
-                return;
-
-            GuildBankRecord bank = await _repository.LoadGuildBankAsync(guildId, CancellationToken.None);
-            if (bank != null)
-                BankChanged?.Invoke(bank);
-        }
-
-        /// <summary>Puts a withdrawn item back into the bank after a bag race lost; best effort.</summary>
-        private async Task ReturnToBankAsync(string guildId, int tabIndex, ItemInstance item)
-        {
-            if (string.IsNullOrEmpty(guildId) || item.IsEmpty)
-                return;
-
-            await RetryBankAsync(async () =>
-            {
-                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
-                if (!GuildBankRules.Deposit(bank, tabIndex, item))
-                    return new GuildBankResult(GuildBankRule.TabFull);
-
-                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
-                return new GuildBankResult(GuildBankRule.Ok);
-            });
-
-            await PushBankAsync(guildId);
-        }
-
-        private async Task AppendLedgerAsync(string guildId, string actorAccountId, GuildBankLedgerAction action, int tabIndex, ItemInstance item, int gridX, int gridY)
-        {
-            if (string.IsNullOrEmpty(guildId) || item.IsEmpty)
-                return;
-
-            try
-            {
-                GuildBankLedgerRecord ledger = await _repository.LoadGuildBankLedgerAsync(guildId, CancellationToken.None);
-                if (ledger == null)
-                {
-                    ledger = new GuildBankLedgerRecord
-                    {
-                        GuildId = guildId,
-                        Entries = new List<GuildBankLedgerEntry>(),
-                    };
-                }
-                else if (ledger.Entries == null)
-                {
-                    ledger.Entries = new List<GuildBankLedgerEntry>();
-                }
-
-                ItemDefinition def = ItemDefinitionRegistry.Resolve(item.ItemName);
-                long valuePerUnit = def != null ? def.Value : 0;
-                int count = item.StackCount < 1 ? 1 : item.StackCount;
-
-                ledger.Entries.Add(new GuildBankLedgerEntry
-                {
-                    GuildId = guildId,
-                    ActorAccountId = actorAccountId,
-                    Action = action,
-                    TabIndex = tabIndex,
-                    ItemName = item.ItemName,
-                    Width = item.Width,
-                    Height = item.Height,
-                    GridX = gridX,
-                    GridY = gridY,
-                    StackCount = count,
-                    ValuePerUnit = valuePerUnit,
-                    TotalValue = valuePerUnit * count,
-                    TimestampTicks = DateTimeOffset.UtcNow.UtcTicks,
-                    AffectedCells = new List<int>(),
-                });
-
-                await _repository.SaveGuildBankLedgerAsync(ledger, CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Guild bank ledger append failed: {e.Message}");
-            }
-        }
-
-        private async Task<GuildBankResult> RetryBankAsync(Func<Task<GuildBankResult>> attempt)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Guild bank mutation failed: {e.Message}");
-                    return new GuildBankResult(GuildBankRule.BackendUnavailable);
-                }
-            }
-
-            return new GuildBankResult(GuildBankRule.Conflict);
-        }
-
-        private async Task<GuildBankRule> RetryBankPermissionAsync(Func<Task<GuildBankRule>> attempt)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Guild bank permission edit failed: {e.Message}");
-                    return GuildBankRule.BackendUnavailable;
-                }
-            }
-
-            return GuildBankRule.Conflict;
-        }
+        /// <summary>Moves currency from the guild vault into the member's wallet.</summary>
+        public Task<GuildBankRule> WithdrawCurrencyAsync(string accountId, string currencyId, long amount)
+            => _guildBank.WithdrawCurrencyAsync(accountId, currencyId, amount);
 
         #endregion
 
@@ -1604,43 +751,12 @@ namespace MMO.Social
 
         #region Mail intents
 
-        /// <summary>
-        /// Finds a message by its exact body. Auction settlement uses it to confirm a hand-off
-        /// whose RPC response was lost: the body carries a per-attempt id, so an older delivery
-        /// can never be mistaken for the attempt being recovered.
-        /// </summary>
-        public async Task<string> FindMailIdByBodyAsync(string accountId, string body)
-        {
-            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(body))
-                return null;
+        /// <summary>Finds a message by its exact body.</summary>
+        public Task<string> FindMailIdByBodyAsync(string accountId, string body)
+            => _mail.FindMailIdByBodyAsync(accountId, body);
 
-            if (!await EnsureConnectedAsync())
-                return null;
-
-            MailInbox inbox = await _repository.LoadInboxAsync(accountId, CancellationToken.None);
-            if (inbox?.Messages == null)
-                return null;
-
-            for (int i = 0; i < inbox.Messages.Count; i++)
-            {
-                if (string.Equals(inbox.Messages[i].Body, body, StringComparison.Ordinal))
-                    return inbox.Messages[i].MailId;
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Delivers a message to the recipient's inbox, offline-first: the write lands whether or
-        /// not the recipient is currently online, and the login sweep surfaces it later. System
-        /// mail (auction delivery) and player-to-player mail share this path.
-        /// <para>
-        /// A system delivery (an auction item or settlement that cannot be refused) passes
-        /// <paramref name="ignoreInboxCap"/> so a full inbox can never destroy an item that has
-        /// already been paid for.
-        /// </para>
-        /// </summary>
-        public async Task<MailRule> SendMailAsync(
+        /// <summary>Delivers a message to the recipient's inbox, offline-first.</summary>
+        public Task<MailRule> SendMailAsync(
             string toAccountId,
             string fromAccountId,
             string subject,
@@ -1650,559 +766,40 @@ namespace MMO.Social
             long expiresAtTicks = 0,
             bool ignoreInboxCap = false,
             CancellationToken ct = default)
-        {
-            if (!await EnsureConnectedAsync())
-                return MailRule.BackendUnavailable;
+            => _mail.SendAsync(
+                toAccountId, fromAccountId, subject, body, currency, attachments, expiresAtTicks, ignoreInboxCap, ct);
 
-            if (string.IsNullOrEmpty(toAccountId))
-                return MailRule.NotFound;
+        /// <summary>Claims a local player's message and grants its attachments.</summary>
+        public Task<MailRule> ClaimMailAsync(string accountId, string mailId, CancellationToken ct = default)
+            => _mail.ClaimAsync(accountId, mailId, ct);
 
-            MailRule result = await RetryMailAsync(async () =>
-            {
-                MailInbox inbox = await _repository.LoadInboxAsync(toAccountId, ct) ?? new MailInbox { AccountId = toAccountId };
-
-                if (!ignoreInboxCap && !MailRules.CanSend(inbox.Messages.Count))
-                    return MailRule.InboxFull;
-
-                var message = new MailMessage
-                {
-                    MailId = Guid.NewGuid().ToString("N"),
-                    FromAccountId = fromAccountId,
-                    Subject = subject ?? string.Empty,
-                    Body = body ?? string.Empty,
-                    SentAtTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks,
-                    ExpiresAtTicks = expiresAtTicks,
-                    State = MailState.Unread,
-                    Currency = currency,
-                };
-
-                if (attachments != null)
-                {
-                    int count = Math.Min(attachments.Count, MailRules.MaxAttachments);
-                    for (int i = 0; i < count; i++)
-                        message.Attachments.Add(attachments[i]);
-                }
-
-                inbox.Messages.Add(message);
-                await _repository.SaveInboxAsync(inbox, ct);
-                return MailRule.Ok;
-            }, ct);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Claims a local player's message: verifies it is claimable, reserves bag space, marks it
-        /// claimed under one CAS write, then grants the attachments and currency to the live player.
-        /// A full bag or a lost CAS race leaves the message unclaimed, never a lost item.
-        /// </summary>
-        public async Task<MailRule> ClaimMailAsync(string accountId, string mailId, CancellationToken ct = default)
-        {
-            if (!await EnsureConnectedAsync())
-                return MailRule.BackendUnavailable;
-
-            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(mailId))
-                return MailRule.NotFound;
-
-            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
-                return MailRule.NotFound;
-
-            PlayerInventory bag = player.Inventory;
-            _localPlayers.TryGetWallet(accountId, out PlayerWallet wallet);
-
-            MailMessage claimed = null;
-            MailRule result = await RetryMailAsync(async () =>
-            {
-                MailInbox inbox = await _repository.LoadInboxAsync(accountId, ct);
-                if (inbox == null)
-                    return MailRule.NotFound;
-
-                MailMessage message = FindMessage(inbox, mailId);
-                if (message == null)
-                    return MailRule.NotFound;
-
-                long now = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
-                if (!MailRules.Claimable(message, now))
-                    return MailRule.NotClaimable;
-
-                // Reserve space before the write: a bag that cannot hold the items leaves the
-                // message untouched, so an item is never destroyed by a failed grant.
-                PlayerSaveMapper.ApplyBank(message.Attachments, out List<ItemInstance> items, out _);
-                if (!CanFitAll(bag, items))
-                    return MailRule.BagFull;
-
-                message.State = MailState.Claimed;
-                await _repository.SaveInboxAsync(inbox, ct);
-
-                claimed = message;
-                return MailRule.Ok;
-            }, ct);
-
-            if (result == MailRule.Ok && claimed != null)
-            {
-                GrantAttachments(bag, claimed.Attachments);
-                if (wallet != null && claimed.Currency > 0)
-                    wallet.AddGold(claimed.Currency);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// The reconcile-grant path: claims every claimable message for a local player in one CAS
-        /// write, then grants the accumulated items and currency. A message whose items do not fit
-        /// is left for a later sweep rather than dropped. Returns the number of messages claimed.
-        /// </summary>
-        public async Task<int> ClaimAllMailAsync(string accountId, CancellationToken ct = default)
-        {
-            if (!await EnsureConnectedAsync())
-                return 0;
-
-            if (string.IsNullOrEmpty(accountId)
-                || !_localPlayers.TryGetGuild(accountId, out PlayerGuild player)
-                || player == null)
-                return 0;
-
-            PlayerInventory bag = player.Inventory;
-            _localPlayers.TryGetWallet(accountId, out PlayerWallet wallet);
-
-            var grantedAttachments = new List<ItemSaveData>();
-            long grantedCurrency = 0;
-            int claimedCount = 0;
-
-            MailRule result = await RetryMailAsync(async () =>
-            {
-                MailInbox inbox = await _repository.LoadInboxAsync(accountId, ct);
-                if (inbox == null)
-                    return MailRule.NotFound;
-
-                long now = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
-                var pending = new List<ItemInstance>();
-                var pendingAttachments = new List<ItemSaveData>();
-                long pendingCurrency = 0;
-                int claimed = 0;
-
-                for (int i = 0; i < inbox.Messages.Count; i++)
-                {
-                    MailMessage message = inbox.Messages[i];
-                    if (!MailRules.Claimable(message, now))
-                        continue;
-
-                    PlayerSaveMapper.ApplyBank(message.Attachments, out List<ItemInstance> items, out _);
-                    var candidate = new List<ItemInstance>(pending);
-                    candidate.AddRange(items);
-                    if (!CanFitAll(bag, candidate))
-                        continue;
-
-                    pending = candidate;
-                    pendingAttachments.AddRange(message.Attachments);
-                    pendingCurrency += message.Currency;
-                    message.State = MailState.Claimed;
-                    claimed++;
-                }
-
-                if (claimed == 0)
-                    return MailRule.NotFound;
-
-                await _repository.SaveInboxAsync(inbox, ct);
-
-                grantedAttachments = pendingAttachments;
-                grantedCurrency = pendingCurrency;
-                claimedCount = claimed;
-                return MailRule.Ok;
-            }, ct);
-
-            if (result == MailRule.Ok)
-            {
-                GrantAttachments(bag, grantedAttachments);
-                if (wallet != null && grantedCurrency > 0)
-                    wallet.AddGold(grantedCurrency);
-            }
-
-            return claimedCount;
-        }
-
-        private async Task SweepInboxesAsync()
-        {
-            if (_localPlayers.Count == 0)
-                return;
-
-            foreach (string accountId in _localPlayers.AccountIds())
-            {
-                try
-                {
-                    await ClaimAllMailAsync(accountId, CancellationToken.None);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Mail sweep failed for {accountId}: {e.Message}");
-                }
-            }
-        }
-
-        private static MailMessage FindMessage(MailInbox inbox, string mailId)
-        {
-            for (int i = 0; i < inbox.Messages.Count; i++)
-            {
-                if (inbox.Messages[i].MailId == mailId)
-                    return inbox.Messages[i];
-            }
-
-            return null;
-        }
-
-        private static bool CanFitAll(PlayerInventory bag, List<ItemInstance> items)
-        {
-            if (bag == null || items == null || items.Count == 0)
-                return true;
-
-            var copy = new List<ItemInstance>(bag.Items);
-            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
-            for (int i = 0; i < items.Count; i++)
-            {
-                ItemInstance item = items[i];
-                if (!grid.TryFindFreeSpace(copy, item.Width, item.Height, out int x, out int y))
-                    return false;
-
-                item.GridX = x;
-                item.GridY = y;
-                copy.Add(item);
-            }
-
-            return true;
-        }
-
-        private static void GrantAttachments(PlayerInventory bag, List<ItemSaveData> attachments)
-        {
-            if (bag == null || attachments == null)
-                return;
-
-            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
-            for (int i = 0; i < attachments.Count; i++)
-            {
-                ItemSaveData entry = attachments[i];
-                ItemDefinition definition = ItemDefinitionRegistry.Resolve(entry.ItemName);
-                if (definition == null)
-                    continue;
-
-                ItemInstance item = ItemInstance.Create(definition, 0, 0, entry.StackCount);
-                if (!string.IsNullOrEmpty(entry.InstanceId))
-                    item.InstanceId = entry.InstanceId;
-                if (entry.Durability > 0 && definition.MaxDurability > 0)
-                    item.Durability = Mathf.Min(entry.Durability, definition.MaxDurability);
-
-                if (grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
-                {
-                    item.GridX = x;
-                    item.GridY = y;
-                    bag.TryAddExistingItem(item, x, y);
-                }
-            }
-        }
-
-        private async Task<MailRule> RetryMailAsync(Func<Task<MailRule>> attempt, CancellationToken ct = default)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Mail mutation failed: {e.Message}");
-                    return MailRule.BackendUnavailable;
-                }
-            }
-
-            return MailRule.Conflict;
-        }
+        /// <summary>Claims every claimable message for a local player in one CAS write.</summary>
+        public Task<int> ClaimAllMailAsync(string accountId, CancellationToken ct = default)
+            => _mail.ClaimAllAsync(accountId, ct);
 
         #endregion
 
         #region Friend intents
 
         /// <summary>Sends a friend request from <paramref name="requesterId"/> to the named player.</summary>
-        public async Task<FriendRule> RequestFriendAsync(string requesterId, string targetName)
-        {
-            if (string.IsNullOrEmpty(requesterId))
-                return FriendRule.NotFound;
-
-            if (!await EnsureConnectedAsync())
-                return FriendRule.BackendUnavailable;
-
-            string targetId = await _repository.ResolveNameAsync(SocialAccountResolver.Normalize(targetName), CancellationToken.None);
-            if (string.IsNullOrEmpty(targetId))
-                return FriendRule.NotFound;
-
-            FriendRule result = await RetryFriendAsync(async () =>
-            {
-                FriendListRecord mine = await LoadFriendsAsync(requesterId);
-                FriendListRecord theirs = await LoadFriendsAsync(targetId);
-
-                FriendRule rule = FriendRules.CanRequest(requesterId, targetId, mine, theirs);
-                if (rule != FriendRule.Ok)
-                    return rule;
-
-                long now = NowTicks();
-
-                // Target first: if the second write dies, the dangling PendingIn is derived state
-                // that the reconcile pass or the accept path repairs — never a half-friend pair.
-                FriendRules.ApplyRequest(theirs, requesterId, ((ILocalRoster)this).NameOf(requesterId), now);
-                await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
-
-                FriendRules.ApplyPendingOut(mine, targetId, now);
-                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
-                return FriendRule.Ok;
-            });
-
-            if (result == FriendRule.Ok)
-            {
-                await SafeNotifyAsync("friend", string.Empty, requesterId, targetId);
-                await PushFriendsAsync(requesterId);
-                await PushFriendsAsync(targetId);
-                NotifyEvent(targetId, FriendEvent.RequestReceived);
-            }
-
-            return result;
-        }
+        public Task<FriendRule> RequestFriendAsync(string requesterId, string targetName)
+            => _friends.RequestAsync(requesterId, targetName);
 
         /// <summary>Accepts the pending friend request from <paramref name="fromAccountId"/>.</summary>
-        public async Task<FriendRule> AcceptFriendAsync(string accountId, string fromAccountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return FriendRule.BackendUnavailable;
-
-            FriendRule result = await RetryFriendAsync(async () =>
-            {
-                FriendListRecord mine = await LoadFriendsAsync(accountId);
-                FriendRule rule = FriendRules.CanAccept(mine, fromAccountId);
-                if (rule != FriendRule.Ok)
-                    return rule;
-
-                long now = NowTicks();
-                FriendRules.ApplyAccept(mine, fromAccountId, now);
-                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
-
-                // Materialize the other side immediately; if this best-effort write fails, the
-                // reconcile pass sees NeedsRepair and finishes it.
-                FriendListRecord theirs = await LoadFriendsAsync(fromAccountId);
-                if (theirs != null && FriendRules.NeedsRepair(mine, theirs, accountId, fromAccountId))
-                {
-                    FriendRules.ApplyAccept(theirs, accountId, now);
-                    await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
-                }
-
-                return FriendRule.Ok;
-            });
-
-            if (result == FriendRule.Ok)
-            {
-                await SafeNotifyAsync("friend", string.Empty, accountId, fromAccountId);
-                await PushFriendsAsync(accountId);
-                await PushFriendsAsync(fromAccountId);
-                NotifyEvent(fromAccountId, FriendEvent.Accepted);
-            }
-
-            return result;
-        }
+        public Task<FriendRule> AcceptFriendAsync(string accountId, string fromAccountId)
+            => _friends.AcceptAsync(accountId, fromAccountId);
 
         /// <summary>Declines the pending friend request from <paramref name="fromAccountId"/>.</summary>
-        public async Task<FriendRule> DeclineFriendAsync(string accountId, string fromAccountId)
-        {
-            if (!await EnsureConnectedAsync())
-                return FriendRule.BackendUnavailable;
-
-            FriendRule result = await RetryFriendAsync(async () =>
-            {
-                FriendListRecord mine = await LoadFriendsAsync(accountId);
-                FriendRule rule = FriendRules.CanDecline(mine, fromAccountId);
-                if (rule != FriendRule.Ok)
-                    return rule;
-
-                FriendRules.Remove(mine, fromAccountId);
-                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
-
-                FriendListRecord theirs = await LoadFriendsAsync(fromAccountId);
-                FriendRules.Remove(theirs, accountId);
-                await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
-                return FriendRule.Ok;
-            });
-
-            if (result == FriendRule.Ok)
-            {
-                await SafeNotifyAsync("friend", string.Empty, accountId, fromAccountId);
-                await PushFriendsAsync(accountId);
-                await PushFriendsAsync(fromAccountId);
-                NotifyEvent(fromAccountId, FriendEvent.Declined);
-            }
-
-            return result;
-        }
+        public Task<FriendRule> DeclineFriendAsync(string accountId, string fromAccountId)
+            => _friends.DeclineAsync(accountId, fromAccountId);
 
         /// <summary>Removes an accepted friend from both sides.</summary>
-        public async Task<FriendRule> RemoveFriendAsync(string accountId, string targetId)
-        {
-            if (!await EnsureConnectedAsync())
-                return FriendRule.BackendUnavailable;
-
-            FriendRule result = await RetryFriendAsync(async () =>
-            {
-                FriendListRecord mine = await LoadFriendsAsync(accountId);
-                FriendRule rule = FriendRules.CanRemove(mine, targetId);
-                if (rule != FriendRule.Ok)
-                    return rule;
-
-                FriendRules.Remove(mine, targetId);
-                await _repository.SaveFriendsAsync(mine, CancellationToken.None);
-
-                FriendListRecord theirs = await LoadFriendsAsync(targetId);
-                FriendRules.Remove(theirs, accountId);
-                await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
-                return FriendRule.Ok;
-            });
-
-            if (result == FriendRule.Ok)
-            {
-                await SafeNotifyAsync("friend", string.Empty, accountId, targetId);
-                await PushFriendsAsync(accountId);
-                await PushFriendsAsync(targetId);
-                NotifyEvent(targetId, FriendEvent.Removed);
-            }
-
-            return result;
-        }
+        public Task<FriendRule> RemoveFriendAsync(string accountId, string targetId)
+            => _friends.RemoveAsync(accountId, targetId);
 
         /// <summary>Pushes a fresh snapshot to a local player's friend list.</summary>
-        public async Task PushFriendsAsync(string accountId)
-        {
-            if (_repository == null || string.IsNullOrEmpty(accountId))
-                return;
-
-            if (!_localPlayers.TryGet(accountId, out LocalPlayerHandle handle) || handle.DeliverFriends == null)
-                return;
-
-            FriendListRecord record = await LoadFriendsAsync(accountId);
-            var ids = new List<string>();
-            if (record?.Entries != null)
-            {
-                foreach (FriendEntry entry in record.Entries)
-                    ids.Add(entry.AccountId);
-            }
-
-            var online = new HashSet<string>();
-            if (ids.Count > 0)
-            {
-                List<PresenceRecord> presences = await _repository.LoadPresencesAsync(ids, CancellationToken.None);
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                foreach (PresenceRecord presence in presences)
-                {
-                    if (presence != null && presence.IsHeartbeatFresh(now))
-                        online.Add(presence.AccountId);
-                }
-            }
-
-            var snapshot = new FriendListSnapshot();
-            if (record?.Entries != null)
-            {
-                foreach (FriendEntry entry in record.Entries)
-                {
-                    snapshot.Friends.Add(new FriendView
-                    {
-                        AccountId = entry.AccountId,
-                        PlayerName = string.IsNullOrEmpty(entry.PlayerName) ? entry.AccountId : entry.PlayerName,
-                        State = entry.State,
-                        Online = online.Contains(entry.AccountId),
-                    });
-                }
-            }
-
-            handle.DeliverFriends(JsonUtility.ToJson(snapshot));
-        }
-
-        private async Task RefreshLocalFriendsAsync()
-        {
-            if (_repository == null || _localPlayers.Count == 0)
-                return;
-
-            foreach (string accountId in _localPlayers.AccountIds())
-                await PushFriendsAsync(accountId);
-        }
-
-        private async Task RepairFriendsAsync()
-        {
-            foreach (string accountId in _localPlayers.AccountIds())
-            {
-                FriendListRecord mine = await LoadFriendsAsync(accountId);
-                if (mine?.Entries == null)
-                    continue;
-
-                foreach (FriendEntry entry in new List<FriendEntry>(mine.Entries))
-                {
-                    if (entry.State != FriendState.Accepted)
-                        continue;
-
-                    FriendListRecord theirs = await LoadFriendsAsync(entry.AccountId);
-                    if (!FriendRules.NeedsRepair(mine, theirs, accountId, entry.AccountId))
-                        continue;
-
-                    try
-                    {
-                        FriendRules.ApplyAccept(theirs, accountId, NowTicks());
-                        await _repository.SaveFriendsAsync(theirs, CancellationToken.None);
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogWarning($"[Social] friend repair failed for '{entry.AccountId}': {e.Message}");
-                    }
-                }
-            }
-        }
-
-        private async Task<FriendListRecord> LoadFriendsAsync(string accountId)
-            => await _repository.LoadFriendsAsync(accountId, CancellationToken.None)
-               ?? new FriendListRecord { AccountId = accountId };
-
-        private void NotifyEvent(string accountId, FriendEvent evt)
-        {
-            if (_localPlayers.TryGet(accountId, out LocalPlayerHandle handle))
-                handle.NotifyFriendEvent?.Invoke((int)evt);
-        }
-
-        private Task SafeNotifyAsync(string type, string target, params string[] accounts)
-            => _hints.SendAsync(type, target, accounts);
-
-        private static long NowTicks() => DateTimeOffset.UtcNow.UtcDateTime.Ticks;
-
-        private async Task<FriendRule> RetryFriendAsync(Func<Task<FriendRule>> attempt)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Friend mutation failed: {e.Message}");
-                    return FriendRule.BackendUnavailable;
-                }
-            }
-
-            return FriendRule.Conflict;
-        }
+        public Task PushFriendsAsync(string accountId)
+            => _friends.PushAsync(accountId);
 
         #endregion
 
@@ -2320,7 +917,7 @@ namespace MMO.Social
             }
 
             // Repair any half-accepted friendship whose mirror write or notify was lost.
-            await RepairFriendsAsync();
+            await _friends.RepairAsync();
 
             // Raid handoff: a party whose raid instance is hosted on another zone must move its
             // local members there. The pointer is authoritative; only the zone already holding a
@@ -2713,28 +1310,6 @@ namespace MMO.Social
             }
 
             return PartyRule.Conflict;
-        }
-
-        private async Task<GuildRule> RetryPartyAsyncGuild(Func<Task<GuildRule>> attempt)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Guild mutation failed: {e.Message}");
-                    return GuildRule.BackendUnavailable;
-                }
-            }
-
-            return GuildRule.Conflict;
         }
 
         #endregion
