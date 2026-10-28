@@ -43,15 +43,12 @@ namespace MMO.Persistence
         private readonly Dictionary<int, string> _accountByClientId = new();
         private readonly Dictionary<string, PlayerSaveRecord> _spawnRecords = new();
         private readonly Dictionary<string, Func<PlayerSaveRecord>> _livePlayers = new();
-        private readonly Dictionary<string, PlayerSaveRecord> _finalRecords = new();
         private readonly Dictionary<string, string> _storageVersions = new();
-        private readonly HashSet<string> _dirty = new();
-        private readonly Dictionary<string, double> _debounceUntil = new();
 
         private readonly WalletReservationStore _walletReservations = new WalletReservationStore();
+        private readonly PlayerSaveQueue _saveQueue = new PlayerSaveQueue();
         private IPlayerRepository _repository;
         private bool _connected;
-        private bool _saving;
         private float _nextAutosaveTime;
         private NetworkManager _manager;
         private bool _subscribed;
@@ -110,7 +107,7 @@ namespace MMO.Persistence
                 _nextAutosaveTime = Time.time + _autosaveInterval;
             }
 
-            if (_connected && _dirty.Count > 0 && !_saving)
+            if (_connected && _saveQueue.DirtyCount > 0 && !_saveQueue.IsSaving)
                 _ = ProcessDueSavesAsync(Time.unscaledTimeAsDouble);
         }
 
@@ -309,15 +306,7 @@ namespace MMO.Persistence
         /// burst of inventory changes flushes once.
         /// </summary>
         public void MarkDirty(string accountId, bool immediate)
-        {
-            if (string.IsNullOrEmpty(accountId))
-                return;
-
-            _dirty.Add(accountId);
-            _debounceUntil[accountId] = immediate
-                ? Time.unscaledTimeAsDouble
-                : Time.unscaledTimeAsDouble + _saveDebounce;
-        }
+            => _saveQueue.MarkDirty(accountId, immediate, _saveDebounce);
 
         /// <summary>
         /// Queues the final state of a player that is about to leave (disconnect / despawn). The
@@ -325,13 +314,7 @@ namespace MMO.Persistence
         /// registered live capture for the one save that follows.
         /// </summary>
         public void QueueFinalSave(string accountId, PlayerSaveRecord record)
-        {
-            if (string.IsNullOrEmpty(accountId) || record == null)
-                return;
-
-            _finalRecords[accountId] = record;
-            MarkDirty(accountId, immediate: true);
-        }
+            => _saveQueue.QueueFinalSave(accountId, record, _saveDebounce);
 
         /// <summary>
         /// Saves every dirty player whose debounce window has passed. Public so tests can drive the
@@ -339,44 +322,35 @@ namespace MMO.Persistence
         /// </summary>
         public async Task<int> ProcessDueSavesAsync(double now)
         {
-            if (_saving || !_connected || _dirty.Count == 0)
+            if (_saveQueue.IsSaving || !_connected || _saveQueue.DirtyCount == 0)
                 return 0;
 
-            List<string> due = null;
-            foreach (string accountId in _dirty)
-            {
-                if (_debounceUntil.TryGetValue(accountId, out double deadline) && now >= deadline)
-                    (due ??= new List<string>()).Add(accountId);
-            }
-
+            List<string> due = _saveQueue.Due(now);
             if (due == null)
                 return 0;
 
             int flushed = 0;
-            _saving = true;
+            _saveQueue.BeginSave();
             try
             {
                 foreach (string accountId in due)
                 {
-                    bool ok = await SaveOneAsync(accountId);
-                    if (ok)
+                    if (await SaveOneAsync(accountId))
                     {
-                        _dirty.Remove(accountId);
-                        _debounceUntil.Remove(accountId);
+                        _saveQueue.MarkSaved(accountId);
                         flushed++;
                     }
                     else
                     {
                         // Keep dirty for a later retry; re-debounce so a dead backend cannot
                         // hot-loop the save loop.
-                        _dirty.Add(accountId);
-                        _debounceUntil[accountId] = Time.unscaledTimeAsDouble + _saveDebounce;
+                        _saveQueue.RequireRetry(accountId, _saveDebounce);
                     }
                 }
             }
             finally
             {
-                _saving = false;
+                _saveQueue.EndSave();
             }
 
             return flushed;
@@ -391,17 +365,16 @@ namespace MMO.Persistence
                 return 0;
 
             int flushed = 0;
-            foreach (string accountId in new List<string>(_dirty))
+            foreach (string accountId in _saveQueue.SnapshotDirty())
             {
                 if (await SaveOneAsync(accountId))
                 {
-                    _dirty.Remove(accountId);
-                    _debounceUntil.Remove(accountId);
+                    _saveQueue.MarkSaved(accountId);
                     flushed++;
                 }
                 else
                 {
-                    _dirty.Add(accountId);
+                    _saveQueue.RequireRetry(accountId, _saveDebounce);
                 }
             }
 
@@ -425,20 +398,15 @@ namespace MMO.Persistence
             if (!_connected)
                 return !requireConnected;
 
-            if (requireConnected && !_livePlayers.ContainsKey(accountId) && !_finalRecords.ContainsKey(accountId))
+            if (requireConnected && !_livePlayers.ContainsKey(accountId) && !_saveQueue.HasFinalRecord(accountId))
                 return false;
 
             MarkDirty(accountId, immediate: true);
             bool saved = await SaveOneAsync(accountId, requireRecord: requireConnected);
             if (saved)
-            {
-                _dirty.Remove(accountId);
-                _debounceUntil.Remove(accountId);
-            }
+                _saveQueue.MarkSaved(accountId);
             else
-            {
-                _dirty.Add(accountId);
-            }
+                _saveQueue.RequireRetry(accountId, _saveDebounce);
 
             return saved;
         }
@@ -449,9 +417,8 @@ namespace MMO.Persistence
                 return !requireRecord;
 
             PlayerSaveRecord record;
-            if (_finalRecords.TryGetValue(accountId, out record))
+            if (_saveQueue.TryTakeFinalRecord(accountId, out record))
             {
-                _finalRecords.Remove(accountId);
             }
             else
             {
