@@ -246,7 +246,8 @@ namespace MMO.Net
         /// not get a second one.
         /// </summary>
         private async Task ValidateAndDecideAsync(
-            NetworkConnection connection, int clientId, string playerName, string authToken, string expectedAccountId = null)
+            NetworkConnection connection, int clientId, string playerName, string authToken,
+            string expectedAccountId = null, bool trustTransferTokenOnInvalidAuth = false)
         {
             TokenIdentity identity;
             try
@@ -266,6 +267,30 @@ namespace MMO.Net
 
             if (!identity.IsValid)
             {
+                // A zone handoff already carries a source-signed, single-use transfer token that
+                // names the account. A long play session routinely outlives the client's Nakama
+                // session token, so an expired session must not strand the player between zones.
+                if (trustTransferTokenOnInvalidAuth && !string.IsNullOrEmpty(expectedAccountId))
+                {
+                    if (_tracker.IsPending(clientId))
+                    {
+                        Debug.LogWarning(
+                            $"[JoinGate] Auth token rejected for client {clientId}; trusting the signed transfer token for '{expectedAccountId}'.");
+
+                        if (PlayerLoader == null)
+                        {
+                            Apply(connection,
+                                Decide(playerName, CountAuthenticatedClients(), _tracker.Elapsed(clientId, Time.unscaledTimeAsDouble)));
+                        }
+                        else
+                        {
+                            await LoadAndDecideAsync(connection, clientId, playerName, expectedAccountId);
+                        }
+                    }
+
+                    return;
+                }
+
                 if (_tracker.IsPending(clientId))
                     Apply(connection, JoinDecision.Reject(ReasonInvalidAuthToken));
 
@@ -347,8 +372,11 @@ namespace MMO.Net
                 }
 
                 // Token auth ignores the account key on the wire; <see cref="ValidateAndDecideAsync"/>
-                // checks the backend's vouch against the account the source saved.
-                await ValidateAndDecideAsync(connection, clientId, playerName, authToken, token.AccountId);
+                // checks the backend's vouch against the account the source saved. If that session
+                // token has expired during play, the signed transfer token still vouches for it.
+                await ValidateAndDecideAsync(
+                    connection, clientId, playerName, authToken, token.AccountId,
+                    trustTransferTokenOnInvalidAuth: true);
                 return;
             }
 

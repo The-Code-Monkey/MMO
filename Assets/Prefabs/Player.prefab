@@ -40,6 +40,8 @@ GameObject:
   - component: {fileID: 3270781934196745648}
   - component: {fileID: 7017874344155465201}
   - component: {fileID: 3271888801790220287}
+  - component: {fileID: 7880312998599849474}
+  - component: {fileID: 6163589725604260696}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -174,7 +176,7 @@ MonoBehaviour:
   _teleportThreshold: 1
   <PrefabId>k__BackingField: 65535
   <SpawnableCollectionId>k__BackingField: 0
-  <AssetPathHash>k__BackingField: 0
+  <AssetPathHash>k__BackingField: 2092870565765373345
   SceneId: 0
   SerializedTransformProperties:
     Position: {x: 0, y: 0, z: 0}
@@ -640,6 +642,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 48504778ed29f01dbb86d402c9b3c2e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Client.LocalPlayerHud
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &7880312998599849474
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 929c67e09b611ce33a6f353d68fc9757, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Banking.PlayerBank
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &6163589725604260696
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7346e37d847ecebd3b05457aa6f61978, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Client.PlayerZoneTransfer
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}

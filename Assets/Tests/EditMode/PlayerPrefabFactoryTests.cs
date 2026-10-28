@@ -249,11 +249,12 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(28, behaviours.Length,
+            Assert.AreEqual(29, behaviours.Length,
                 "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
                 "death, the wallet and auction house, quests and dialogue, the save trigger, " +
                 "starter items, the party/guild/chat/friend/raid/trade/territory surfaces, the server-authoritative " +
-                "mover, mount, auras, click-to-move, the NetworkTransform, the HUD and the personal bank.");
+                "mover, mount, auras, click-to-move, the NetworkTransform, the HUD, the personal bank " +
+                "and the zone-transfer intent.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -284,7 +285,9 @@ namespace MMO.Tests
             Assert.IsInstanceOf<LocalPlayerHud>(behaviours[26],
                 "The HUD is added late so the behaviours it builds a screen for already exist.");
             Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[27],
-                "The personal bank is appended last, so every earlier index is unchanged.");
+                "The personal bank is appended after the HUD, so every earlier index is unchanged.");
+            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[28],
+                "Zone transfer is appended last: its ServerRpc must not shift an existing index.");
 
             foreach (NetworkBehaviour behaviour in behaviours)
             {

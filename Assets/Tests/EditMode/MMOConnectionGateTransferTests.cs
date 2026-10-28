@@ -265,5 +265,25 @@ namespace MMO.Tests
 
             Assert.AreEqual(false, capture.Approved);
         }
+
+        [Test]
+        public async Task HandleJoinRequest_TransferWithTokenAuth_ExpiredSessionFallsBackToTheSignedToken()
+        {
+            var validator = new FakeTokenValidator();
+            _gate.TokenValidator = validator;
+            string token = await IssueToken(Account);
+            var capture = new VerdictCapture(_gate);
+
+            _gate.OnRemoteConnection(Connection);
+            _gate.HandleJoinRequest(Connection, "Bob", null, "expired-session-token", token);
+            validator.Source.SetResult(new TokenIdentity(null));
+            await Task.Delay(50);
+            _loader.Complete(new PlayerSaveRecord { UserId = Account });
+            await Task.Delay(50);
+
+            Assert.AreEqual(true, capture.Approved,
+                "A long play session can outlive the Nakama session token; the signed transfer token still names the account.");
+            Assert.AreEqual(Account, _loader.AccountId);
+        }
     }
 }

@@ -139,22 +139,46 @@ namespace MMO.Persistence
                 string.IsNullOrEmpty(_refreshToken))
                 return _sessionToken;
 
-            RefreshResponse refreshed = await PostAsync<RefreshResponse>(
-                "/v2/account/session/refresh",
-                JsonUtility.ToJson(new RefreshRequest { token = _sessionToken, refresh_token = _refreshToken }),
-                useBasic: true,
-                ct);
-
-            if (refreshed != null && !string.IsNullOrEmpty(refreshed.token))
+            string tokenBeforeRefresh = _sessionToken;
+            try
             {
-                _sessionToken = refreshed.token;
-                if (!string.IsNullOrEmpty(refreshed.refresh_token))
-                    _refreshToken = refreshed.refresh_token;
+                // Nakama's refresh endpoint takes the *refresh* token in the "token" field; the
+                // access token is not part of the request at all.
+                RefreshResponse refreshed = await PostAsync<RefreshResponse>(
+                    "/v2/account/session/refresh",
+                    JsonUtility.ToJson(new RefreshRequest { token = _refreshToken }),
+                    useBasic: true,
+                    ct);
 
-                _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
+                if (refreshed != null && !string.IsNullOrEmpty(refreshed.token))
+                {
+                    _sessionToken = refreshed.token;
+                    if (!string.IsNullOrEmpty(refreshed.refresh_token))
+                        _refreshToken = refreshed.refresh_token;
+
+                    _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
+                }
+
+                return _sessionToken;
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                // A refresh token can be revoked or outlive Nakama's session window. Re-issue a
+                // session with the shared service credentials instead of leaving the server dead.
+                if (_sessionToken != tokenBeforeRefresh && !string.IsNullOrEmpty(_sessionToken))
+                    return _sessionToken;
 
-            return _sessionToken;
+                _sessionToken = null;
+                _refreshToken = null;
+                _userId = null;
+                _tokenValidUntil = DateTime.MinValue;
+                await ConnectAsync(ct);
+                return _sessionToken;
+            }
         }
 
         /// <summary>
@@ -436,7 +460,6 @@ namespace MMO.Persistence
         private class RefreshRequest
         {
             public string token;
-            public string refresh_token;
         }
 
         [Serializable]

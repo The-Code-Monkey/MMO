@@ -244,13 +244,14 @@ player roughly where they were instead of dumping them at a fixed point.
 ## 5. Zone transfers
 
 A zone is one server process. Moving a player between zones is a **server-driven handoff**; the
-client is redirected, but it never chooses where to go.
+client asks for the gate it stands at, but it never chooses where to go.
 
 The sequence:
 
 ```
 Source zone server                                        Destination zone server
-  │ ZoneTransferTrigger.OnTriggerEnter (server only)        │
+  │ PlayerZoneTransfer.RpcRequestTransfer (E intent)        │
+  │  ├─ server re-checks the player's gate range            │
   │  ├─ force-save the player NOW                           │
   │  ├─ mint a short-lived single-use token                 │
   │  └─ broadcast ZoneTransferBroadcast ───► client         │
@@ -265,13 +266,16 @@ Source zone server                                        Destination zone serve
 ### The trigger
 
 `ZoneTransferTrigger` (`Assets/Scripts/Gameplay/ZoneTransferTrigger.cs:32`) is a trigger collider at
-the edge of a zone. It runs on the server only. On entry it:
+the edge of a zone. The owning client's `PlayerZoneTransfer` (`Assets/Scripts/Client/Player/PlayerZoneTransfer.cs`)
+shows the HUD prompt naming its `TargetZoneName` while the player is in range, and sends a bare
+intent on E. The server re-resolves the nearest gate at the player's authoritative position before
+it runs `BeginHandoff`, which:
 
 1. snapshots the player while their SyncVars are still live
    (`PlayerSaveTrigger.CaptureNow()`), and force-saves it (`PlayerPersistenceService.FlushAsync`),
 2. aborts if the save fails — better to keep the player where they are than deliver a fresh
    character to the next zone,
-3. builds a `ZoneTransferHandoff` and runs it (`ZoneTransferTrigger.cs:101`),
+3. builds a `ZoneTransferHandoff` and runs it (`ZoneTransferTrigger.cs:190`),
 4. broadcasts the redirect with the token (`requireAuthenticated: true`), then disconnects the client
    after a short grace period.
 
@@ -315,7 +319,8 @@ When a join arrives carrying a transfer token, `TransferAndDecideAsync`
 (`Assets/Scripts/Net/MMOConnectionGate.cs:306`) consumes it. A forged, expired, already-used or
 account-mismatched token is rejected. A valid one admits the player under the account the *source*
 server saved, and loads that account's record from the shared backend — so the player arrives with
-the right stats and inventory.
+the right stats and inventory. The signed transfer token is also sufficient when the client's
+Nakama session token expired during play; a long session must not strand the player at the gate.
 
 ### The client half
 

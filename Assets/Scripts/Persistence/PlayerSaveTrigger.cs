@@ -40,6 +40,8 @@ namespace MMO.Persistence
         private bool _subscribed;
         private bool _reconcilingWalletReservations;
         private float _nextWalletReservationReconcileTime;
+        private float _joinRetryUntil;
+        private bool _joinTimeoutLogged;
 
         /// <summary>The account this player's record lives under; empty until the join is applied.</summary>
         public string AccountId => _accountId;
@@ -74,9 +76,21 @@ namespace MMO.Persistence
                 return;
             }
 
+            // The player can spawn on the client's start-scene load before the join gate has
+            // finished loading the record. Retry briefly from Update instead of losing the join.
+            _joinRetryUntil = Time.unscaledTime + 10f;
+            TryApplyJoin();
+        }
+
+        private void TryApplyJoin()
+        {
+            if (_subscribed)
+                return;
+
             PlayerPersistenceService service = PlayerPersistenceService.Instance;
             int clientId = Owner != null ? Owner.ClientId : -1;
-            if (service == null || !service.TryGetJoin(clientId, out _accountId, out PlayerSaveRecord record))
+            if (service == null || clientId < 0 ||
+                !service.TryGetJoin(clientId, out _accountId, out PlayerSaveRecord record))
                 return;
 
             // Apply the loaded save in one shot. Subscribing afterwards keeps the apply itself from
@@ -123,6 +137,55 @@ namespace MMO.Persistence
             _subscribed = true;
         }
 
+        /// <summary>
+        /// Marks the player dirty when a server walk ends, so a later crash can only lose the
+        /// distance walked since the last stop rather than a whole autosave interval.
+        /// </summary>
+        public void MarkDirtyOnArrival()
+        {
+            if (IsServer && _subscribed && !string.IsNullOrEmpty(_accountId))
+                PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
+        }
+
+        /// <summary>
+        /// Called after a zone handoff has already flushed the final state. Suppresses the second
+        /// save OnStopNetwork would otherwise queue, which would race the destination's first save
+        /// with the version the destination has already loaded.
+        /// </summary>
+        public void MarkTransferred()
+        {
+            if (!IsServer || !_subscribed)
+                return;
+
+            UnsubscribeFromChanges();
+            PlayerPersistenceService.Instance?.UnregisterLivePlayer(_accountId);
+            _subscribed = false;
+        }
+
+        private void UnsubscribeFromChanges()
+        {
+            if (_stats != null)
+            {
+                _stats.LevelChanged -= OnLevelChanged;
+                _stats.ExperienceChanged -= OnExperienceChanged;
+            }
+
+            if (_inventory != null)
+                _inventory.ContainersChanged -= OnInventoryChanged;
+
+            if (_quests != null)
+                _quests.ProgressChanged -= OnQuestProgressChanged;
+
+            if (_wallet != null)
+            {
+                _wallet.BalancesChanged -= OnWalletChanged;
+                _wallet.BankChanged -= OnWalletChanged;
+            }
+
+            if (_bank != null)
+                _bank.BankChanged -= OnWalletChanged;
+        }
+
         public override void OnStopNetwork()
         {
             if (IsServer && _subscribed && !string.IsNullOrEmpty(_accountId))
@@ -130,18 +193,7 @@ namespace MMO.Persistence
                 PlayerPersistenceService service = PlayerPersistenceService.Instance;
                 if (service != null)
                 {
-                    _stats.LevelChanged -= OnLevelChanged;
-                    _stats.ExperienceChanged -= OnExperienceChanged;
-                    _inventory.ContainersChanged -= OnInventoryChanged;
-                    if (_quests != null)
-                        _quests.ProgressChanged -= OnQuestProgressChanged;
-                    if (_wallet != null)
-                    {
-                        _wallet.BalancesChanged -= OnWalletChanged;
-                        _wallet.BankChanged -= OnWalletChanged;
-                    }
-                    if (_bank != null)
-                        _bank.BankChanged -= OnWalletChanged;
+                    UnsubscribeFromChanges();
                     _subscribed = false;
 
                     // The state is still live during this callback, so snapshot it now: the async
@@ -172,7 +224,26 @@ namespace MMO.Persistence
 
         private void Update()
         {
-            if (!IsServer || !_subscribed || _reconcilingWalletReservations ||
+            if (!IsServer)
+                return;
+
+            if (!_subscribed)
+            {
+                if (Time.unscaledTime <= _joinRetryUntil)
+                    TryApplyJoin();
+                else if (!_joinTimeoutLogged)
+                {
+                    _joinTimeoutLogged = true;
+                    int clientId = Owner != null ? Owner.ClientId : -1;
+                    Debug.LogWarning(
+                        $"{nameof(PlayerSaveTrigger)}: no join record for client {clientId}; " +
+                        "this player will not be saved or transferable.", this);
+                }
+
+                return;
+            }
+
+            if (_reconcilingWalletReservations ||
                 Time.unscaledTime < _nextWalletReservationReconcileTime)
             {
                 return;

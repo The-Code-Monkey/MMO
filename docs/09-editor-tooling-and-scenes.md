@@ -118,6 +118,7 @@ token auth on, its own port: tutorial `7772`, safe `7770`, wilderness `7771`), a
 rig, a `ZoneRiskConfig`, spawn points carrying `PlayerSpawnPoint` (four in the town, two in the
 wilderness, one in the tutorial; the first is the zone default) wired into the `PlayerSpawner`, a
 `WorldBootstrap`, and one `ZoneTransferTrigger` road out (`tutorial → safe → wilderness` and back).
+The owning client shows that gate's destination as a prompt; pressing E asks the server to transfer.
 Each scene also authors `ResourceNodeMarker` / `CraftingStationMarker` / `EnemyMarker` children under
 `ZoneRoot/Markers` that the server spawns from or configures a spawn controller for — the town has a
 smithy (furnace + anvil) and edge veins, the wilderness has scattered veins and a few enemy spawn
