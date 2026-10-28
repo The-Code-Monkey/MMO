@@ -89,6 +89,7 @@ namespace MMO.Editor
         public const string SpawnPointsName = "SpawnPoints";
         public const string MarkersName = "Markers";
         public const string RiskConfigName = "ZoneRiskConfig";
+        public const string TerritoryName = "Territory";
 
         // ---- Prefabs ------------------------------------------------------
 
@@ -231,6 +232,7 @@ namespace MMO.Editor
                 BuildWilderness(
                     CreateChild(ScatterName, zoneRoot.transform).transform,
                     CreateChild(HazardsName, zoneRoot.transform).transform);
+                CreateClaimFlag(zoneRoot.transform);
             }
             // The tutorial zone is deliberately bare: flat ground and boundary only.
 
@@ -648,6 +650,29 @@ namespace MMO.Editor
             var go = CreateChild(RiskConfigName, zoneRoot);
             var config = go.AddComponent<ZoneRiskConfig>();
             config.SetTier(tier);
+        }
+
+        /// <summary>
+        /// Authors the Wilderness claim flag: a scene volume (no prefab, no NetworkObject) clear of
+        /// the spawn clearing, portal corridor, nodes and hazards.
+        /// </summary>
+        private static void CreateClaimFlag(Transform zoneRoot)
+        {
+            var go = CreateChild(TerritoryName, zoneRoot);
+            go.transform.localPosition = new Vector3(-16f, 0f, 16f);
+
+            var collider = go.AddComponent<BoxCollider>();
+            collider.isTrigger = true;
+            collider.center = new Vector3(0f, 1f, 0f);
+            collider.size = new Vector3(8f, 2f, 8f);
+
+            var flag = go.AddComponent<ClaimFlag>();
+            flag.Configure("wilderness-keep", new VulnerabilityWindow
+            {
+                Days = new[] { DayOfWeek.Saturday, DayOfWeek.Sunday },
+                StartMinuteUtc = 18 * 60,
+                EndMinuteUtc = 22 * 60,
+            });
         }
 
         private static void CreatePortal(

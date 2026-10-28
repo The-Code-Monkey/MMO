@@ -531,6 +531,93 @@ namespace MMO.Tests
 
         #endregion
 
+        #region Territory
+
+        private static VulnerabilityWindow AlwaysOpen => new()
+        {
+            Days = new[]
+            {
+                DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+                DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
+            },
+            StartMinuteUtc = 0,
+            EndMinuteUtc = 23 * 60 + 59,
+        };
+
+        private void SeedGuild(string accountId, string guildId)
+        {
+            _repo.Indexes[accountId] = new SocialIndexRecord
+            {
+                AccountId = accountId,
+                GuildId = guildId,
+            };
+            _repo.Guilds[guildId] = new GuildRecord
+            {
+                GuildId = guildId,
+                Name = guildId,
+                LeaderId = accountId,
+                Members = new List<GuildMemberRecord>
+                {
+                    new() { AccountId = accountId, Rank = (int)GuildRank.Leader },
+                },
+            };
+        }
+
+        [Test]
+        public async Task SocialHubService_CaptureTerritory_RetriesOnConflict()
+        {
+            SeedGuild("a", "g1");
+            _repo.ConflictOnNextTerritorySave = true;
+
+            TerritoryRule result = await _hub.CaptureTerritoryAsync(
+                "a", "t1", AlwaysOpen, DateTimeOffset.UtcNow);
+
+            Assert.AreEqual(TerritoryRule.Ok, result);
+            Assert.GreaterOrEqual(_repo.TerritorySaveCalls, 2,
+                "The 409 must re-read and retry, not give up.");
+            Assert.AreEqual("g1", _repo.Territories["t1"].OwnerGuildId);
+        }
+
+        [Test]
+        public async Task SocialHubService_CaptureTerritory_NoGuild_Refused()
+        {
+            _repo.Indexes["a"] = new SocialIndexRecord { AccountId = "a" };
+
+            TerritoryRule result = await _hub.CaptureTerritoryAsync(
+                "a", "t1", AlwaysOpen, DateTimeOffset.UtcNow);
+
+            Assert.AreEqual(TerritoryRule.NoGuild, result);
+            Assert.AreEqual(0, _repo.TerritorySaveCalls);
+        }
+
+        [Test]
+        public async Task SocialHubService_CaptureTerritory_OutsideWindow_RefusedBeforeWrite()
+        {
+            SeedGuild("a", "g1");
+            SeedGuild("b", "g2");
+            _repo.Territories["t1"] = new TerritoryRecord
+            {
+                TerritoryId = "t1",
+                OwnerGuildId = "g1",
+            };
+
+            var closed = new VulnerabilityWindow
+            {
+                Days = new[] { DayOfWeek.Monday },
+                StartMinuteUtc = 10 * 60,
+                EndMinuteUtc = 11 * 60,
+            };
+
+            TerritoryRule result = await _hub.CaptureTerritoryAsync(
+                "b", "t1", closed, new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero));
+
+            Assert.AreEqual(TerritoryRule.NotAttackable, result);
+            Assert.AreEqual(0, _repo.TerritorySaveCalls);
+            Assert.AreEqual("g1", _repo.Territories["t1"].OwnerGuildId);
+        }
+
+        #endregion
+
         /// <summary>
         /// An in-memory <see cref="ISocialRepository"/> that mirrors the record versions and can
         /// inject a single optimistic-concurrency failure, so the retry loop is exercised offline.
@@ -544,6 +631,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, FriendListRecord> Friends = new Dictionary<string, FriendListRecord>();
             public readonly Dictionary<string, GuildBankRecord> GuildBanks = new Dictionary<string, GuildBankRecord>();
             public readonly Dictionary<string, GuildBankLedgerRecord> GuildBankLedgers = new Dictionary<string, GuildBankLedgerRecord>();
+            public readonly Dictionary<string, TerritoryRecord> Territories = new Dictionary<string, TerritoryRecord>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
             public readonly List<SocialNotification> Notifications = new List<SocialNotification>();
 
@@ -552,6 +640,9 @@ namespace MMO.Tests
 
             public bool ConflictOnNextBankSave;
             public int BankSaveCalls;
+
+            public bool ConflictOnNextTerritorySave;
+            public int TerritorySaveCalls;
 
             private int _versions;
 
@@ -649,6 +740,22 @@ namespace MMO.Tests
             public Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default)
                 => Save(record, GuildBankLedgers, record.GuildId, record.StorageVersion, () => record.StorageVersion = NextVersion());
 
+            public Task<TerritoryRecord> LoadTerritoryAsync(string territoryId, CancellationToken ct = default)
+                => Task.FromResult(Clone(Get(Territories, territoryId)));
+
+            public Task SaveTerritoryAsync(TerritoryRecord record, CancellationToken ct = default)
+            {
+                TerritorySaveCalls++;
+
+                if (ConflictOnNextTerritorySave)
+                {
+                    ConflictOnNextTerritorySave = false;
+                    return Task.FromException(new StorageVersionConflictException("injected territory conflict"));
+                }
+
+                return Save(record, Territories, record.TerritoryId, record.StorageVersion, () => record.StorageVersion = NextVersion());
+            }
+
             public Task<List<PresenceRecord>> LoadPresencesAsync(
                 IReadOnlyList<string> accountIds, CancellationToken ct = default)
             {
@@ -702,6 +809,7 @@ namespace MMO.Tests
                     PresenceRecord presence => presence.StorageVersion,
                     FriendListRecord friends => friends.StorageVersion,
                     GuildBankRecord bank => bank.StorageVersion,
+                    TerritoryRecord territory => territory.StorageVersion,
                     _ => null,
                 };
 

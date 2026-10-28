@@ -62,6 +62,7 @@ namespace MMO.UI
         /// has none). Tests that never dispatch a pointer pass false.
         /// </param>
         /// <param name="createGuildBankFrame">True to also build the guild bank window.</param>
+        /// <param name="createTradeFrame">True to also build the direct-trade window.</param>
         /// <param name="crafting">
         /// The player's crafting, e.g. a spawned <c>PlayerCrafting</c>. The panel is built
         /// concealed regardless; it shows when the server sends that source an offer payload.
@@ -83,7 +84,8 @@ namespace MMO.UI
             bool createGuildBankFrame = false,
             ICraftingSource crafting = null,
             IMountSource mount = null,
-            PlayerDialogue dialogue = null)
+            PlayerDialogue dialogue = null,
+            bool createTradeFrame = false)
         {
             GameObject root = new GameObject(HudName, typeof(RectTransform));
 
@@ -117,6 +119,9 @@ namespace MMO.UI
 
             if (createGuildBankFrame)
                 hud.SetGuildBankFrame(GuildBankFrameFactory.Create(root.transform));
+
+            if (createTradeFrame)
+                hud.SetTradeFrame(TradeFrameFactory.Create(root.transform));
 
             hud.BindPlayer(vitals, inventory, abilities, crafting, mount);
             hud.BindDialogue(dialogue);
