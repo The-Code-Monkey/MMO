@@ -58,6 +58,12 @@ namespace MMO.Social
         Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default);
         Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default);
 
+        /// <summary>Null when the territory has never been captured; <c>StorageVersion</c> is the if-match token.</summary>
+        Task<TerritoryRecord> LoadTerritoryAsync(string territoryId, CancellationToken ct = default);
+
+        /// <summary>Creates when <c>record.StorageVersion</c> is empty, otherwise if-matches it.</summary>
+        Task SaveTerritoryAsync(TerritoryRecord record, CancellationToken ct = default);
+
         /// <summary>Batch presence read for the friend-list online flags (100 ids per call).</summary>
         Task<List<PresenceRecord>> LoadPresencesAsync(
             IReadOnlyList<string> accountIds, CancellationToken ct = default);

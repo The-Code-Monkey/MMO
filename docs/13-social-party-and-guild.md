@@ -342,3 +342,10 @@ so zone B moves on the delivered push before its own tick, and converges on the 
 - **Test raid logic offline.** `RaidRulesTests`, `RaidHostSelectionTests`, `RaidInstanceServiceTests`,
   `MultiPartyRaidServiceTests`, `SocialNotificationTests` and `SocialHubRaidSyncTests` use in-memory
   fakes and an EditMode hub.
+
+## Direct trade and territory
+
+Player-to-player trade and guild territory reuse this chapter's repository, CAS and player-shell
+patterns. Trade never escrows items: both sides lock, then one server tick re-validates and swaps
+both bags. Territory is a scene `ClaimFlag` volume with a weekly vulnerability window, stored in the
+`territories` collection. See [16 — Direct trade and guild territory](16-trading-and-territory.md).

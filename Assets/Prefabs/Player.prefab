@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &8673228683051736043
+--- !u!1 &1570343646677159205
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,36 +8,38 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 4498351312828619830}
-  - component: {fileID: 2251046652280884047}
-  - component: {fileID: 2802452293616195845}
-  - component: {fileID: 2425229944915152896}
-  - component: {fileID: 1248092469509279395}
-  - component: {fileID: 7175964260034095067}
-  - component: {fileID: 109066416770201617}
-  - component: {fileID: 6227466824404998396}
-  - component: {fileID: 1581638223194356362}
-  - component: {fileID: 4446186747449614200}
-  - component: {fileID: 4317269273865408986}
-  - component: {fileID: 4748785539353044818}
-  - component: {fileID: 6344316905428052550}
-  - component: {fileID: 6561559964275652801}
-  - component: {fileID: 7385269363321464}
-  - component: {fileID: 6380855348582973878}
-  - component: {fileID: 6901790986073579184}
-  - component: {fileID: 2380682821765895201}
-  - component: {fileID: 506150388635910153}
-  - component: {fileID: 6553894488594121888}
-  - component: {fileID: 1014251427847557135}
-  - component: {fileID: 4586285628545302314}
-  - component: {fileID: 5417282396660200929}
-  - component: {fileID: 6183399494757744168}
-  - component: {fileID: 5554675490262176391}
-  - component: {fileID: 8786340995436250260}
-  - component: {fileID: 7972816330282042749}
-  - component: {fileID: 4776461223201602675}
-  - component: {fileID: 4262900348515514802}
-  - component: {fileID: 8310998236522175137}
+  - component: {fileID: 7180853787393874975}
+  - component: {fileID: 1148538554138205060}
+  - component: {fileID: 1001006341497732593}
+  - component: {fileID: 5112575869423899723}
+  - component: {fileID: 5132567845639072608}
+  - component: {fileID: 4820164432613515928}
+  - component: {fileID: 5734589567415831533}
+  - component: {fileID: 8442084447157993804}
+  - component: {fileID: 8724998551802307352}
+  - component: {fileID: 441056870378367693}
+  - component: {fileID: 6214241149568561946}
+  - component: {fileID: 6763920138460086131}
+  - component: {fileID: 5430510533310601244}
+  - component: {fileID: 8764934208043423961}
+  - component: {fileID: 2126643404709121916}
+  - component: {fileID: 6788076321715848124}
+  - component: {fileID: 3444770264703767655}
+  - component: {fileID: 472327742383126554}
+  - component: {fileID: 1954382737028923286}
+  - component: {fileID: 7919533564928491103}
+  - component: {fileID: 4450440193228018919}
+  - component: {fileID: 7521036685658105553}
+  - component: {fileID: 6029447911960091984}
+  - component: {fileID: 4153704203982789784}
+  - component: {fileID: 5752686486092475792}
+  - component: {fileID: 5776699264966533658}
+  - component: {fileID: 4195154389870068794}
+  - component: {fileID: 6135638734937675175}
+  - component: {fileID: 1846663845615058017}
+  - component: {fileID: 3270781934196745648}
+  - component: {fileID: 7017874344155465201}
+  - component: {fileID: 3271888801790220287}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -45,13 +47,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &4498351312828619830
+--- !u!4 &7180853787393874975
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -60,21 +62,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &2251046652280884047
+--- !u!33 &1148538554138205060
 MeshFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Mesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
---- !u!136 &2802452293616195845
+--- !u!136 &1001006341497732593
 CapsuleCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -91,13 +93,13 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
---- !u!23 &2425229944915152896
+--- !u!23 &5112575869423899723
 MeshRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_CastShadows: 1
   m_ReceiveShadows: 1
@@ -140,13 +142,13 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &1248092469509279395
+--- !u!114 &5132567845639072608
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 26b716c41e9b56b4baafaf13a523ba2e, type: 3}
@@ -172,7 +174,7 @@ MonoBehaviour:
   _teleportThreshold: 1
   <PrefabId>k__BackingField: 65535
   <SpawnableCollectionId>k__BackingField: 0
-  <AssetPathHash>k__BackingField: 2092870565765373345
+  <AssetPathHash>k__BackingField: 0
   SceneId: 0
   SerializedTransformProperties:
     Position: {x: 0, y: 0, z: 0}
@@ -197,358 +199,388 @@ MonoBehaviour:
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
   _initializedTimestamp: 0
---- !u!114 &7175964260034095067
+--- !u!114 &4820164432613515928
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 73fc5dd248d6eadcd8e768770e8ed907, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerStats
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &109066416770201617
+--- !u!114 &5734589567415831533
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fc2dafa6036b9bc10b6ed7ccccb73395, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerCombat
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
   _equippedWeapon: {fileID: 11400000, guid: 1b1dfd8411dcfbf3972d2e97169fab65, type: 2}
   _eyeHeight: 1.5
   _attackHalfAngleDegrees: 60
---- !u!114 &6227466824404998396
+--- !u!114 &8442084447157993804
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e18551882f13e8cbba1003ef0f06a3aa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Inventory.PlayerInventory
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &1581638223194356362
+--- !u!114 &8724998551802307352
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 72859db3abb24d05beea7e01d602815e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerAbilities
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &4446186747449614200
+--- !u!114 &441056870378367693
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f86b3e5e5349a3434a8b55719dc4a75d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerGathering
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &4317269273865408986
+--- !u!114 &6214241149568561946
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 824783185378495986268bdba67e6cfa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Crafting.PlayerCrafting
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &4748785539353044818
+--- !u!114 &6763920138460086131
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 197414f57ee440a3bef64ca9c5245b24, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerDeath
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
   _lootBagPrefab: {fileID: 0}
---- !u!114 &6344316905428052550
+--- !u!114 &5430510533310601244
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2f1bea413ea8101d68d807341a00b81c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Auction.PlayerWallet
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &6561559964275652801
+--- !u!114 &8764934208043423961
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 347ca0217dbe4326bb620d315745ad05, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Auction.PlayerAuctionHouse
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &7385269363321464
+--- !u!114 &2126643404709121916
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9591fc7d37371aad2a8e9022c5361ea3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Content.PlayerQuestLog
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &6380855348582973878
+--- !u!114 &6788076321715848124
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ee66a4fe0c31df5e598729b60cf7e0b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Content.PlayerDialogue
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &6901790986073579184
+--- !u!114 &3444770264703767655
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d06a88e24b5d970fda81af3cf8251c58, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Persistence.PlayerSaveTrigger
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &2380682821765895201
+--- !u!114 &472327742383126554
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 63a4b77de2d85611daaa6c7b0c63d893, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerStartingItems
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &506150388635910153
+--- !u!114 &1954382737028923286
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 62c286a9bee5419b09aa9ac0bcbd1df9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerParty
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &6553894488594121888
+--- !u!114 &7919533564928491103
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8e5d426bebeca2572bb77de0513337a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerGuild
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &1014251427847557135
+--- !u!114 &4450440193228018919
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c77d8d27346b4bd8b84f2d8de58940f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerChat
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &4586285628545302314
+--- !u!114 &7521036685658105553
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d96d5864c462449da3a9c830f009bb4b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerFriends
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &5417282396660200929
+--- !u!114 &6029447911960091984
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8c5edb0afbf64f7db7e734cb05343fdd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerRaid
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &6183399494757744168
+--- !u!114 &4153704203982789784
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: db7b51bb8bffc01048b7757f3d9559e4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerTrade
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &5752686486092475792
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b6c86820b94278384b986e2cab796cd8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerTerritory
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &5776699264966533658
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b7fdf634e09b450d992d6d5e644baa32, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerMover
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
   _maxSpeed: 6
---- !u!114 &5554675490262176391
+--- !u!114 &4195154389870068794
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1f9074dc0b106de5fa384bbef6b22ad6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.PlayerMount
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &8786340995436250260
+--- !u!114 &6135638734937675175
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 82d10efb36740c773ac17aab723fff01, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Content.AuraController
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &7972816330282042749
+--- !u!114 &1846663845615058017
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a5ede5dd64b9d676182b782a4d362743, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Client.PlayerClickToMove
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
   _walkableLayers:
     serializedVersion: 2
     m_Bits: 4294967295
---- !u!114 &4776461223201602675
+--- !u!114 &3270781934196745648
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a2836e36774ca1c4bbbee976e17b649c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Transforming.NetworkTransform
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
   _componentConfiguration: 0
   _synchronizeParent: 0
@@ -581,33 +613,33 @@ MonoBehaviour:
     X: 0
     Y: 0
     Z: 0
---- !u!114 &4262900348515514802
+--- !u!114 &7017874344155465201
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fc86ba089c285f68fb4f988fcb02f7f9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Client.LocalPlayerCameraTarget
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &8310998236522175137
+--- !u!114 &3271888801790220287
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8673228683051736043}
+  m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 48504778ed29f01dbb86d402c9b3c2e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Client.LocalPlayerHud
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 1248092469509279395}
+  _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}

@@ -27,6 +27,7 @@ namespace MMO.UI
         private ActionBarView _actionBar;
         private ChatFeed _chatFeed;
         private GuildBankFrameView _guildBankFrame;
+        private TradeFrameView _tradeFrame;
         private CraftingPanelView _craftingPanel;
         private CollapsiblePanelView _inventoryWindow;
         private CollapsiblePanelView _equipmentWindow;
@@ -51,6 +52,9 @@ namespace MMO.UI
 
         /// <summary>The guild bank window, or null when the factory was told to omit it.</summary>
         public GuildBankFrameView GuildBankFrame => _guildBankFrame;
+
+        /// <summary>The direct-trade window, or null when the factory was told to omit it.</summary>
+        public TradeFrameView TradeFrame => _tradeFrame;
 
         /// <summary>The one unified crafting window, or null before views were assigned.</summary>
         public CraftingPanelView CraftingPanel => _craftingPanel;
@@ -100,6 +104,13 @@ namespace MMO.UI
         {
             _guildBankFrame = guildBankFrame;
             _guildBankFrame?.Conceal();
+        }
+
+        /// <summary>Gives the HUD the direct-trade window the factory built; starts concealed.</summary>
+        public void SetTradeFrame(TradeFrameView tradeFrame)
+        {
+            _tradeFrame = tradeFrame;
+            _tradeFrame?.Conceal();
         }
 
         /// <summary>Gives the HUD the crafting window the factory built; starts concealed.</summary>
@@ -182,6 +193,10 @@ namespace MMO.UI
         public void SetGuildBankVisible(bool visible)
             => _guildBankFrame?.SetVisible(visible);
 
+        /// <summary>Binds the trade window to the local player's trade and bag.</summary>
+        public void BindTrade(Social.PlayerTrade trade, PlayerInventory bag)
+            => _tradeFrame?.Reveal(trade, bag);
+
         /// <summary>Detaches every screen from every source. The HUD stops repainting entirely.</summary>
         public void Unbind()
         {
@@ -217,6 +232,9 @@ namespace MMO.UI
 
             if (_guildBankFrame != null)
                 _guildBankFrame.Conceal();
+
+            if (_tradeFrame != null)
+                _tradeFrame.Conceal();
         }
 
         private void OnDestroy() => Unbind();

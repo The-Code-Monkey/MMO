@@ -83,11 +83,23 @@ namespace MMO.Client
         public override void OnStopNetwork() => DestroyHud();
 
         /// <summary>
+        /// The trade window hides itself while closed, so its own component cannot poll the key.
+        /// The HUD stays active and forwards the press to the window's nearest-partner picker.
+        /// </summary>
+        private void Update()
+        {
+            if (_hud == null || _hud.TradeFrame == null)
+                return;
+
+            if (Input.GetKeyDown(_hud.TradeFrame.OpenKey))
+                _hud.TradeFrame.OpenNearest();
+        }
+
+        /// <summary>
         /// Builds and binds this player's HUD, if this player is ours to describe.
         /// </summary>
         /// <returns>The HUD, or null when this object is a remote player or a dedicated server.</returns>
-        public NetworkHud TryBuildHud()
-        {
+        public NetworkHud TryBuildHud()        {
             // THE guard. Every client spawns every player's prefab, so this component runs for
             // every player in the world. Only the object this client owns may build a HUD;
             // without the check, joining as a second player stacks HUDs bound to the wrong stats.
@@ -111,9 +123,11 @@ namespace MMO.Client
                 createGuildBankFrame: false,
                 crafting: GetComponent<PlayerCrafting>(),
                 mount: GetComponent<PlayerMount>(),
-                dialogue: GetComponent<PlayerDialogue>());
+                dialogue: GetComponent<PlayerDialogue>(),
+                createTradeFrame: true);
 
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
+            _hud.BindTrade(GetComponent<PlayerTrade>(), GetComponent<PlayerInventory>());
 
             return _hud;
         }

@@ -342,6 +342,8 @@ namespace MMO.Tests
             public Task SaveGuildBankAsync(GuildBankRecord record, CancellationToken ct = default) => Task.CompletedTask;
             public Task<GuildBankLedgerRecord> LoadGuildBankLedgerAsync(string guildId, CancellationToken ct = default) => Task.FromResult<GuildBankLedgerRecord>(null);
             public Task SaveGuildBankLedgerAsync(GuildBankLedgerRecord record, CancellationToken ct = default) => Task.CompletedTask;
+            public Task<TerritoryRecord> LoadTerritoryAsync(string territoryId, CancellationToken ct = default) => Task.FromResult<TerritoryRecord>(null);
+            public Task SaveTerritoryAsync(TerritoryRecord record, CancellationToken ct = default) => Task.CompletedTask;
             public Task<List<PresenceRecord>> LoadPresencesAsync(IReadOnlyList<string> accountIds, CancellationToken ct = default) => Task.FromResult(new List<PresenceRecord>());
             public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
             {

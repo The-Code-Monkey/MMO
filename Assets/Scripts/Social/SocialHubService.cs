@@ -141,6 +141,9 @@ namespace MMO.Social
         /// </summary>
         public event Action<GuildBankRecord> BankChanged;
 
+        /// <summary>Raised with the authoritative territory record after a winning capture.</summary>
+        public event Action<TerritoryRecord> TerritoryChanged;
+
         /// <summary>Raised when a local member must move to another zone to join its party's raid instance.</summary>
         public event Action<string, RaidInstanceRecord> RaidTransferRequested;
 
@@ -1389,6 +1392,107 @@ namespace MMO.Social
             }
 
             return GuildBankRule.Conflict;
+        }
+
+        #endregion
+
+        #region Territory intents
+
+        /// <summary>Reads one territory's durable owner, or null when it has never been captured.</summary>
+        public async Task<TerritoryRecord> LoadTerritoryAsync(string territoryId)
+        {
+            if (string.IsNullOrEmpty(territoryId) || !await EnsureConnectedAsync())
+                return null;
+
+            try
+            {
+                return await _repository.LoadTerritoryAsync(territoryId, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Territory read failed: {e.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Captures an unowned flag, or an owned one inside its vulnerability window, for the
+        /// requesting player's guild. Membership and the window are re-checked inside the CAS loop.
+        /// </summary>
+        public async Task<TerritoryRule> CaptureTerritoryAsync(
+            string accountId, string territoryId, VulnerabilityWindow window, DateTimeOffset now)
+        {
+            if (!await EnsureConnectedAsync())
+                return TerritoryRule.BackendUnavailable;
+
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(territoryId))
+                return TerritoryRule.NoGuild;
+
+            SocialIndexRecord index;
+            GuildRecord guild;
+            try
+            {
+                index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return TerritoryRule.NoGuild;
+
+                guild = await _repository.LoadGuildAsync(index.GuildId, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Territory membership read failed: {e.Message}");
+                return TerritoryRule.BackendUnavailable;
+            }
+
+            if (!GuildRules.IsMember(guild, accountId))
+                return TerritoryRule.NoGuild;
+
+            TerritoryRecord saved = null;
+            TerritoryRule result = await RetryTerritoryAsync(async () =>
+            {
+                TerritoryRecord record = await _repository.LoadTerritoryAsync(
+                    territoryId, CancellationToken.None);
+
+                TerritoryRule rule = TerritoryRules.CanCapture(
+                    window, now, record?.OwnerGuildId, index.GuildId);
+                if (rule != TerritoryRule.Ok)
+                    return rule;
+
+                record ??= new TerritoryRecord { TerritoryId = territoryId };
+                record.OwnerGuildId = index.GuildId;
+                record.CapturedAtTicks = now.UtcDateTime.Ticks;
+                await _repository.SaveTerritoryAsync(record, CancellationToken.None);
+
+                saved = record;
+                return TerritoryRule.Ok;
+            });
+
+            if (result == TerritoryRule.Ok && saved != null)
+                TerritoryChanged?.Invoke(saved);
+
+            return result;
+        }
+
+        private async Task<TerritoryRule> RetryTerritoryAsync(Func<Task<TerritoryRule>> attempt)
+        {
+            for (int i = 0; i < _casRetries; i++)
+            {
+                try
+                {
+                    return await attempt();
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await BackoffAsync(i);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Social] Territory mutation failed: {e.Message}");
+                    return TerritoryRule.BackendUnavailable;
+                }
+            }
+
+            return TerritoryRule.Conflict;
         }
 
         #endregion

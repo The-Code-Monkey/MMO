@@ -148,7 +148,7 @@ cannot be equipped. `EquipmentSlots` (`Assets/Scripts/Inventory/EquipmentSlots.c
 `Count = 6`, `All` and `IsValid(slot)`, which guards against casting garbage like
 `(EquipmentSlot)99`.
 
-`PlayerInventory.EnsureEquipmentSlots` (`PlayerInventory.cs:634`) pads the equipment list with empty
+`PlayerInventory.EnsureEquipmentSlots` (`PlayerInventory.cs:849`) pads the equipment list with empty
 entries until it is `EquipmentSlots.Count` long.
 
 ## 7. PlayerInventory — the server's rules
@@ -251,11 +251,12 @@ therefore never leave a saved item above its own ceiling.
 
 | Method | What it does | Line |
 |---|---|---|
-| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:502` |
-| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:532` |
-| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:544` |
-| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:574` |
-| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:476` |
+| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:532` |
+| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:562` |
+| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:574` |
+| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:604` |
+| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:506` |
+| `TryRemoveItem(string instanceId, out ItemInstance item)` | Removes by instance identity and releases its ownership entry; used by direct trade. | `:450` |
 | `RequestLoot(LootBag bag)` / `RpcRequestLoot` | Owner intent → `[ServerRpc]` → owner + range check → `bag.Loot(this)`. | `:247`, `:256` |
 | `RequestOpenChest(LootChest chest)` / `RpcRequestOpenChest` | Owner intent → `[ServerRpc]` → owner + range check → `chest.TryOpen(this)`. | `:274`, `:283` |
 

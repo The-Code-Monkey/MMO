@@ -24,6 +24,7 @@ namespace MMO.Persistence
         public const string FriendsCollection = "friends";
         public const string GuildBankCollection = "guild_banks";
         public const string GuildBankLedgerCollection = "guild_bank_ledgers";
+        public const string TerritoryCollection = "territories";
 
         private readonly NakamaRestClient _rest;
 
@@ -220,6 +221,21 @@ namespace MMO.Persistence
                 GuildBankLedgerCollection, record.GuildId, JsonUtility.ToJson(record), record.StorageVersion, ct);
         }
 
+        public async Task<TerritoryRecord> LoadTerritoryAsync(string territoryId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(TerritoryCollection, territoryId, ct);
+            return Deserialize<TerritoryRecord>(obj);
+        }
+
+        public async Task SaveTerritoryAsync(TerritoryRecord record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                TerritoryCollection, record.TerritoryId, JsonUtility.ToJson(record), record.StorageVersion, ct);
+        }
+
         public async Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
         {
             if (notification == null)
@@ -252,6 +268,8 @@ namespace MMO.Persistence
                 bank.StorageVersion = obj.Version;
             else if (record is GuildBankLedgerRecord bankLedger)
                 bankLedger.StorageVersion = obj.Version;
+            else if (record is TerritoryRecord territory)
+                territory.StorageVersion = obj.Version;
 
             return record;
         }

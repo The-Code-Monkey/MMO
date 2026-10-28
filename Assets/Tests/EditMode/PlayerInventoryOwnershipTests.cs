@@ -66,8 +66,22 @@ namespace MMO.Tests.EditMode
         }
 
         [Test]
-        public void ClearAll_ReleasesAllItems()
+        public void TryRemoveItem_ReleasesOwnership()
         {
+            var def = TestItemDefinitions.Create("TradedItem", 1, 1, EquipmentSlot.MainHand, 0, 0, 0, 0);
+
+            _inventory.TryAddItem(def);
+            string instanceId = _inventory.Items[0].InstanceId;
+
+            Assert.IsTrue(_inventory.TryRemoveItem(instanceId, out ItemInstance removed));
+            Assert.AreEqual(instanceId, removed.InstanceId);
+            Assert.IsFalse(_registry.IsHeldBy(instanceId, _holderId));
+            Assert.AreEqual(0, _inventory.Items.Count);
+            Assert.IsFalse(_inventory.TryRemoveItem(instanceId, out _));
+        }
+
+        [Test]
+        public void ClearAll_ReleasesAllItems()        {
             var def = TestItemDefinitions.Create("TestItem", 1, 1, EquipmentSlot.MainHand, 0, 0, 0, 10);
             var def2 = TestItemDefinitions.Create("TestItem2", 1, 1, EquipmentSlot.OffHand, 0, 0, 0, 10);
 

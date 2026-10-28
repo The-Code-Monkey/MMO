@@ -442,6 +442,36 @@ namespace MMO.Inventory
         }
 
         /// <summary>
+        /// Server: remove the bag item with <paramref name="instanceId"/> and hand it back to the
+        /// caller. Used by direct trade, which resolves by identity rather than by a cell that may
+        /// have shifted since the client clicked.
+        /// </summary>
+        [Server]
+        public bool TryRemoveItem(string instanceId, out ItemInstance item)
+        {
+            item = ItemInstance.Empty;
+            if (string.IsNullOrEmpty(instanceId))
+                return false;
+
+            for (int i = 0; i < _items.Count; i++)
+            {
+                if (_items[i].InstanceId != instanceId)
+                    continue;
+
+                item = _items[i];
+                _items.RemoveAt(i);
+
+                var registry = Registry;
+                if (registry != null && !string.IsNullOrEmpty(item.InstanceId))
+                    registry.Release(item.InstanceId, HolderId);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Server: drop an existing item (e.g. one withdrawn from a guild bank) into a specific free
         /// cell, re-validating that the rectangle is still clear. Returns false when the cell is
         /// occupied — the caller must not lose the item in that case.

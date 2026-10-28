@@ -138,6 +138,11 @@ namespace MMO.Net
             go.AddComponent<PlayerFriends>();
             go.AddComponent<PlayerRaid>();
 
+            // Direct trade and territory capture: both resolve the same join-cache account id and
+            // sit after the bag they read.
+            go.AddComponent<PlayerTrade>();
+            go.AddComponent<PlayerTerritory>();
+
             // The server-authoritative mover: the only thing allowed to write this player's
             // position. The input drivers that submit to it come after it, so they can resolve it
             // from the same GameObject.
