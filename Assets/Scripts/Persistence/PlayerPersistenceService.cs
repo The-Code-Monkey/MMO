@@ -40,13 +40,11 @@ namespace MMO.Persistence
         [SerializeField, Min(0f)] private float _autosaveInterval = 30f;
         [SerializeField, Min(0f)] private float _saveDebounce = 2f;
 
-        private readonly Dictionary<int, string> _accountByClientId = new();
-        private readonly Dictionary<string, PlayerSaveRecord> _spawnRecords = new();
         private readonly Dictionary<string, Func<PlayerSaveRecord>> _livePlayers = new();
-        private readonly Dictionary<string, string> _storageVersions = new();
 
         private readonly WalletReservationStore _walletReservations = new WalletReservationStore();
         private readonly PlayerSaveQueue _saveQueue = new PlayerSaveQueue();
+        private readonly PlayerJoinCache _joinCache = new PlayerJoinCache();
         private IPlayerRepository _repository;
         private bool _connected;
         private float _nextAutosaveTime;
@@ -219,13 +217,7 @@ namespace MMO.Persistence
 
         private void OnJoinLoaded(int clientId, string accountId, PlayerSaveRecord record)
         {
-            _accountByClientId[clientId] = accountId;
-            _spawnRecords[accountId] = record;
-
-            // The record's version is the optimistic-concurrency token every later save must
-            // carry. Captured snapshots are fresh objects, so the service remembers it here.
-            _storageVersions[accountId] = record != null ? record.StorageVersion : null;
-
+            _joinCache.Record(clientId, accountId, record);
             _walletReservations.SetFromRecord(accountId, record);
         }
 
@@ -235,26 +227,11 @@ namespace MMO.Persistence
         /// record without caring which runs first.
         /// </summary>
         public bool TryGetJoin(int clientId, out string accountId, out PlayerSaveRecord record)
-        {
-            accountId = null;
-            record = null;
-
-            if (!_accountByClientId.TryGetValue(clientId, out accountId))
-                return false;
-
-            _spawnRecords.TryGetValue(accountId, out record);
-            return true;
-        }
+            => _joinCache.TryGetJoin(clientId, out accountId, out record);
 
         /// <summary>Forgets a disconnected client's join cache.</summary>
         public void ForgetClient(int clientId)
-        {
-            if (_accountByClientId.TryGetValue(clientId, out string accountId))
-            {
-                _accountByClientId.Remove(clientId);
-                _spawnRecords.Remove(accountId);
-            }
-        }
+            => _joinCache.ForgetClient(clientId);
 
         #endregion
 
@@ -444,13 +421,13 @@ namespace MMO.Persistence
 
             // A captured snapshot never carries the version it was loaded under; without this the
             // first successful create would make every later save a doomed "*" create-again.
-            if (_storageVersions.TryGetValue(accountId, out string version))
+            if (_joinCache.TryGetVersion(accountId, out string version))
                 record.StorageVersion = version;
 
             try
             {
                 await _repository.SaveAsync(record, CancellationToken.None);
-                _storageVersions[accountId] = record.StorageVersion;
+                _joinCache.SetVersion(accountId, record.StorageVersion);
                 return true;
             }
             catch (Exception e)
