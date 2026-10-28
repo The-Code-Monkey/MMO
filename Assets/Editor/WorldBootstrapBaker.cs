@@ -42,8 +42,8 @@ namespace MMO.Editor
             }
 
             WorldBootstrap bootstrap = EnsureInActiveScene();
-            int spawnPoints = EnsureSpawnPointComponents(scene);
-            int registered = RegisterMarkerPrefabs(manager);
+            int spawnPoints = PlayerSpawnPointAuthor.EnsureComponents(scene, SpawnPointsName);
+            int registered = MarkerPrefabRegistrar.Register(manager);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorUtility.SetDirty(manager.gameObject);
@@ -80,120 +80,11 @@ namespace MMO.Editor
         /// </summary>
         /// <returns>How many spawn-point components the scene now has.</returns>
         public static int EnsureSpawnPointComponents(Scene scene)
-        {
-            int count = 0;
-            bool hasDefault = false;
+            => PlayerSpawnPointAuthor.EnsureComponents(scene, SpawnPointsName);
 
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                foreach (Transform spawnRoot in FindChildrenNamed(root.transform, SpawnPointsName))
-                {
-                    foreach (Transform child in spawnRoot)
-                    {
-                        if (child == null)
-                            continue;
-
-                        PlayerSpawnPoint point = child.GetComponent<PlayerSpawnPoint>();
-                        if (point == null)
-                            point = child.gameObject.AddComponent<PlayerSpawnPoint>();
-
-                        count++;
-                        if (point.IsDefault)
-                            hasDefault = true;
-                    }
-                }
-            }
-
-            if (count > 0 && !hasDefault)
-            {
-                foreach (GameObject root in scene.GetRootGameObjects())
-                {
-                    foreach (Transform spawnRoot in FindChildrenNamed(root.transform, SpawnPointsName))
-                    {
-                        if (spawnRoot.childCount > 0)
-                        {
-                            spawnRoot.GetChild(0).GetComponent<PlayerSpawnPoint>()?.SetDefault(true);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            return count;
-        }
-
-        /// <summary>
-        /// Registers every prefab referenced by the scene's markers into the manager's spawnable
-        /// collection, so the server and any client loading the same scene agree on its prefab id.
-        /// </summary>
-        /// <returns>How many prefabs were newly registered.</returns>
+        /// <summary>Registers every prefab referenced by the scene's markers.</summary>
         public static int RegisterMarkerPrefabs(NetworkManager manager)
-        {
-            if (manager == null)
-                return 0;
+            => MarkerPrefabRegistrar.Register(manager);
 
-            if (manager.SpawnablePrefabs == null)
-            {
-                var prefabs = ScriptableObject.CreateInstance<SinglePrefabObjects>();
-                prefabs.name = NetworkManagerFactory.SpawnablePrefabsName;
-                manager.SpawnablePrefabs = prefabs;
-            }
-
-            int registered = 0;
-
-            // Zones spawn resource nodes from markers, and a marker with no prefab uses the shared
-            // node prefab. Bake it as an asset and register it in the scene's collection so the
-            // server and the client that loads this same scene agree on its prefab id.
-            NetworkObject nodePrefab = ResourceNodeBaker.EnsureResourceNodePrefab();
-            if (nodePrefab != null && ResourceNodePrefabFactory.Register(manager.SpawnablePrefabs, nodePrefab))
-                registered++;
-
-            foreach (ResourceNodeMarker marker in Object.FindObjectsByType<ResourceNodeMarker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (marker.NodePrefab != null && ResourceNodePrefabFactory.Register(manager.SpawnablePrefabs, marker.NodePrefab))
-                    registered++;
-            }
-
-            foreach (CraftingStationMarker marker in Object.FindObjectsByType<CraftingStationMarker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (marker.StationPrefab != null && CraftingStationPrefabFactory.Register(manager.SpawnablePrefabs, marker.StationPrefab))
-                    registered++;
-            }
-
-            foreach (EnemyMarker marker in Object.FindObjectsByType<EnemyMarker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (marker.EnemyPrefab != null && TargetDummyPrefabFactory.Register(manager.SpawnablePrefabs, marker.EnemyPrefab))
-                    registered++;
-            }
-
-            // Bank tellers are spawned from markers, so the shared teller prefab must be in the
-            // collection or the server has nothing to instantiate.
-            NetworkObject tellerPrefab = BankTellerBaker.EnsureBankTellerPrefab();
-            if (tellerPrefab != null && BankTellerPrefabFactory.Register(manager.SpawnablePrefabs, tellerPrefab))
-                registered++;
-
-            foreach (BankTellerMarker marker in Object.FindObjectsByType<BankTellerMarker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (marker.TellerPrefab != null && BankTellerPrefabFactory.Register(manager.SpawnablePrefabs, marker.TellerPrefab))
-                    registered++;
-            }
-
-            return registered;
-        }
-
-        private static System.Collections.Generic.IEnumerable<Transform> FindChildrenNamed(Transform root, string name)
-        {
-            if (root == null)
-                yield break;
-
-            if (root.name == name)
-                yield return root;
-
-            for (int i = 0; i < root.childCount; i++)
-            {
-                foreach (Transform found in FindChildrenNamed(root.GetChild(i), name))
-                    yield return found;
-            }
-        }
     }
 }
