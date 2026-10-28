@@ -81,19 +81,8 @@ namespace MMO.Social
         private GuildService _guildService;
         private PartyService _partyService;
         private GuildBankService _guildBank;
+        private RaidHandoffService _raidHandoff;
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
-
-        /// <summary>Last raid instance a local member was told to transfer to, so a sync does not repeat it.</summary>
-        private readonly Dictionary<string, string> _lastRaidTransfers = new Dictionary<string, string>();
-
-        /// <summary>Last known RaidInstanceId per account, for detecting cleared pointers on completion.</summary>
-        private readonly Dictionary<string, string> _lastRaidInstanceIds = new Dictionary<string, string>();
-
-        /// <summary>Cached raid records for hosted instances (key = instanceId), so anchors survive Delete.</summary>
-        private readonly Dictionary<string, RaidInstanceRecord> _hostedRaidCache = new Dictionary<string, RaidInstanceRecord>();
-
-        /// <summary>Members already issued a return transfer this session (exactly-once per session).</summary>
-        private readonly HashSet<string> _returnedMembers = new HashSet<string>();
 
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
@@ -294,6 +283,17 @@ namespace MMO.Social
                 _casRetries);
             _raidRepository = raidRepository;
             _zoneRepository = zoneRepository;
+            _raidHandoff = new RaidHandoffService(
+                () => _repository,
+                () => _raidRepository,
+                _localPlayers,
+                () => _zoneId,
+                () => _instanceHostAddress,
+                () => _instanceHostPort,
+                _casRetries,
+                record => RaidChanged?.Invoke(record),
+                (accountId, record) => RaidTransferRequested?.Invoke(accountId, record),
+                (accountId, anchor) => RaidReturnRequested?.Invoke(accountId, anchor));
 
             if (repository is NakamaSocialRepository nakama)
             {
@@ -505,17 +505,13 @@ namespace MMO.Social
 
         /// <summary>Called by <see cref="PlayerParty"/> (server) when the player object despawns.</summary>
         public void UnregisterLocal(string accountId)
-        {
-            _localPlayers.Unregister(accountId);
-            if (!string.IsNullOrEmpty(accountId))
-                _lastRaidTransfers.Remove(accountId);
-        }
+            => _localPlayers.Unregister(accountId);
 
         private void OnLocalRegistered(LocalPlayerHandle local)
             => _ = AnnounceLocalAsync(local);
 
         private void OnLocalUnregistered(string accountId)
-            => _lastRaidTransfers.Remove(accountId);
+            => _raidHandoff?.Forget(accountId);
 
         private void Update()
         {
@@ -870,33 +866,8 @@ namespace MMO.Social
                     PartyChanged?.Invoke(record);
 
                 // Detect raid completion: RaidInstanceId went from set → empty while members are local.
-                // This zone is the host if it has members in this party and we cached the raid record.
                 if (record != null && _raidRepository != null)
-                {
-                    _lastRaidInstanceIds.TryGetValue(record.PartyId, out string lastInstanceId);
-                    string currentInstanceId = record.RaidInstanceId;
-
-                    if (!string.IsNullOrEmpty(lastInstanceId) && string.IsNullOrEmpty(currentInstanceId))
-                    {
-                        // Raid completed for this party — drive return for each local member
-                        if (record.Members != null)
-                        {
-                            foreach (PartyMemberRecord member in record.Members)
-                            {
-                                if (!string.IsNullOrEmpty(member.AccountId) && _localPlayers.Contains(member.AccountId))
-                                {
-                                    await TryTransferHomeAsync(member.AccountId, lastInstanceId);
-                                }
-                            }
-                        }
-                    }
-
-                    // Update the last known instance id
-                    if (!string.IsNullOrEmpty(currentInstanceId))
-                        _lastRaidInstanceIds[record.PartyId] = currentInstanceId;
-                    else
-                        _lastRaidInstanceIds.Remove(record.PartyId);
-                }
+                    await _raidHandoff.SyncCompletionAsync(record);
             }
 
             foreach (string guildId in guildIds)
@@ -923,7 +894,7 @@ namespace MMO.Social
             // local members there. The pointer is authoritative; only the zone already holding a
             // member reacts, and only once per instance id.
             if (_raidRepository != null)
-                await SyncRaidTransfersAsync(partyIds);
+                await _raidHandoff.SyncTransfersAsync(partyIds);
         }
 
         /// <summary>
@@ -962,262 +933,6 @@ namespace MMO.Social
             catch (Exception e)
             {
                 Debug.LogWarning($"[Social] Failed to tear down raid membership for '{party.PartyId}': {e.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Walks this zone's hosted parties for an allocated raid and asks each local member's
-        /// <see cref="PlayerRaid"/> to transfer when this zone is not the instance host.
-        /// </summary>
-        private async Task SyncRaidTransfersAsync(HashSet<string> partyIds)
-        {
-            foreach (string partyId in partyIds)
-            {
-                PartyRecord party = await _repository.LoadPartyAsync(partyId, CancellationToken.None);
-                if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
-                    continue;
-
-                RaidInstanceRecord instance = await _raidRepository.LoadRaidInstanceAsync(party.RaidInstanceId, CancellationToken.None);
-
-                // Reconcile repair: a pointer whose raid is gone, or whose raid no longer lists this
-                // party among its member parties, is stale. Clear it so the party stops steering its
-                // members at a dead instance; #54's cross-object writes can leave exactly this state.
-                if (instance == null || !RaidRules.IncludesParty(instance, party.PartyId))
-                {
-                    await RepairDanglingRaidPointerAsync(party);
-                    continue;
-                }
-
-                // Cache the raid record if this zone is the instance host, so we have the anchors
-                // after the record is deleted on completion.
-                if (string.Equals(_zoneId, instance.HostZoneId, StringComparison.Ordinal))
-                {
-                    _hostedRaidCache[instance.InstanceId] = instance;
-                }
-
-                bool rosterRaised = false;
-                foreach (LocalPlayerHandle local in _localPlayers.Local)
-                {
-                    if (!PartyRules.IsMember(party, local.AccountId))
-                        continue;
-
-                    // Repaint the raid view once per hosted party, before deciding on any handoff.
-                    if (!rosterRaised)
-                    {
-                        rosterRaised = true;
-                        RaidChanged?.Invoke(instance);
-                    }
-
-                    if (!RaidRules.NeedsTransfer(instance.InstanceId, _zoneId, instance.HostZoneId))
-                    {
-                        _lastRaidTransfers.Remove(local.AccountId);
-                        continue;
-                    }
-
-                    if (_lastRaidTransfers.TryGetValue(local.AccountId, out string last) && last == instance.InstanceId)
-                        continue;
-
-                    // Record return anchor before transferring — a member must never be sent to a
-                    // host that doesn't know where to send them back.
-                    bool anchorRecorded = await RecordReturnAnchorAsync(instance, local.AccountId);
-                    if (!anchorRecorded)
-                    {
-                        Debug.LogWarning($"[Raid] Skipping transfer for '{local.AccountId}' — failed to record return anchor.");
-                        continue;
-                    }
-
-                    _lastRaidTransfers[local.AccountId] = instance.InstanceId;
-                    RaidTransferRequested?.Invoke(local.AccountId, instance);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Clears a party's raid pointer after the reconcile pass found no matching membership entry.
-        /// Version-guarded like every other write: a conflict re-reads, and a pointer that another
-        /// actor already changed (or cleared) is left alone.
-        /// </summary>
-        private async Task RepairDanglingRaidPointerAsync(PartyRecord party)
-        {
-            if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
-                return;
-
-            await RetryPartyAsync(async () =>
-            {
-                PartyRecord current = await _repository.LoadPartyAsync(party.PartyId, CancellationToken.None);
-                if (current == null || string.IsNullOrEmpty(current.RaidInstanceId))
-                    return PartyRule.Ok;
-
-                if (current.RaidInstanceId != party.RaidInstanceId)
-                    return PartyRule.Ok;
-
-                current.RaidInstanceId = null;
-                await _repository.SavePartyAsync(current, CancellationToken.None);
-                return PartyRule.Ok;
-            });
-        }
-
-        /// <summary>
-        /// CAS-appends a return anchor for a member being transferred to the raid host. Returns true
-        /// if the anchor was recorded (or already exists for this account), false if the CAS loop
-        /// was exhausted and the member must not be transferred.
-        /// </summary>
-        private async Task<bool> RecordReturnAnchorAsync(RaidInstanceRecord instance, string accountId)
-        {
-            if (instance == null || string.IsNullOrEmpty(accountId) || _raidRepository == null)
-                return false;
-
-            string instanceId = instance.InstanceId;
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    RaidInstanceRecord current = await _raidRepository.LoadRaidInstanceAsync(instanceId, CancellationToken.None);
-                    if (current == null)
-                        return false;
-
-                    if (current.ReturnAnchors == null)
-                        current.ReturnAnchors = new List<RaidReturnAnchor>();
-
-                    // Check if anchor already exists for this account
-                    bool exists = false;
-                    foreach (RaidReturnAnchor a in current.ReturnAnchors)
-                    {
-                        if (a.AccountId == accountId)
-                        {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (!exists)
-                    {
-                        current.ReturnAnchors.Add(new RaidReturnAnchor
-                        {
-                            AccountId = accountId,
-                            OriginHost = _instanceHostAddress,
-                            OriginPort = _instanceHostPort,
-                            OriginServerId = _zoneId,
-                            Returned = false,
-                        });
-                    }
-
-                    await _raidRepository.SaveRaidInstanceAsync(current);
-                    return true;
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Raid] Failed to record return anchor for '{accountId}': {e.Message}");
-                    return false;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Attempts to transfer a member back to their origin zone using the recorded anchor.
-        /// Called when the raid completes (RaidInstanceId cleared) and the member is still local.
-        /// </summary>
-        private async Task TryTransferHomeAsync(string accountId, string instanceId)
-        {
-            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(instanceId))
-                return;
-
-            // Exactly-once per session: skip if we've already issued a return for this member
-            string key = accountId + ":" + instanceId;
-            if (_returnedMembers.Contains(key))
-                return;
-
-            // Load the cached raid record (survives DeleteRaidInstanceAsync)
-            if (!_hostedRaidCache.TryGetValue(instanceId, out RaidInstanceRecord raid))
-                return;
-
-            if (raid.ReturnAnchors == null)
-                return;
-
-            RaidReturnAnchor anchor = default;
-            bool found = false;
-            foreach (RaidReturnAnchor a in raid.ReturnAnchors)
-            {
-                if (a.AccountId == accountId)
-                {
-                    anchor = a;
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-                return;
-
-            // Check if member is still local to this host zone
-            bool memberStillLocal = _localPlayers.Contains(accountId);
-
-            // Pure decision: can we transfer back?
-            RaidTransferRule rule = RaidTransferRules.CanTransferBack(accountId, _zoneId, anchor, memberStillLocal);
-            if (rule != RaidTransferRule.Ok)
-                return;
-
-            // Mark as returned in-memory (session-level exactly-once)
-            _returnedMembers.Add(key);
-
-            // Raise the return event; PlayerRaid will run the handoff to the anchor's origin
-            RaidReturnRequested?.Invoke(accountId, anchor);
-
-            // CAS the anchor's Returned = true for cross-session durability
-            await MarkAnchorReturnedAsync(instanceId, accountId);
-        }
-
-        /// <summary>
-        /// CAS-sets the Returned flag on the anchor after the token has been minted.
-        /// Best-effort: a failure leaves the anchor unreturned so the next pass retries.
-        /// </summary>
-        private async Task MarkAnchorReturnedAsync(string instanceId, string accountId)
-        {
-            if (_raidRepository == null)
-                return;
-
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    RaidInstanceRecord current = await _raidRepository.LoadRaidInstanceAsync(instanceId, CancellationToken.None);
-                    if (current == null || current.ReturnAnchors == null)
-                        return;
-
-                    bool modified = false;
-                    for (int j = 0; j < current.ReturnAnchors.Count; j++)
-                    {
-                        if (current.ReturnAnchors[j].AccountId == accountId && !current.ReturnAnchors[j].Returned)
-                        {
-                            var anchor = current.ReturnAnchors[j];
-                            anchor.Returned = true;
-                            current.ReturnAnchors[j] = anchor;
-                            modified = true;
-                            break;
-                        }
-                    }
-
-                    if (!modified)
-                        return;
-
-                    await _raidRepository.SaveRaidInstanceAsync(current);
-                    return;
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Raid] Failed to mark anchor returned for '{accountId}': {e.Message}");
-                    return;
-                }
             }
         }
 
@@ -1288,28 +1003,6 @@ namespace MMO.Social
         internal void NotifyAuctionBuyOrderCancelled(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
         {
             AuctionBuyOrderCancelled?.Invoke(buyerAccountId, buyOrder);
-        }
-
-        private async Task<PartyRule> RetryPartyAsync(Func<Task<PartyRule>> attempt)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await SocialBackoff.DelayAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Party mutation failed: {e.Message}");
-                    return PartyRule.BackendUnavailable;
-                }
-            }
-
-            return PartyRule.Conflict;
         }
 
         #endregion
