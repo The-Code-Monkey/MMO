@@ -1776,6 +1776,32 @@ namespace MMO.Social
         #region Mail intents
 
         /// <summary>
+        /// Finds a message by its exact body. Auction settlement uses it to confirm a hand-off
+        /// whose RPC response was lost: the body carries a per-attempt id, so an older delivery
+        /// can never be mistaken for the attempt being recovered.
+        /// </summary>
+        public async Task<string> FindMailIdByBodyAsync(string accountId, string body)
+        {
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(body))
+                return null;
+
+            if (!await EnsureConnectedAsync())
+                return null;
+
+            MailInbox inbox = await _repository.LoadInboxAsync(accountId, CancellationToken.None);
+            if (inbox?.Messages == null)
+                return null;
+
+            for (int i = 0; i < inbox.Messages.Count; i++)
+            {
+                if (string.Equals(inbox.Messages[i].Body, body, StringComparison.Ordinal))
+                    return inbox.Messages[i].MailId;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Delivers a message to the recipient's inbox, offline-first: the write lands whether or
         /// not the recipient is currently online, and the login sweep surfaces it later. System
         /// mail (auction delivery) and player-to-player mail share this path.
@@ -2025,11 +2051,17 @@ namespace MMO.Social
             var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
             for (int i = 0; i < attachments.Count; i++)
             {
-                ItemDefinition definition = ItemDefinitionRegistry.Resolve(attachments[i].ItemName);
+                ItemSaveData entry = attachments[i];
+                ItemDefinition definition = ItemDefinitionRegistry.Resolve(entry.ItemName);
                 if (definition == null)
                     continue;
 
-                ItemInstance item = ItemInstance.Create(definition, 0, 0, attachments[i].StackCount);
+                ItemInstance item = ItemInstance.Create(definition, 0, 0, entry.StackCount);
+                if (!string.IsNullOrEmpty(entry.InstanceId))
+                    item.InstanceId = entry.InstanceId;
+                if (entry.Durability > 0 && definition.MaxDurability > 0)
+                    item.Durability = Mathf.Min(entry.Durability, definition.MaxDurability);
+
                 if (grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
                 {
                     item.GridX = x;

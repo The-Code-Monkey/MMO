@@ -149,12 +149,24 @@ buyer is on this zone with room, otherwise a claimable mail. The rule is pure, s
 suite covers every branch.
 
 Auction mail is a system delivery: `SendMailAsync(..., ignoreInboxCap: true)` lets it land in a full
-inbox, so the buyer can always take an item they have paid for. Buy-order fulfillment resolves the
-target before the Lua transfer, delivers the item after the transfer, and removes it from the
-seller's bag last, so a successful sale can never strand it in the buy-order record. Post-commit
-mail delivery retries a transient backend failure and ignores the caller's cancellation (the gold
-has already moved); a delivery that still fails is logged by `DeliverItemAsync` because the item
-then has no holder.
+inbox, so the buyer can always take an item they have paid for.
+
+Both auction RPCs are atomic at the backend. `auction_buy.lua` and
+`auction_fulfill_buy_order.lua` claim the listing/order and write the buyer's delivery mail in the
+same RPC, before they return success. If the mail write fails, the script restores the claim and
+returns `DELIVERY_FAILED`, so a claim can never exist without a durable item. The zone then removes
+the item from the seller's bag and claims the mail into the bag when the buyer is local; a buyer who
+is away or has no room keeps the mail for the sweep or the mailbox UI. A zone failure after the RPC
+cannot lose the item.
+
+Each attempt carries an id in its mail body. If the RPC response itself is lost, the zone looks for
+that attempt's mail and finishes the settlement (claim into the bag, seller credit, seller item
+removal) instead of refunding or delivering twice. When the mail is absent, the call really failed
+and the normal failure path runs.
+
+The zone-side helper `DeliverItemAsync` remains only as a fallback for a backend that predates the
+atomic `deliveryMailId`; it uses `AuctionDeliveryRules` and a C# mail write that bypasses the inbox
+cap and retries a transient backend failure.
 
 ## Common tasks
 

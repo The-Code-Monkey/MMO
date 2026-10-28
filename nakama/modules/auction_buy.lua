@@ -2,7 +2,9 @@
 --
 -- Runs on the Nakama server (Lua runtime). Reads the listing, validates it is active, then
 -- claims it first with a version-guarded (CAS) write to "Sold" so exactly one buyer wins.
--- Gold settlement is not done here: the buyer's reserve is held by the buyer's own zone and
+-- Immediately after the claim it appends the item to the buyer's inbox in the same RPC, so the
+-- item is durable before success is returned; if that write fails, the claim is rolled back and
+-- the RPC fails. Gold settlement is not done here: the buyer's reserve is held by the buyer's own zone and
 -- the seller is credited by the auction zone after the claim wins (see AuctionService). The
 -- transaction record and index updates that follow are audit metadata: if any of them fails,
 -- the purchase is still valid and the error is logged, not surfaced as a CONFLICT.
@@ -14,6 +16,7 @@ local nk = require("nakama")
 local LISTING_COLLECTION = "auction_listings"
 local TRANSACTION_COLLECTION = "auction_transactions"
 local INDEX_COLLECTION = "auction_index"
+local MAIL_COLLECTION = "mail_inbox"
 
 local function read_object(collection, key, user_id)
     local objects = nk.storage_read({
@@ -39,10 +42,55 @@ local function write_object(collection, key, value, version, user_id, permission
     if user_id then
         obj.user_id = user_id
     end
-    local result = nk.storage_write({ obj })
-    if result and #result > 0 then
+    local ok, result = pcall(nk.storage_write, { obj })
+    if ok and result and #result > 0 then
         return result[1].version
     end
+    return nil
+end
+
+-- Appends the sold item to the buyer's inbox in the same RPC as the claim, BEFORE success is
+-- returned. The item is durable even if the zone fails right after, and if every write attempt
+-- fails the caller rolls the claim back, so a purchase can never lose the item.
+local function deliver_to_mailbox(buyer_id, body, item, now_ticks)
+    local mail_id = nk.uuid_v4()
+
+    for attempt = 1, 3 do
+        local inbox_obj = read_object(MAIL_COLLECTION, buyer_id, "")
+        local inbox = inbox_obj and inbox_obj.value or { AccountId = buyer_id, Messages = {} }
+        if not inbox.Messages then
+            inbox.Messages = {}
+        end
+
+        local message = {
+            MailId = mail_id,
+            FromAccountId = "auction",
+            Subject = "Auction purchase",
+            Body = body,
+            SentAtTicks = now_ticks,
+            ExpiresAtTicks = 0,
+            State = 0, -- MailState.Unread
+            Currency = 0,
+            Attachments = {
+                {
+                    ItemName = item.ItemName,
+                    InstanceId = item.InstanceId,
+                    Width = item.Width,
+                    Height = item.Height,
+                    StackCount = item.StackCount,
+                    Durability = item.Durability,
+                    EquipmentSlot = -1,
+                },
+            },
+        }
+        table.insert(inbox.Messages, message)
+
+        local version = inbox_obj and inbox_obj.version or "*"
+        if write_object(MAIL_COLLECTION, buyer_id, inbox, version, "", 1, 1) then
+            return mail_id
+        end
+    end
+
     return nil
 end
 
@@ -87,6 +135,21 @@ local function auction_buy(context, payload)
 
     local total_price = listing.PricePerUnit * listing.StackCount
 
+    local item = {
+        ItemName = args.itemName or listing.ItemName,
+        InstanceId = args.itemInstanceId or nk.uuid_v4(),
+        Width = args.itemWidth or listing.ItemWidth or 1,
+        Height = args.itemHeight or listing.ItemHeight or 1,
+        StackCount = listing.StackCount,
+        Durability = args.itemDurability or 0,
+    }
+    if item.ItemName ~= listing.ItemName then
+        return nk.json_encode({ success = false, errorCode = "INVALID_ARGS" })
+    end
+
+    -- Deep copy the pre-claim listing so a failed delivery can restore it.
+    local original_listing = nk.json_decode(nk.json_encode(listing))
+
     -- 1. CLAIM THE LISTING FIRST (version-guarded) - this is the exclusivity point.
     -- If this fails, nothing has moved and we return CONFLICT cleanly.
     listing.Status = 1 -- Sold = 1
@@ -97,7 +160,22 @@ local function auction_buy(context, payload)
     end
     listing.StorageVersion = listing_version
 
-    -- 2. Create transaction record
+    -- 2. DELIVER THE ITEM. Written in this same RPC, so the item is durable before success is
+    -- returned. If it cannot be written, restore the listing and fail so nothing is consumed.
+    local mail_id = deliver_to_mailbox(
+        buyer_id,
+        "You won listing " .. listing_id .. ". (" .. (args.attemptId or "") .. ")",
+        item,
+        now_ticks)
+    if not mail_id then
+        local rollback_version = write_object(LISTING_COLLECTION, listing_id, original_listing, listing_version, "", 1, 1)
+        if not rollback_version then
+            nk.logger_error("auction_buy: delivery failed and claim rollback failed for " .. listing_id)
+        end
+        return nk.json_encode({ success = false, errorCode = "DELIVERY_FAILED" })
+    end
+
+    -- 3. Create transaction record
     local transaction_id = nk.uuid_v4()
     local transaction = {
         TransactionId = transaction_id,
@@ -117,7 +195,7 @@ local function auction_buy(context, payload)
         transaction.StorageVersion = tx_version
     end
 
-    -- 3. Update buyer's index (add to purchase history)
+    -- 4. Update buyer's index (add to purchase history)
     local buyer_index_obj = read_object(INDEX_COLLECTION, buyer_id, "")
     local buyer_index = buyer_index_obj and buyer_index_obj.value or { AccountId = buyer_id, ActiveListingIds = {}, PurchaseHistoryIds = {} }
     if not buyer_index.PurchaseHistoryIds then
@@ -137,7 +215,7 @@ local function auction_buy(context, payload)
         nk.logger_error("auction_buy: buyer index write failed for " .. buyer_id .. " (audit gap)")
     end
 
-    -- 4. Update seller's index (remove from active)
+    -- 5. Update seller's index (remove from active)
     local seller_index_obj = read_object(INDEX_COLLECTION, listing.SellerAccountId, "")
     if seller_index_obj and seller_index_obj.value then
         local seller_index = seller_index_obj.value
@@ -160,6 +238,7 @@ local function auction_buy(context, payload)
         success = true,
         listing = listing,
         transaction = transaction,
+        deliveryMailId = mail_id,
     })
 end
 
