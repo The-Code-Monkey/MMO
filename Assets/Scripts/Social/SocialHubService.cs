@@ -71,7 +71,11 @@ namespace MMO.Social
         /// <summary>How long to wait for an orchestrated container to become healthy.</summary>
         [SerializeField, Min(1f)] private float _orchestratorHealthTimeoutSeconds = 90f;
 
-        private readonly Dictionary<string, LocalPlayerHandle> _local = new Dictionary<string, LocalPlayerHandle>();
+        private LocalPlayerRegistry _localPlayers;
+        private SocialAccountResolver _accounts;
+        private SocialHintClient _hints;
+        private PresenceService _presence;
+        private TerritoryService _territory;
         private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
 
         /// <summary>Last raid instance a local member was told to transfer to, so a sync does not repeat it.</summary>
@@ -85,9 +89,6 @@ namespace MMO.Social
 
         /// <summary>Members already issued a return transfer this session (exactly-once per session).</summary>
         private readonly HashSet<string> _returnedMembers = new HashSet<string>();
-
-        /// <summary>Local <see cref="PlayerGuild"/>s keyed by account, whose bags a bank mutation moves items into.</summary>
-        private readonly Dictionary<string, PlayerGuild> _localGuilds = new Dictionary<string, PlayerGuild>();
 
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
@@ -203,6 +204,10 @@ namespace MMO.Social
         private void Awake()
         {
             Instance = this;
+            _localPlayers = new LocalPlayerRegistry(() => _zoneId);
+            _hints = new SocialHintClient(() => _rest);
+            _localPlayers.Registered += OnLocalRegistered;
+            _localPlayers.Unregistered += OnLocalUnregistered;
             EnsureChat();
             if (_repository == null)
             {
@@ -234,6 +239,22 @@ namespace MMO.Social
             IZoneRegistryRepository zoneRepository = null)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _accounts = new SocialAccountResolver(_repository, _localPlayers, () => _zoneId);
+            _presence = new PresenceService(
+                () => _repository,
+                () => _zoneRepository,
+                _localPlayers,
+                EnsureConnectedAsync,
+                () => _zoneId,
+                () => _instanceHostAddress,
+                () => _instanceHostPort,
+                () => _zoneTemplateId,
+                () => _maxInstances);
+            _territory = new TerritoryService(
+                () => _repository,
+                EnsureConnectedAsync,
+                _casRetries,
+                record => TerritoryChanged?.Invoke(record));
             _raidRepository = raidRepository;
             _zoneRepository = zoneRepository;
 
@@ -334,73 +355,39 @@ namespace MMO.Social
 
         /// <summary>Called by <see cref="PlayerChat"/> (server): routes this player's chat deliveries.</summary>
         public void AttachChat(string accountId, Action<string> deliverChat)
-        {
-            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
-                handle.DeliverChat = deliverChat;
-        }
+            => _localPlayers.AttachChat(accountId, deliverChat);
 
         /// <summary>Called by <see cref="PlayerChat"/> (server) when the object despawns.</summary>
         public void DetachChat(string accountId)
-        {
-            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
-                handle.DeliverChat = null;
-        }
+            => _localPlayers.DetachChat(accountId);
 
         /// <summary>Called by <see cref="PlayerFriends"/> (server): routes this player's friend pushes.</summary>
         public void AttachFriends(string accountId, Action<string> deliverSnapshot, Action<int> notifyEvent)
-        {
-            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
-            {
-                handle.DeliverFriends = deliverSnapshot;
-                handle.NotifyFriendEvent = notifyEvent;
-            }
-        }
+            => _localPlayers.AttachFriends(accountId, deliverSnapshot, notifyEvent);
 
         /// <summary>Called by <see cref="PlayerFriends"/> (server) when the object despawns.</summary>
         public void DetachFriends(string accountId)
-        {
-            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
-            {
-                handle.DeliverFriends = null;
-                handle.NotifyFriendEvent = null;
-            }
-        }
+            => _localPlayers.DetachFriends(accountId);
 
         /// <summary>Called by <see cref="PlayerGuild"/> (server): registers the local guild view for bank work.</summary>
         public void AttachGuildView(string accountId, PlayerGuild guild)
-        {
-            if (!string.IsNullOrEmpty(accountId) && guild != null)
-                _localGuilds[accountId] = guild;
-        }
+            => _localPlayers.AttachGuild(accountId, guild);
 
         /// <summary>Called by <see cref="PlayerGuild"/> (server) when the object despawns.</summary>
         public void DetachGuildView(string accountId)
-        {
-            if (!string.IsNullOrEmpty(accountId))
-                _localGuilds.Remove(accountId);
-        }
-
-        private readonly Dictionary<string, PlayerWallet> _localWallets = new Dictionary<string, PlayerWallet>();
+            => _localPlayers.DetachGuild(accountId);
 
         /// <summary>Called by <see cref="PlayerWallet"/> (server): registers the local wallet for auction access.</summary>
         public void AttachWalletView(string accountId, PlayerWallet wallet)
-        {
-            if (!string.IsNullOrEmpty(accountId) && wallet != null)
-                _localWallets[accountId] = wallet;
-        }
+            => _localPlayers.AttachWallet(accountId, wallet);
 
         /// <summary>Called by <see cref="PlayerWallet"/> (server) when the object despawns.</summary>
         public void DetachWalletView(string accountId)
-        {
-            if (!string.IsNullOrEmpty(accountId))
-                _localWallets.Remove(accountId);
-        }
+            => _localPlayers.DetachWallet(accountId);
 
         /// <summary>Gets the wallet for a local player (for gold checks).</summary>
         public bool TryGetWallet(string accountId, out PlayerWallet wallet)
-        {
-            return _localWallets.TryGetValue(accountId, out wallet);
-        }
+            => _localPlayers.TryGetWallet(accountId, out wallet);
 
         private void OnEnvelope(SocialBusEnvelope envelope)
         {
@@ -423,7 +410,7 @@ namespace MMO.Social
 
                     foreach (string accountId in envelope.accounts)
                     {
-                        if (_local.ContainsKey(accountId ?? string.Empty))
+                        if (_localPlayers.Contains(accountId))
                             _ = PushFriendsAsync(accountId);
                     }
                     break;
@@ -438,8 +425,8 @@ namespace MMO.Social
 
         private async Task AnnounceLocalPresenceAsync()
         {
-            foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
-                await SavePresenceAsync(local);
+            foreach (LocalPlayerHandle local in _localPlayers.Local)
+                await _presence.SavePresenceAsync(local);
         }
 
         #endregion
@@ -447,27 +434,13 @@ namespace MMO.Social
         #region ILocalRoster
 
         /// <summary>The zone label stamped into presence so a member's host zone can be resolved.</summary>
-        string ILocalRoster.LocalZoneId => _zoneId;
+        string ILocalRoster.LocalZoneId => _localPlayers.LocalZoneId;
 
-        IReadOnlyList<LocalPlayerHandle> ILocalRoster.Local
-        {
-            get
-            {
-                var list = new List<LocalPlayerHandle>(_local.Count);
-                foreach (LocalPlayerHandle handle in _local.Values)
-                    list.Add(handle);
+        IReadOnlyList<LocalPlayerHandle> ILocalRoster.Local => _localPlayers.Local;
 
-                return list;
-            }
-        }
+        string ILocalRoster.PartyOf(string accountId) => _localPlayers.PartyOf(accountId);
 
-        string ILocalRoster.PartyOf(string accountId)
-            => _local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle) ? handle.PartyId : null;
-
-        string ILocalRoster.NameOf(string accountId)
-            => _local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle)
-                ? handle.PlayerName
-                : accountId;
+        string ILocalRoster.NameOf(string accountId) => _localPlayers.NameOf(accountId);
 
         #endregion
 
@@ -491,29 +464,21 @@ namespace MMO.Social
         /// themselves; the hub only needs the account id and display name.
         /// </summary>
         public void RegisterLocal(string accountId, string playerName)
-        {
-            if (string.IsNullOrEmpty(accountId))
-                return;
-
-            var local = new LocalPlayerHandle
-            {
-                AccountId = accountId,
-                PlayerName = string.IsNullOrEmpty(playerName) ? accountId : playerName,
-            };
-
-            _local[accountId] = local;
-            _ = AnnounceAsync(local);
-        }
+            => _localPlayers.Register(accountId, playerName);
 
         /// <summary>Called by <see cref="PlayerParty"/> (server) when the player object despawns.</summary>
         public void UnregisterLocal(string accountId)
         {
+            _localPlayers.Unregister(accountId);
             if (!string.IsNullOrEmpty(accountId))
-            {
-                _local.Remove(accountId);
                 _lastRaidTransfers.Remove(accountId);
-            }
         }
+
+        private void OnLocalRegistered(LocalPlayerHandle local)
+            => _ = AnnounceLocalAsync(local);
+
+        private void OnLocalUnregistered(string accountId)
+            => _lastRaidTransfers.Remove(accountId);
 
         private void Update()
         {
@@ -537,16 +502,16 @@ namespace MMO.Social
             if (_zoneRepository != null && Time.time >= _nextZoneHeartbeatTime)
             {
                 _nextZoneHeartbeatTime = Time.time + _presenceInterval;
-                _ = HeartbeatZoneAsync();
+                _ = _presence.HeartbeatZoneAsync();
             }
 
-            if (_local.Count == 0)
+            if (_localPlayers.Count == 0)
                 return;
 
             if (Time.time >= _nextPresenceTime)
             {
                 _nextPresenceTime = Time.time + _presenceInterval;
-                _ = HeartbeatAsync();
+                _ = _presence.HeartbeatAsync();
             }
 
             if (Time.time >= _nextSyncTime)
@@ -656,7 +621,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return PartyRule.BackendUnavailable;
 
-            string targetId = await _repository.ResolveNameAsync(Normalize(targetName), CancellationToken.None);
+            string targetId = await _repository.ResolveNameAsync(SocialAccountResolver.Normalize(targetName), CancellationToken.None);
             if (string.IsNullOrEmpty(targetId))
                 return PartyRule.TargetNotFound;
 
@@ -666,8 +631,8 @@ namespace MMO.Social
 
             PartyRule inviteResult = await RetryPartyAsync(async () =>
             {
-                SocialIndexRecord inviterIndex = await LoadOrCreateIndexAsync(inviterId);
-                SocialIndexRecord targetIndex = await LoadOrCreateIndexAsync(targetId);
+                SocialIndexRecord inviterIndex = await _accounts.LoadOrCreateIndexAsync(inviterId);
+                SocialIndexRecord targetIndex = await _accounts.LoadOrCreateIndexAsync(targetId);
 
                 PartyRecord inviterParty = null;
                 if (!string.IsNullOrEmpty(inviterIndex.PartyId))
@@ -688,11 +653,11 @@ namespace MMO.Social
                     await _repository.SaveIndexAsync(inviterIndex, CancellationToken.None);
 
                     inviterParty = new PartyRecord { PartyId = partyId, LeaderId = inviterId };
-                    inviterParty.Members.Add(NewMember(inviterId, inviterIndex, now));
+                    inviterParty.Members.Add(_accounts.NewMember(inviterId, now));
                     await _repository.SavePartyAsync(inviterParty, CancellationToken.None);
                 }
 
-                string fromName = await ResolveDisplayNameAsync(inviterId, inviterIndex);
+                string fromName = await _accounts.ResolveDisplayNameAsync(inviterId);
                 targetIndex.PendingPartyInvite = new PendingPartyInvite
                 {
                     FromAccountId = inviterId,
@@ -735,7 +700,7 @@ namespace MMO.Social
                 if (rule != PartyRule.Ok)
                     return rule;
 
-                PartyRules.Accept(party, NewMember(accountId, index, now));
+                PartyRules.Accept(party, _accounts.NewMember(accountId, now));
                 await _repository.SavePartyAsync(party, CancellationToken.None);
 
                 index.PartyId = party.PartyId;
@@ -866,7 +831,7 @@ namespace MMO.Social
             DateTimeOffset now = DateTimeOffset.UtcNow;
             GuildRule result = await RetryPartyAsyncGuild(async () =>
             {
-                SocialIndexRecord index = await LoadOrCreateIndexAsync(accountId);
+                SocialIndexRecord index = await _accounts.LoadOrCreateIndexAsync(accountId);
                 GuildRule rule = GuildRules.CanCreate(accountId, guildName, index);
                 if (rule != GuildRule.Ok)
                     return rule;
@@ -888,7 +853,7 @@ namespace MMO.Social
                 guild.Members.Add(new GuildMemberRecord
                 {
                     AccountId = accountId,
-                    PlayerName = await ResolveDisplayNameAsync(accountId, index),
+                    PlayerName = await _accounts.ResolveDisplayNameAsync(accountId),
                     Rank = (int)GuildRank.Leader,
                     JoinedAtTicks = now.UtcDateTime.Ticks,
                 });
@@ -908,7 +873,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return GuildRule.BackendUnavailable;
 
-            string targetId = await _repository.ResolveNameAsync(Normalize(targetName), CancellationToken.None);
+            string targetId = await _repository.ResolveNameAsync(SocialAccountResolver.Normalize(targetName), CancellationToken.None);
             if (string.IsNullOrEmpty(targetId))
                 return GuildRule.TargetNotFound;
 
@@ -919,7 +884,7 @@ namespace MMO.Social
             GuildRule result = await RetryPartyAsyncGuild(async () =>
             {
                 SocialIndexRecord inviterIndex = await _repository.LoadIndexAsync(inviterId, CancellationToken.None);
-                SocialIndexRecord targetIndex = await LoadOrCreateIndexAsync(targetId);
+                SocialIndexRecord targetIndex = await _accounts.LoadOrCreateIndexAsync(targetId);
 
                 GuildRecord guild = null;
                 if (inviterIndex != null && !string.IsNullOrEmpty(inviterIndex.GuildId))
@@ -932,7 +897,7 @@ namespace MMO.Social
                 targetIndex.PendingGuildInvite = new PendingGuildInvite
                 {
                     FromAccountId = inviterId,
-                    FromPlayerName = await ResolveDisplayNameAsync(inviterId, inviterIndex),
+                    FromPlayerName = await _accounts.ResolveDisplayNameAsync(inviterId),
                     GuildId = guild.GuildId,
                     ExpiresAtTicks = now.Add(GuildRules.InviteTtl).UtcDateTime.Ticks,
                 };
@@ -971,7 +936,7 @@ namespace MMO.Social
                 GuildRules.Accept(guild, new GuildMemberRecord
                 {
                     AccountId = accountId,
-                    PlayerName = await ResolveDisplayNameAsync(accountId, index),
+                    PlayerName = await _accounts.ResolveDisplayNameAsync(accountId),
                     Rank = (int)GuildRank.Member,
                     JoinedAtTicks = now.UtcDateTime.Ticks,
                 });
@@ -1110,7 +1075,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return new GuildBankResult(GuildBankRule.BackendUnavailable);
 
-            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
                 return new GuildBankResult(GuildBankRule.NoGuild);
 
             PlayerInventory bag = player.Inventory;
@@ -1170,7 +1135,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return new GuildBankResult(GuildBankRule.BackendUnavailable);
 
-            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
                 return new GuildBankResult(GuildBankRule.NoGuild);
 
             PlayerInventory bag = player.Inventory;
@@ -1277,7 +1242,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return GuildBankRule.BackendUnavailable;
 
-            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
                 return GuildBankRule.NoGuild;
 
             if (!TryGetWallet(accountId, out PlayerWallet wallet) || wallet == null)
@@ -1339,7 +1304,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return GuildBankRule.BackendUnavailable;
 
-            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
                 return GuildBankRule.NoGuild;
 
             if (!TryGetWallet(accountId, out PlayerWallet wallet) || wallet == null)
@@ -1581,7 +1546,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -1603,7 +1568,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -1620,156 +1585,20 @@ namespace MMO.Social
         #region Territory intents
 
         /// <summary>Reads one territory's durable owner, or null when it has never been captured.</summary>
-        public async Task<TerritoryRecord> LoadTerritoryAsync(string territoryId)
-        {
-            if (string.IsNullOrEmpty(territoryId) || !await EnsureConnectedAsync())
-                return null;
-
-            try
-            {
-                return await _repository.LoadTerritoryAsync(territoryId, CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Territory read failed: {e.Message}");
-                return null;
-            }
-        }
+        public Task<TerritoryRecord> LoadTerritoryAsync(string territoryId)
+            => _territory.LoadAsync(territoryId);
 
         /// <summary>
         /// Captures an unowned flag, or an owned one inside its vulnerability window, for the
-        /// requesting player's guild. Membership and the window are re-checked inside the CAS loop.
+        /// requesting player's guild.
         /// </summary>
-        public async Task<TerritoryRule> CaptureTerritoryAsync(
+        public Task<TerritoryRule> CaptureTerritoryAsync(
             string accountId, string territoryId, VulnerabilityWindow window, DateTimeOffset now)
-        {
-            if (!await EnsureConnectedAsync())
-                return TerritoryRule.BackendUnavailable;
+            => _territory.CaptureAsync(accountId, territoryId, window, now);
 
-            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(territoryId))
-                return TerritoryRule.NoGuild;
-
-            SocialIndexRecord index;
-            GuildRecord guild;
-            try
-            {
-                index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return TerritoryRule.NoGuild;
-
-                guild = await _repository.LoadGuildAsync(index.GuildId, CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Territory membership read failed: {e.Message}");
-                return TerritoryRule.BackendUnavailable;
-            }
-
-            if (!GuildRules.IsMember(guild, accountId))
-                return TerritoryRule.NoGuild;
-
-            TerritoryRecord saved = null;
-            TerritoryRule result = await RetryTerritoryAsync(async () =>
-            {
-                TerritoryRecord record = await _repository.LoadTerritoryAsync(
-                    territoryId, CancellationToken.None);
-
-                TerritoryRule rule = TerritoryRules.CanCapture(
-                    window, now, record?.OwnerGuildId, index.GuildId);
-                if (rule != TerritoryRule.Ok)
-                    return rule;
-
-                record ??= new TerritoryRecord { TerritoryId = territoryId };
-                record.OwnerGuildId = index.GuildId;
-                record.CapturedAtTicks = now.UtcDateTime.Ticks;
-                await _repository.SaveTerritoryAsync(record, CancellationToken.None);
-
-                saved = record;
-                return TerritoryRule.Ok;
-            });
-
-            if (result == TerritoryRule.Ok && saved != null)
-                TerritoryChanged?.Invoke(saved);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Leader-only: sets a claimed territory's tax rate. The value is clamped to the ceiling and
-        /// the write is CAS'd like any other territory mutation; the change is broadcast so the
-        /// claim UI repaints.
-        /// </summary>
-        public async Task<TerritoryRule> SetTerritoryTaxAsync(string accountId, string territoryId, int taxRateBp)
-        {
-            if (!await EnsureConnectedAsync())
-                return TerritoryRule.BackendUnavailable;
-
-            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(territoryId))
-                return TerritoryRule.NoGuild;
-
-            SocialIndexRecord index;
-            GuildRecord guild;
-            try
-            {
-                index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-                if (index == null || string.IsNullOrEmpty(index.GuildId))
-                    return TerritoryRule.NoGuild;
-
-                guild = await _repository.LoadGuildAsync(index.GuildId, CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Territory tax membership read failed: {e.Message}");
-                return TerritoryRule.BackendUnavailable;
-            }
-
-            if (guild == null || guild.LeaderId != accountId)
-                return TerritoryRule.NotOwner;
-
-            TerritoryRecord saved = null;
-            TerritoryRule result = await RetryTerritoryAsync(async () =>
-            {
-                TerritoryRecord record = await _repository.LoadTerritoryAsync(
-                    territoryId, CancellationToken.None);
-
-                if (record == null || record.OwnerGuildId != index.GuildId)
-                    return TerritoryRule.NotOwner;
-
-                record.TaxRateBp = TaxationRules.ClampTax(taxRateBp);
-                record.SetAtTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
-                await _repository.SaveTerritoryAsync(record, CancellationToken.None);
-
-                saved = record;
-                return TerritoryRule.Ok;
-            });
-
-            if (result == TerritoryRule.Ok && saved != null)
-                TerritoryChanged?.Invoke(saved);
-
-            return result;
-        }
-
-        private async Task<TerritoryRule> RetryTerritoryAsync(Func<Task<TerritoryRule>> attempt)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await BackoffAsync(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Social] Territory mutation failed: {e.Message}");
-                    return TerritoryRule.BackendUnavailable;
-                }
-            }
-
-            return TerritoryRule.Conflict;
-        }
+        /// <summary>Leader-only: sets a claimed territory's tax rate.</summary>
+        public Task<TerritoryRule> SetTerritoryTaxAsync(string accountId, string territoryId, int taxRateBp)
+            => _territory.SetTaxAsync(accountId, territoryId, taxRateBp);
 
         #endregion
 
@@ -1875,11 +1704,11 @@ namespace MMO.Social
             if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(mailId))
                 return MailRule.NotFound;
 
-            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+            if (!_localPlayers.TryGetGuild(accountId, out PlayerGuild player) || player == null)
                 return MailRule.NotFound;
 
             PlayerInventory bag = player.Inventory;
-            _localWallets.TryGetValue(accountId ?? string.Empty, out PlayerWallet wallet);
+            _localPlayers.TryGetWallet(accountId, out PlayerWallet wallet);
 
             MailMessage claimed = null;
             MailRule result = await RetryMailAsync(async () =>
@@ -1930,12 +1759,12 @@ namespace MMO.Social
                 return 0;
 
             if (string.IsNullOrEmpty(accountId)
-                || !_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player)
+                || !_localPlayers.TryGetGuild(accountId, out PlayerGuild player)
                 || player == null)
                 return 0;
 
             PlayerInventory bag = player.Inventory;
-            _localWallets.TryGetValue(accountId ?? string.Empty, out PlayerWallet wallet);
+            _localPlayers.TryGetWallet(accountId, out PlayerWallet wallet);
 
             var grantedAttachments = new List<ItemSaveData>();
             long grantedCurrency = 0;
@@ -1995,10 +1824,10 @@ namespace MMO.Social
 
         private async Task SweepInboxesAsync()
         {
-            if (_local.Count == 0)
+            if (_localPlayers.Count == 0)
                 return;
 
-            foreach (string accountId in new List<string>(_local.Keys))
+            foreach (string accountId in _localPlayers.AccountIds())
             {
                 try
                 {
@@ -2081,7 +1910,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (OperationCanceledException)
                 {
@@ -2110,7 +1939,7 @@ namespace MMO.Social
             if (!await EnsureConnectedAsync())
                 return FriendRule.BackendUnavailable;
 
-            string targetId = await _repository.ResolveNameAsync(Normalize(targetName), CancellationToken.None);
+            string targetId = await _repository.ResolveNameAsync(SocialAccountResolver.Normalize(targetName), CancellationToken.None);
             if (string.IsNullOrEmpty(targetId))
                 return FriendRule.NotFound;
 
@@ -2258,7 +2087,7 @@ namespace MMO.Social
             if (_repository == null || string.IsNullOrEmpty(accountId))
                 return;
 
-            if (!_local.TryGetValue(accountId, out LocalPlayerHandle handle) || handle.DeliverFriends == null)
+            if (!_localPlayers.TryGet(accountId, out LocalPlayerHandle handle) || handle.DeliverFriends == null)
                 return;
 
             FriendListRecord record = await LoadFriendsAsync(accountId);
@@ -2301,16 +2130,16 @@ namespace MMO.Social
 
         private async Task RefreshLocalFriendsAsync()
         {
-            if (_repository == null || _local.Count == 0)
+            if (_repository == null || _localPlayers.Count == 0)
                 return;
 
-            foreach (string accountId in new List<string>(_local.Keys))
+            foreach (string accountId in _localPlayers.AccountIds())
                 await PushFriendsAsync(accountId);
         }
 
         private async Task RepairFriendsAsync()
         {
-            foreach (string accountId in new List<string>(_local.Keys))
+            foreach (string accountId in _localPlayers.AccountIds())
             {
                 FriendListRecord mine = await LoadFriendsAsync(accountId);
                 if (mine?.Entries == null)
@@ -2344,31 +2173,12 @@ namespace MMO.Social
 
         private void NotifyEvent(string accountId, FriendEvent evt)
         {
-            if (_local.TryGetValue(accountId ?? string.Empty, out LocalPlayerHandle handle))
+            if (_localPlayers.TryGet(accountId, out LocalPlayerHandle handle))
                 handle.NotifyFriendEvent?.Invoke((int)evt);
         }
 
-        private async Task SafeNotifyAsync(string type, string target, params string[] accounts)
-        {
-            if (_rest == null || !_rest.IsConnected)
-                return;
-
-            try
-            {
-                await _rest.RpcAsync("social_notify", JsonUtility.ToJson(new NotifyPayload
-                {
-                    t = type,
-                    target = target,
-                    accounts = accounts,
-                }), CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                // Best-effort by design: the 2 s reconcile loop recovers a lost notify, so this
-                // never fails or blocks a write.
-                Debug.LogWarning($"[Social] social_notify ({type}) failed: {e.Message}");
-            }
-        }
+        private Task SafeNotifyAsync(string type, string target, params string[] accounts)
+            => _hints.SendAsync(type, target, accounts);
 
         private static long NowTicks() => DateTimeOffset.UtcNow.UtcDateTime.Ticks;
 
@@ -2382,7 +2192,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -2392,14 +2202,6 @@ namespace MMO.Social
             }
 
             return FriendRule.Conflict;
-        }
-
-        [Serializable]
-        private sealed class NotifyPayload
-        {
-            public string t;
-            public string target;
-            public string[] accounts;
         }
 
         #endregion
@@ -2412,10 +2214,10 @@ namespace MMO.Social
         /// </summary>
         public async Task SyncAsync()
         {
-            if (!await EnsureConnectedAsync() || _local.Count == 0)
+            if (!await EnsureConnectedAsync() || _localPlayers.Count == 0)
                 return;
 
-            var ids = new List<string>(_local.Keys);
+            var ids = _localPlayers.AccountIds();
             List<SocialIndexRecord> indexes = await _repository.LoadIndexesAsync(ids, CancellationToken.None);
 
             var partyIds = new HashSet<string>();
@@ -2454,7 +2256,7 @@ namespace MMO.Social
                 _lastIndexes[index.AccountId] = index;
 
                 // Keep the local roster's party pointer in step so party chat can route.
-                if (_local.TryGetValue(index.AccountId, out LocalPlayerHandle localHandle))
+                if (_localPlayers.TryGet(index.AccountId, out LocalPlayerHandle localHandle))
                     localHandle.PartyId = index.PartyId;
 
                 if (!string.IsNullOrEmpty(index.PartyId))
@@ -2484,7 +2286,7 @@ namespace MMO.Social
                         {
                             foreach (PartyMemberRecord member in record.Members)
                             {
-                                if (!string.IsNullOrEmpty(member.AccountId) && _local.ContainsKey(member.AccountId))
+                                if (!string.IsNullOrEmpty(member.AccountId) && _localPlayers.Contains(member.AccountId))
                                 {
                                     await TryTransferHomeAsync(member.AccountId, lastInstanceId);
                                 }
@@ -2597,7 +2399,7 @@ namespace MMO.Social
                 }
 
                 bool rosterRaised = false;
-                foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
+                foreach (LocalPlayerHandle local in _localPlayers.Local)
                 {
                     if (!PartyRules.IsMember(party, local.AccountId))
                         continue;
@@ -2708,7 +2510,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -2757,7 +2559,7 @@ namespace MMO.Social
                 return;
 
             // Check if member is still local to this host zone
-            bool memberStillLocal = _local.ContainsKey(accountId);
+            bool memberStillLocal = _localPlayers.Contains(accountId);
 
             // Pure decision: can we transfer back?
             RaidTransferRule rule = RaidTransferRules.CanTransferBack(accountId, _zoneId, anchor, memberStillLocal);
@@ -2812,7 +2614,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -2826,149 +2628,28 @@ namespace MMO.Social
 
         #region Presence
 
-        private async Task AnnounceAsync(LocalPlayerHandle local)
+        private async Task AnnounceLocalAsync(LocalPlayerHandle local)
         {
-            if (!await EnsureConnectedAsync())
+            if (_presence == null || _accounts == null)
                 return;
 
-            await SavePresenceAsync(local);
-
-            try
-            {
-                await _repository.SaveNameAsync(Normalize(local.PlayerName), local.AccountId, CancellationToken.None);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Failed to publish the name index for '{local.AccountId}': {e.Message}");
-            }
-        }
-
-        private async Task HeartbeatAsync()
-        {
-            foreach (LocalPlayerHandle local in new List<LocalPlayerHandle>(_local.Values))
-                await SavePresenceAsync(local);
-        }
-
-        /// <summary>
-        /// Refreshes this zone's <see cref="ZoneRegistryRecord"/> so it stays a fresh host candidate
-        /// and publishes its advertised address, template and capacity (#57). The existing load is
-        /// preserved; the version is reused so a racing write from another process wins cleanly.
-        /// </summary>
-        private async Task HeartbeatZoneAsync()
-        {
-            if (_zoneRepository == null)
+            if (!await _presence.AnnounceAsync(local))
                 return;
 
-            try
-            {
-                List<ZoneRegistryRecord> zones = await _zoneRepository.LoadZonesAsync(CancellationToken.None);
-                ZoneRegistryRecord existing = FindZone(zones, _zoneId);
-
-                ZoneRegistryRecord record = ZoneRegistryRecord.Create(
-                    _zoneId,
-                    _instanceHostAddress,
-                    _instanceHostPort,
-                    _zoneTemplateId,
-                    _maxInstances,
-                    DateTimeOffset.UtcNow,
-                    existing?.ActiveInstances ?? 0,
-                    existing?.StorageVersion);
-
-                await _zoneRepository.SaveZoneAsync(record, CancellationToken.None);
-            }
-            catch (StorageVersionConflictException)
-            {
-                // A racing heartbeat from another write wins; the next tick refreshes ours.
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[Social] Failed to write zone registry heartbeat for '{_zoneId}': {e.Message}");
-            }
-        }
-
-        private static ZoneRegistryRecord FindZone(IReadOnlyList<ZoneRegistryRecord> zones, string serverId)
-        {
-            if (zones == null)
-                return null;
-
-            for (int i = 0; i < zones.Count; i++)
-            {
-                if (zones[i] != null && zones[i].ServerId == serverId)
-                    return zones[i];
-            }
-
-            return null;
-        }
-
-        private async Task SavePresenceAsync(LocalPlayerHandle local)
-        {
-            if (local == null)
-                return;
-
-            try
-            {
-                PresenceRecord existing = await _repository.LoadPresenceAsync(local.AccountId, CancellationToken.None);
-                PresenceRecord record = PresenceRecord.CreateOnline(
-                    local.AccountId, local.PlayerName, _zoneId, DateTimeOffset.UtcNow);
-
-                if (existing != null)
-                    record.StorageVersion = existing.StorageVersion;
-
-                await _repository.SavePresenceAsync(record, CancellationToken.None);
-            }
-            catch (StorageVersionConflictException)
-            {
-                // A racing heartbeat from another zone wins; the next tick refreshes ours.
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Social] Failed to write presence for '{local.AccountId}': {e.Message}");
-            }
+            await _accounts.PublishNameAsync(local);
         }
 
         #endregion
 
         #region Helpers
 
-        private async Task<SocialIndexRecord> LoadOrCreateIndexAsync(string accountId)
-        {
-            SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
-            return index ?? new SocialIndexRecord { AccountId = accountId };
-        }
-
-        private async Task<string> ResolveDisplayNameAsync(string accountId, SocialIndexRecord _)
-        {
-            if (_local.TryGetValue(accountId, out LocalPlayerHandle local))
-                return local.PlayerName;
-
-            PresenceRecord presence = await _repository.LoadPresenceAsync(accountId, CancellationToken.None);
-            return string.IsNullOrEmpty(presence?.PlayerName) ? accountId : presence.PlayerName;
-        }
-
-        private PartyMemberRecord NewMember(string accountId, SocialIndexRecord _, DateTimeOffset now)
-            => new PartyMemberRecord
-            {
-                AccountId = accountId,
-                PlayerName = _local.TryGetValue(accountId, out LocalPlayerHandle local) ? local.PlayerName : accountId,
-                ZoneId = _zoneId,
-                JoinedAtTicks = now.UtcDateTime.Ticks,
-            };
-
-        private static string Normalize(string name) => (name ?? string.Empty).Trim().ToLowerInvariant();
-
         /// <summary>Gets the player's display name for auction listings.</summary>
         public string GetPlayerName(string accountId)
-        {
-            if (_local.TryGetValue(accountId, out LocalPlayerHandle local))
-                return local.PlayerName;
-            return accountId;
-        }
+            => _localPlayers.GetPlayerName(accountId);
 
         /// <summary>Checks if a local player exists and gets their PlayerGuild (for bag access).</summary>
         public bool TryGetLocalPlayer(string accountId, out PlayerGuild player)
-        {
-            return _localGuilds.TryGetValue(accountId, out player);
-        }
+            => _localPlayers.TryGetGuild(accountId, out player);
 
         /// <summary>Notifies the seller's client that their listing was created.</summary>
         internal void NotifyAuctionListingCreated(string sellerAccountId, AuctionListingRecord listing)
@@ -3022,7 +2703,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -3044,7 +2725,7 @@ namespace MMO.Social
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await BackoffAsync(i);
+                    await SocialBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -3055,9 +2736,6 @@ namespace MMO.Social
 
             return GuildRule.Conflict;
         }
-
-        private static Task BackoffAsync(int attempt)
-            => Task.Delay(50 * (1 << attempt));
 
         #endregion
 
