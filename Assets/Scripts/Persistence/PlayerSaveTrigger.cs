@@ -38,8 +38,7 @@ namespace MMO.Persistence
         private PlayerBank _bank;
         private string _accountId;
         private bool _subscribed;
-        private bool _reconcilingWalletReservations;
-        private float _nextWalletReservationReconcileTime;
+        private readonly WalletReservationReconciler _walletReconciler = new WalletReservationReconciler();
         private float _joinRetryUntil;
         private bool _joinTimeoutLogged;
 
@@ -218,46 +217,7 @@ namespace MMO.Persistence
                 return;
             }
 
-            if (_reconcilingWalletReservations ||
-                Time.unscaledTime < _nextWalletReservationReconcileTime)
-            {
-                return;
-            }
-
-            PlayerPersistenceService service = PlayerPersistenceService.Instance;
-            if (service == null || service.GetPendingWalletReservations(_accountId).Count == 0)
-                return;
-
-            _nextWalletReservationReconcileTime = Time.unscaledTime + 5f;
-            _ = ReconcileWalletReservationsAsync(service);
-        }
-
-        private async Task ReconcileWalletReservationsAsync(PlayerPersistenceService service)
-        {
-            _reconcilingWalletReservations = true;
-            try
-            {
-                AuctionService auction = SocialHubService.Instance != null
-                    ? SocialHubService.Instance.Auction
-                    : null;
-                if (auction == null)
-                    return;
-
-                List<WalletReservationRecord> reservations = service.GetPendingWalletReservations(_accountId);
-                for (int i = 0; i < reservations.Count; i++)
-                {
-                    if (!await auction.ReconcileWalletReservationAsync(_accountId, _wallet, reservations[i]))
-                        break;
-                }
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"{nameof(PlayerSaveTrigger)}: failed to reconcile wallet reservations for '{_accountId}': {e.Message}");
-            }
-            finally
-            {
-                _reconcilingWalletReservations = false;
-            }
+            _walletReconciler.Tick(_accountId, _wallet);
         }
 
         private void OnLevelChanged()
