@@ -25,13 +25,13 @@ namespace MMO.Auction
 
         private readonly IAuctionRepository _repository;
         private readonly NakamaRestClient _rest;
-        private readonly int _casRetries;
         private readonly SocialHubService _socialHub;
         private readonly AuctionDeliveryService _delivery;
         private readonly AuctionQueryService _queries;
         private readonly AuctionWalletReservationService _reservations;
         private readonly AuctionListingService _listings;
         private readonly AuctionBuyOrderService _buyOrders;
+        private readonly AuctionPurchaseService _purchases;
 
         public AuctionService(IAuctionRepository repository, NakamaRestClient rest, SocialHubService socialHub, int casRetries = 5)
         {
@@ -45,7 +45,8 @@ namespace MMO.Auction
                 _repository, _socialHub, GetPlayerBag, () => _rest.IsConnected, HasAuctionHouse, casRetries);
             _buyOrders = new AuctionBuyOrderService(
                 _repository, _rest, _socialHub, _delivery, GetPlayerWallet, GetPlayerBag, HasAuctionHouse, casRetries);
-            _casRetries = casRetries;
+            _purchases = new AuctionPurchaseService(
+                _repository, _rest, _socialHub, _delivery, GetPlayerWallet, HasAuctionHouse);
         }
 
         /// <summary>Checks if the current zone has an auction house.</summary>
@@ -67,208 +68,11 @@ namespace MMO.Auction
                 sellerAccountId, bagX, bagY, pricePerUnit, stackCount, durationHours, ct);
 
         /// <summary>Buys an item from the auction house. Uses atomic Lua RPC for gold/item transfer.</summary>
-        public async Task<AuctionResult> BuyListingAsync(
+        public Task<AuctionResult> BuyListingAsync(
             string buyerAccountId,
             string listingId,
             CancellationToken ct = default)
-        {
-            if (!_rest.IsConnected)
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            if (!HasAuctionHouse())
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            // Load listing to validate
-            AuctionListingRecord listing = await _repository.LoadListingAsync(listingId, ct);
-            if (listing == null)
-                return AuctionResult.Fail(AuctionRule.NotFound);
-
-            if (listing.Status != AuctionListingStatus.Active)
-                return AuctionResult.Fail(AuctionRule.ListingNotActive);
-
-            if (listing.ExpiresAtTicks > 0 && listing.ExpiresAtTicks < DateTimeOffset.UtcNow.UtcDateTime.Ticks)
-                return AuctionResult.Fail(AuctionRule.ListingNotActive); // expired
-
-            if (listing.SellerAccountId == buyerAccountId)
-                return AuctionResult.Fail(AuctionRule.NotOwner); // can't buy own listing
-
-            // Reserve the buyer's gold up front so the live wallet and its save stay consistent
-            // (the buy-order path reserves the same way). Refunded on any failure below.
-            long totalPrice = listing.PricePerUnit * listing.StackCount;
-            string attemptId = Guid.NewGuid().ToString("N");
-            string deliveryBody = $"You won listing {listingId}. ({attemptId})";
-            string payload = JsonUtility.ToJson(new BuyListingPayload
-            {
-                buyerAccountId = buyerAccountId,
-                listingId = listingId,
-                itemName = listing.ItemName,
-                itemInstanceId = ItemInstance.NewInstanceId(),
-                itemWidth = listing.ItemWidth,
-                itemHeight = listing.ItemHeight,
-                itemDurability = 0,
-                attemptId = attemptId,
-            });
-            var reservation = new WalletReservationRecord
-            {
-                ReservationId = attemptId,
-                TargetId = listingId,
-                Kind = WalletReservationKind.AuctionPurchase,
-                Amount = totalPrice,
-            };
-
-            PlayerWallet buyerWallet = GetPlayerWallet(buyerAccountId);
-            if (buyerWallet == null)
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            if (!buyerWallet.TrySpend(totalPrice))
-                return AuctionResult.Fail(AuctionRule.InsufficientFunds);
-
-            if (!await AuctionWalletReservationService.PersistAsync(buyerAccountId, reservation))
-            {
-                await AuctionWalletReservationService.RefundAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-            }
-
-            // Call the Lua RPC. It claims the listing and writes the buyer's delivery mail in the
-            // same transaction, so the item is durable before the call returns. The attempt id
-            // makes that mail findable if the response itself is lost.
-            bool sellerCredited = false;
-
-            try
-            {
-                string response = await _rest.CallRpcAsync<string>("auction_buy", payload, ct);
-                if (string.IsNullOrEmpty(response))
-                {
-                    AuctionResult? recovered = await RecoverLostPurchaseAsync(
-                        buyerAccountId, listingId, totalPrice, deliveryBody, sellerCredited);
-                    if (recovered.HasValue)
-                    {
-                        await AuctionWalletReservationService.CompleteAsync(buyerAccountId, reservation.ReservationId);
-                        return recovered.Value;
-                    }
-
-                    await AuctionWalletReservationService.RefundAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
-                    return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-                }
-
-                BuyListingResponse buyResponse = JsonUtility.FromJson<BuyListingResponse>(response);
-                if (buyResponse == null)
-                {
-                    AuctionResult? recovered = await RecoverLostPurchaseAsync(
-                        buyerAccountId, listingId, totalPrice, deliveryBody, sellerCredited);
-                    if (recovered.HasValue)
-                    {
-                        await AuctionWalletReservationService.CompleteAsync(buyerAccountId, reservation.ReservationId);
-                        return recovered.Value;
-                    }
-
-                    await AuctionWalletReservationService.RefundAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
-                    return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-                }
-
-                if (!buyResponse.success)
-                {
-                    await AuctionWalletReservationService.RefundAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
-                    // Map error code to rule
-                    return AuctionResult.Fail(AuctionErrorRules.Map(buyResponse.errorCode));
-                }
-
-                await AuctionWalletReservationService.CompleteAsync(buyerAccountId, reservation.ReservationId);
-
-                // Purchase successful - notify both parties
-                AuctionListingRecord updatedListing = buyResponse.listing;
-                AuctionTransactionRecord transaction = buyResponse.transaction;
-
-                // Update buyer's index (add to purchase history)
-                AuctionIndexRecord buyerIndex = await _repository.LoadIndexAsync(buyerAccountId, ct)
-                    ?? new AuctionIndexRecord { AccountId = buyerAccountId };
-                if (buyerIndex.PurchaseHistoryIds == null)
-                    buyerIndex.PurchaseHistoryIds = new List<string>();
-                buyerIndex.PurchaseHistoryIds.Add(transaction.TransactionId);
-                await _repository.SaveIndexAsync(buyerIndex, ct);
-
-                // Update seller's index (remove from active)
-                AuctionIndexRecord sellerIndex = await _repository.LoadIndexAsync(listing.SellerAccountId, ct);
-                if (sellerIndex != null && sellerIndex.ActiveListingIds != null)
-                {
-                    sellerIndex.ActiveListingIds.Remove(listingId);
-                    await _repository.SaveIndexAsync(sellerIndex, ct);
-                }
-
-                // Notify clients
-                _socialHub.NotifyAuctionListingSold(buyerAccountId, listing.SellerAccountId, updatedListing, transaction);
-                _socialHub.NotifyAuctionPurchaseCompleted(buyerAccountId, transaction);
-
-                // Credit the seller. Same-zone sellers get it straight into their wallet;
-                // cross-zone (or offline) sellers get claimable mail their own zone grants.
-                await _delivery.CreditSellerAsync(listing.SellerAccountId, totalPrice, ct);
-                sellerCredited = true;
-
-                // The item is already durable in the buyer's mailbox, written atomically with the
-                // claim. Claim it now so a local buyer with room gets it in the bag; otherwise the
-                // mail sweep or the mailbox UI grants it later. This can never lose the item.
-                if (!string.IsNullOrEmpty(buyResponse.deliveryMailId))
-                {
-                    await _socialHub.ClaimMailAsync(
-                        buyerAccountId,
-                        buyResponse.deliveryMailId,
-                        CancellationToken.None);
-                }
-                else
-                {
-                    // Older backend without atomic delivery: fall back to the in-process path.
-                    await _delivery.DeliverPurchaseAsync(buyerAccountId, updatedListing, ct);
-                }
-
-                return AuctionResult.Ok(listingId: listingId, listing: updatedListing);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Auction] Buy RPC failed: {e.Message}");
-
-                AuctionResult? recovered = await RecoverLostPurchaseAsync(
-                    buyerAccountId, listingId, totalPrice, deliveryBody, sellerCredited);
-                if (recovered.HasValue)
-                {
-                    await AuctionWalletReservationService.CompleteAsync(buyerAccountId, reservation.ReservationId);
-                    return recovered.Value;
-                }
-
-                await AuctionWalletReservationService.RefundAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-            }
-        }
-
-        /// <summary>
-        /// Finishes a purchase whose RPC response was lost. The atomic delivery mail proves the
-        /// claim committed; without it the caller refunds the buyer as before. Returns null when
-        /// this attempt's delivery cannot be found.
-        /// </summary>
-        private async Task<AuctionResult?> RecoverLostPurchaseAsync(
-            string buyerAccountId, string listingId, long totalPrice, string deliveryBody, bool sellerCredited)
-        {
-            try
-            {
-                string mailId = await _socialHub.FindMailIdByBodyAsync(buyerAccountId, deliveryBody);
-                if (string.IsNullOrEmpty(mailId))
-                    return null;
-
-                AuctionListingRecord sold = await _repository.LoadListingAsync(listingId, CancellationToken.None);
-                if (sold == null || sold.Status != AuctionListingStatus.Sold || sold.BuyerAccountId != buyerAccountId)
-                    return null;
-
-                await _socialHub.ClaimMailAsync(buyerAccountId, mailId, CancellationToken.None);
-                if (!sellerCredited)
-                    await _delivery.CreditSellerAsync(sold.SellerAccountId, totalPrice, CancellationToken.None);
-
-                return AuctionResult.Ok(listingId: listingId, listing: sold);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[Auction] Lost-purchase recovery failed for {listingId}: {e.Message}");
-                return null;
-            }
-        }
+            => _purchases.BuyAsync(buyerAccountId, listingId, ct);
 
         /// <summary>Cancels an active listing and returns the item to the seller's bag.</summary>
         public Task<AuctionResult> CancelListingAsync(
@@ -360,31 +164,6 @@ namespace MMO.Auction
             if (!_socialHub.TryGetLocalPlayer(accountId, out PlayerGuild player) || player == null)
                 return null;
             return player.Inventory;
-        }
-
-        private async Task<AuctionResult> RetryAsync(Func<Task<AuctionResult>> attempt, CancellationToken ct)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    return await attempt();
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await Task.Delay(50 * (1 << i), ct);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Auction] Mutation failed: {e.Message}");
-                    return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-                }
-            }
-            return AuctionResult.Fail(AuctionRule.Conflict);
         }
 
     }
