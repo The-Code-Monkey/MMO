@@ -30,6 +30,7 @@ namespace MMO.Auction
         private readonly AuctionDeliveryService _delivery;
         private readonly AuctionQueryService _queries;
         private readonly AuctionWalletReservationService _reservations;
+        private readonly AuctionListingService _listings;
 
         public AuctionService(IAuctionRepository repository, NakamaRestClient rest, SocialHubService socialHub, int casRetries = 5)
         {
@@ -39,6 +40,8 @@ namespace MMO.Auction
             _delivery = new AuctionDeliveryService(_socialHub, GetPlayerBag);
             _queries = new AuctionQueryService(_repository, HasAuctionHouse);
             _reservations = new AuctionWalletReservationService(_repository, () => _rest.IsConnected);
+            _listings = new AuctionListingService(
+                _repository, _socialHub, GetPlayerBag, () => _rest.IsConnected, HasAuctionHouse, casRetries);
             _casRetries = casRetries;
         }
 
@@ -49,7 +52,7 @@ namespace MMO.Auction
         }
 
         /// <summary>Lists an item from the seller's bag on the auction house.</summary>
-        public async Task<AuctionResult> CreateListingAsync(
+        public Task<AuctionResult> CreateListingAsync(
             string sellerAccountId,
             int bagX,
             int bagY,
@@ -57,110 +60,8 @@ namespace MMO.Auction
             int stackCount = -1,
             int durationHours = DefaultListingDurationHours,
             CancellationToken ct = default)
-        {
-            if (!_rest.IsConnected)
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            if (!HasAuctionHouse())
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            if (pricePerUnit < MinPricePerUnit)
-                return AuctionResult.Fail(AuctionRule.InvalidPrice);
-
-            // Verify seller has the item and get the item instance
-            PlayerInventory bag = GetPlayerBag(sellerAccountId);
-            if (bag == null)
-                return AuctionResult.Fail(AuctionRule.ItemNotFound);
-
-            int itemIndex = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight)
-                .FindAt(bag.Items, bagX, bagY);
-            if (itemIndex < 0)
-                return AuctionResult.Fail(AuctionRule.ItemNotFound);
-
-            ItemInstance item = bag.Items[itemIndex];
-            if (item.IsEmpty)
-                return AuctionResult.Fail(AuctionRule.ItemNotFound);
-
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(item.ItemName);
-            if (def == null)
-                return AuctionResult.Fail(AuctionRule.ItemNotFound);
-
-            // Determine stack count to sell
-            int availableCount = item.StackCount < 1 ? 1 : item.StackCount;
-            int sellCount = stackCount > 0 ? Math.Min(stackCount, availableCount) : availableCount;
-            if (sellCount < 1)
-                return AuctionResult.Fail(AuctionRule.InvalidStackCount);
-
-            // Check max active listings
-            AuctionIndexRecord index = await _repository.LoadIndexAsync(sellerAccountId, ct)
-                ?? new AuctionIndexRecord { AccountId = sellerAccountId };
-
-            if (index.ActiveListingIds != null && index.ActiveListingIds.Count >= MaxActiveListingsPerPlayer)
-                return AuctionResult.Fail(AuctionRule.MaxListingsReached);
-
-            AuctionResult result = await RetryAsync(async () =>
-            {
-                // Re-read index inside CAS loop
-                index = await _repository.LoadIndexAsync(sellerAccountId, ct)
-                    ?? new AuctionIndexRecord { AccountId = sellerAccountId };
-
-                if (index.ActiveListingIds != null && index.ActiveListingIds.Count >= MaxActiveListingsPerPlayer)
-                    return AuctionResult.Fail(AuctionRule.MaxListingsReached);
-
-                // Create the listing
-                string listingId = Guid.NewGuid().ToString("N");
-                long nowTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
-                long expiresTicks = nowTicks + TimeSpan.FromHours(durationHours).Ticks;
-
-                var listing = new AuctionListingRecord
-                {
-                    ListingId = listingId,
-                    SellerAccountId = sellerAccountId,
-                    SellerPlayerName = _socialHub.GetPlayerName(sellerAccountId),
-                    ItemName = item.ItemName,
-                    ItemWidth = item.Width,
-                    ItemHeight = item.Height,
-                    StackCount = sellCount,
-                    PricePerUnit = pricePerUnit,
-                    ListedAtTicks = nowTicks,
-                    ExpiresAtTicks = expiresTicks,
-                    Status = AuctionListingStatus.Active,
-                    SellerZoneId = _socialHub.ZoneId,
-                };
-
-                await _repository.SaveListingAsync(listing, ct);
-
-                // Update seller's index
-                if (index.ActiveListingIds == null)
-                    index.ActiveListingIds = new List<string>();
-                index.ActiveListingIds.Add(listingId);
-                await _repository.SaveIndexAsync(index, ct);
-
-                return AuctionResult.Ok(listingId: listingId, listing: listing);
-            }, ct);
-
-            if (result.Rule == AuctionRule.Ok)
-            {
-                // Remove item from seller's bag (only after listing is durable)
-                if (sellCount >= availableCount)
-                {
-                    bag.RemoveItemAt(bagX, bagY);
-                }
-                else
-                {
-                    // Partial stack: reduce stack count
-                    ItemInstance remaining = item;
-                    remaining.StackCount = availableCount - sellCount;
-                    bag.RemoveItemAt(bagX, bagY);
-                    bag.TryAddExistingItem(remaining, bagX, bagY);
-                }
-
-                // Notify seller's client
-                _socialHub.NotifyAuctionListingCreated(sellerAccountId, result.Listing);
-            }
-
-            return result;
-        }
+            => _listings.CreateAsync(
+                sellerAccountId, bagX, bagY, pricePerUnit, stackCount, durationHours, ct);
 
         /// <summary>Buys an item from the auction house. Uses atomic Lua RPC for gold/item transfer.</summary>
         public async Task<AuctionResult> BuyListingAsync(
@@ -367,87 +268,11 @@ namespace MMO.Auction
         }
 
         /// <summary>Cancels an active listing and returns the item to the seller's bag.</summary>
-        public async Task<AuctionResult> CancelListingAsync(
+        public Task<AuctionResult> CancelListingAsync(
             string sellerAccountId,
             string listingId,
             CancellationToken ct = default)
-        {
-            if (!_rest.IsConnected)
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            if (!HasAuctionHouse())
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            AuctionListingRecord listing = await _repository.LoadListingAsync(listingId, ct);
-            if (listing == null)
-                return AuctionResult.Fail(AuctionRule.NotFound);
-
-            if (listing.SellerAccountId != sellerAccountId)
-                return AuctionResult.Fail(AuctionRule.NotOwner);
-
-            if (listing.Status != AuctionListingStatus.Active)
-                return AuctionResult.Fail(AuctionRule.ListingNotActive);
-
-            AuctionResult result = await RetryAsync(async () =>
-            {
-                listing = await _repository.LoadListingAsync(listingId, ct);
-                if (listing == null || listing.Status != AuctionListingStatus.Active)
-                    return AuctionResult.Fail(AuctionRule.ListingNotActive);
-
-                if (listing.SellerAccountId != sellerAccountId)
-                    return AuctionResult.Fail(AuctionRule.NotOwner);
-
-                // Mark as cancelled
-                listing.Status = AuctionListingStatus.Cancelled;
-                await _repository.SaveListingAsync(listing, ct);
-
-                // Update seller's index
-                AuctionIndexRecord index = await _repository.LoadIndexAsync(sellerAccountId, ct);
-                if (index != null && index.ActiveListingIds != null)
-                {
-                    index.ActiveListingIds.Remove(listingId);
-                    await _repository.SaveIndexAsync(index, ct);
-                }
-
-                return AuctionResult.Ok(listingId: listingId, listing: listing);
-            }, ct);
-
-            if (result.Rule == AuctionRule.Ok)
-            {
-                // Return item to seller's bag
-                PlayerInventory bag = GetPlayerBag(sellerAccountId);
-                if (bag != null)
-                {
-                    ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
-                    if (def != null)
-                    {
-                        ItemInstance item = ItemInstance.Create(def, 0, 0, listing.StackCount);
-                        // Try to place at original position or find free space
-                        if (!bag.TryAddExistingItem(item, 0, 0))
-                        {
-                            // Find free space
-                            if (new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight)
-                                .TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
-                            {
-                                item.GridX = x;
-                                item.GridY = y;
-                                bag.TryAddExistingItem(item, x, y);
-                            }
-                            else
-                            {
-                                Debug.LogError($"[Auction] Seller bag full, could not return cancelled item for {sellerAccountId}");
-                                // In this case, item is lost - but listing is cancelled
-                                // Could send to a "mail" system in future
-                            }
-                        }
-                    }
-                }
-
-                _socialHub.NotifyAuctionListingCancelled(sellerAccountId, listing);
-            }
-
-            return result;
-        }
+            => _listings.CancelAsync(sellerAccountId, listingId, ct);
 
         /// <summary>Gets active listings for a player.</summary>
         public Task<List<AuctionListingRecord>> GetMyListingsAsync(string accountId, CancellationToken ct = default)
