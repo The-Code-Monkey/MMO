@@ -59,7 +59,7 @@ namespace MMO.UI
             Image backdrop = root.AddComponent<Image>();
             backdrop.color = BackgroundColor;
 
-            GameObject panel = CreateRect(
+            GameObject panel = UIBuilder.Rect(
                 root.transform, "LoginPanel", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 Vector2.zero, new Vector2(560f, 520f));
             panel.AddComponent<Image>().color = PanelColor;
@@ -76,29 +76,29 @@ namespace MMO.UI
             view.SetFields(username, password, button, status);
 
             if (createEventSystem)
-                NetworkHudFactory.EnsureEventSystem();
+                HudEventSystem.Ensure();
 
             return view;
         }
 
         private static void CreateTitle(Transform parent)
         {
-            GameObject title = CreateRect(
+            GameObject title = UIBuilder.Rect(
                 parent, "Title", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(0f, -58f), new Vector2(520f, 90f));
             Text text = title.AddComponent<Text>();
-            ApplyLabel(text, 46, TextAnchor.MiddleCenter);
+            UIBuilder.ApplyLabel(text, 46, TextAnchor.MiddleCenter, 9);
             text.text = "MMO";
             text.fontStyle = FontStyle.Bold;
         }
 
         private static void CreateLabel(Transform parent, string name, Vector2 position, string text)
         {
-            GameObject labelObject = CreateRect(
+            GameObject labelObject = UIBuilder.Rect(
                 parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 position, new Vector2(470f, 28f));
             Text label = labelObject.AddComponent<Text>();
-            ApplyLabel(label, 18, TextAnchor.MiddleLeft);
+            UIBuilder.ApplyLabel(label, 18, TextAnchor.MiddleLeft, 9);
             label.text = text;
             label.color = new Color(0.85f, 0.87f, 0.9f, 1f);
         }
@@ -106,21 +106,21 @@ namespace MMO.UI
         private static InputField CreateInputField(
             Transform parent, string name, Vector2 position, string placeholder, bool isPassword)
         {
-            GameObject fieldObject = CreateRect(
+            GameObject fieldObject = UIBuilder.Rect(
                 parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 position, new Vector2(500f, 52f));
 
             Image background = fieldObject.AddComponent<Image>();
             background.color = FieldColor;
 
-            GameObject textObject = CreateInset(fieldObject.transform, "Text");
+            GameObject textObject = UIBuilder.Inset(fieldObject.transform, "Text", new Vector2(12f, 4f));
             Text text = textObject.AddComponent<Text>();
-            ApplyLabel(text, 20, TextAnchor.MiddleLeft);
+            UIBuilder.ApplyLabel(text, 20, TextAnchor.MiddleLeft, 9);
             text.supportRichText = false;
 
-            GameObject placeholderObject = CreateInset(fieldObject.transform, "Placeholder");
+            GameObject placeholderObject = UIBuilder.Inset(fieldObject.transform, "Placeholder", new Vector2(12f, 4f));
             Text placeholderText = placeholderObject.AddComponent<Text>();
-            ApplyLabel(placeholderText, 20, TextAnchor.MiddleLeft);
+            UIBuilder.ApplyLabel(placeholderText, 20, TextAnchor.MiddleLeft, 9);
             placeholderText.supportRichText = false;
             placeholderText.fontStyle = FontStyle.Italic;
             placeholderText.color = PlaceholderColor;
@@ -139,7 +139,7 @@ namespace MMO.UI
 
         private static Button CreateButton(Transform parent, string name, Vector2 position)
         {
-            GameObject buttonObject = CreateRect(
+            GameObject buttonObject = UIBuilder.Rect(
                 parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 position, new Vector2(260f, 58f));
 
@@ -149,9 +149,9 @@ namespace MMO.UI
             Button button = buttonObject.AddComponent<Button>();
             button.targetGraphic = background;
 
-            GameObject labelObject = CreateStretch(buttonObject.transform, "Label");
+            GameObject labelObject = UIBuilder.Stretch(buttonObject.transform, "Label");
             Text label = labelObject.AddComponent<Text>();
-            ApplyLabel(label, 24, TextAnchor.MiddleCenter);
+            UIBuilder.ApplyLabel(label, 24, TextAnchor.MiddleCenter, 9);
             label.text = "Sign In";
             label.fontStyle = FontStyle.Bold;
 
@@ -160,70 +160,14 @@ namespace MMO.UI
 
         private static Text CreateStatus(Transform parent)
         {
-            GameObject statusObject = CreateRect(
+            GameObject statusObject = UIBuilder.Rect(
                 parent, "Status", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(0f, 16f), new Vector2(520f, 88f));
             Text status = statusObject.AddComponent<Text>();
-            ApplyLabel(status, 18, TextAnchor.MiddleCenter);
+            UIBuilder.ApplyLabel(status, 18, TextAnchor.MiddleCenter, 9);
             status.color = StatusColor;
             return status;
         }
 
-        private static void ApplyLabel(Text label, int fontSize, TextAnchor alignment)
-        {
-            label.font = UIFont.Default;
-            label.fontSize = fontSize;
-            label.alignment = alignment;
-            label.color = Color.white;
-            label.raycastTarget = false;
-            label.resizeTextForBestFit = true;
-            label.resizeTextMinSize = 9;
-            label.resizeTextMaxSize = fontSize;
-            label.text = string.Empty;
-        }
-
-        private static GameObject CreateRect(
-            Transform parent,
-            string name,
-            Vector2 anchor,
-            Vector2 pivot,
-            Vector2 anchoredPosition,
-            Vector2 sizeDelta)
-        {
-            var rectObject = new GameObject(name, typeof(RectTransform));
-            RectTransform rect = (RectTransform)rectObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = anchor;
-            rect.anchorMax = anchor;
-            rect.pivot = pivot;
-            rect.anchoredPosition = anchoredPosition;
-            rect.sizeDelta = sizeDelta;
-            return rectObject;
-        }
-
-        private static GameObject CreateStretch(Transform parent, string name)
-        {
-            var rectObject = new GameObject(name, typeof(RectTransform));
-            RectTransform rect = (RectTransform)rectObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            return rectObject;
-        }
-
-        /// <summary>A stretch inset on all four sides, for the text inside an input field.</summary>
-        private static GameObject CreateInset(Transform parent, string name)
-        {
-            var rectObject = new GameObject(name, typeof(RectTransform));
-            RectTransform rect = (RectTransform)rectObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(12f, 4f);
-            rect.offsetMax = new Vector2(-12f, -4f);
-            return rectObject;
-        }
     }
 }
