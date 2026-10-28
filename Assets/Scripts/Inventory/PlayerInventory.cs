@@ -604,29 +604,7 @@ namespace MMO.Inventory
         public static List<ItemInstance> CollectLootable(
             IReadOnlyList<ItemInstance> bag,
             IReadOnlyList<ItemInstance> equipment)
-        {
-            var loot = new List<ItemInstance>();
-
-            if (bag != null)
-            {
-                for (int i = 0; i < bag.Count; i++)
-                {
-                    if (!bag[i].IsEmpty)
-                        loot.Add(bag[i]);
-                }
-            }
-
-            if (equipment != null)
-            {
-                for (int i = 0; i < equipment.Count; i++)
-                {
-                    if (!equipment[i].IsEmpty)
-                        loot.Add(equipment[i]);
-                }
-            }
-
-            return loot;
-        }
+            => ItemContainerRules.CollectNonEmpty(bag, equipment);
 
         /// <summary>
         /// Server: rebuild the equipped-item picture from the equipment list and push the sums
@@ -787,22 +765,7 @@ namespace MMO.Inventory
         /// Used by world click handlers that need to send an owner-checked intent.
         /// </summary>
         public static PlayerInventory FindLocal(NetworkManager networkManager)
-        {
-            if (networkManager == null || networkManager.ServerManager == null || networkManager.ClientManager == null)
-                return null;
-
-            IReadOnlyDictionary<int, NetworkObject> spawned = networkManager.IsHostStarted
-                ? networkManager.ServerManager.Objects.Spawned
-                : networkManager.ClientManager.Objects.Spawned;
-
-            foreach (NetworkObject nob in spawned.Values)
-            {
-                if (nob != null && nob.IsSpawned && nob.IsOwner && nob.TryGetComponent(out PlayerInventory inventory))
-                    return inventory;
-            }
-
-            return null;
-        }
+            => PlayerInventoryLocator.FindLocal(networkManager);
 
         // Idempotent, and tolerant of running before or after the list first syncs: an equipment
         // list shorter than the slot count would index past its end, and a host runs OnStartNetwork
