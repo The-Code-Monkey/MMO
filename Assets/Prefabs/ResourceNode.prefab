@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &9207095780329282731
+--- !u!1 &4535181721074871528
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,13 +8,13 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 2996717635865823340}
-  - component: {fileID: 5692659922217863750}
-  - component: {fileID: 5817710845020485219}
-  - component: {fileID: 8002384346164018615}
-  - component: {fileID: 2341980686118000731}
-  - component: {fileID: 865407267489391201}
-  - component: {fileID: 5331973667451583853}
+  - component: {fileID: 7967214196408397406}
+  - component: {fileID: 5011810814911584084}
+  - component: {fileID: 1146923353203032779}
+  - component: {fileID: 2691862497529243621}
+  - component: {fileID: 3988032019876809668}
+  - component: {fileID: 7445580891688158559}
+  - component: {fileID: 1585297254665930843}
   m_Layer: 0
   m_Name: ResourceNode
   m_TagString: Untagged
@@ -22,13 +22,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &2996717635865823340
+--- !u!4 &7967214196408397406
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -37,21 +37,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &5692659922217863750
+--- !u!33 &5011810814911584084
 MeshFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!65 &5817710845020485219
+--- !u!65 &1146923353203032779
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -66,13 +66,13 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
---- !u!23 &8002384346164018615
+--- !u!23 &2691862497529243621
 MeshRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   m_Enabled: 1
   m_CastShadows: 1
   m_ReceiveShadows: 1
@@ -115,13 +115,13 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &2341980686118000731
+--- !u!114 &3988032019876809668
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 26b716c41e9b56b4baafaf13a523ba2e, type: 3}
@@ -172,29 +172,29 @@ MonoBehaviour:
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
   _initializedTimestamp: 0
---- !u!114 &865407267489391201
+--- !u!114 &7445580891688158559
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3bd32b3fc0caecd4ea7cef909d4fbb69, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.ResourceNode
   _componentIndexCache: 255
-  _addedNetworkObject: {fileID: 2341980686118000731}
+  _addedNetworkObject: {fileID: 3988032019876809668}
   _networkObjectCache: {fileID: 0}
   _definition: {fileID: 11400000, guid: d4f7b0c5eb60a18c2d9e3f504b1c0689, type: 2}
---- !u!208 &5331973667451583853
+--- !u!208 &1585297254665930843
 NavMeshObstacle:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9207095780329282731}
+  m_GameObject: {fileID: 4535181721074871528}
   m_Enabled: 1
   serializedVersion: 3
   m_Shape: 1

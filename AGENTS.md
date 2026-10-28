@@ -1,4 +1,7 @@
 AGENTS.md — AI Collaboration Guidelines for Unity MMO
+
+First thing you should do at the start of a new session is run both the /caveman skill and the /ponytail skills. THIS IS IMPORTANT EVERY NEW SESSION THIS NEEDS TO BE RUN
+
 > Full documentation lives in docs/. Start with
 > docs/01-architecture-overview.md for how the system works and
 > docs/12-conventions-and-checklist.md for the day-to-day
