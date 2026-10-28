@@ -627,6 +627,10 @@ namespace MMO.Editor
             AddNodeMarker(markers, 1, new Vector3(-3f, nodeY, 3f));
             AddEnemyMarker(markers, 1, new Vector3(0f, enemyY, 4f));
             AddStationMarker(markers, 1, new Vector3(4f, stationY, 4f), CraftingStationType.Furnace);
+
+            // A personal teller beside the furnace, so a new character can bank their first ore
+            // and coins without leaving the tutorial zone.
+            AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, 4f), BankKind.Personal);
         }
 
         private static void AddNodeMarker(Transform parent, int index, Vector3 position)
