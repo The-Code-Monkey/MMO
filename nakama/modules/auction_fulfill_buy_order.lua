@@ -1,9 +1,12 @@
--- auction_fulfill_buy_order: atomic fulfillment of a buy order.
+-- auction_fulfill_buy_order: fulfillment of a buy order.
 --
 -- Runs on the Nakama server (Lua runtime). Reads the buy order, validates it is active,
--- checks the seller has the item, transfers gold from buy order (already reserved) to seller,
--- transfers item from seller to buyer, updates buy order quantity, and writes a transaction record.
--- All within a single Lua execution so no partial state can persist.
+-- then claims the order first with a version-guarded (CAS) write so concurrent fulfillments
+-- cannot double-spend the reserved quantity. Only the winner credits the seller's wallet;
+-- that wallet write is the commit point. The transaction record and index updates that
+-- follow are audit metadata: if any of them fails, the fulfillment is still valid and the
+-- error is logged, not surfaced as a CONFLICT (which would strand the credited gold with
+-- no recovery path for the caller).
 --
 -- The buy order and wallet objects are version-guarded: if another RPC call moves the
 -- same object between our read and write, Nakama returns 409 and the caller retries.
@@ -151,16 +154,10 @@ local function auction_fulfill_buy_order(context, payload)
     }
     local tx_version = write_object(TRANSACTION_COLLECTION, transaction_id, transaction, "*", "", 1, 1)
     if not tx_version then
-        -- Rollback seller wallet
-        seller_wallet.gold = seller_gold
-        update_wallet(seller_id, seller_wallet, seller_version)
-        -- Rollback buy order
-        buy_order.QuantityRemaining = buy_order.QuantityRemaining + quantity
-        buy_order.Status = buy_order.QuantityRemaining == 0 and 1 or 4
-        write_object(BUY_ORDER_COLLECTION, buy_order_id, buy_order, buy_order_version, "", 1, 1)
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+        nk.logger_error("auction_fulfill_buy_order: transaction record write failed for " .. buy_order_id .. " (audit gap)")
+    else
+        transaction.StorageVersion = tx_version
     end
-    transaction.StorageVersion = tx_version
 
     -- 4. Update buyer's index (add to purchase history, remove buy order if filled)
     local buyer_index_obj = read_object(INDEX_COLLECTION, buy_order.BuyerAccountId, "")
@@ -189,7 +186,7 @@ local function auction_fulfill_buy_order(context, payload)
     end
     local buyer_index_version = write_object(INDEX_COLLECTION, buy_order.BuyerAccountId, buyer_index, buyer_index_obj and buyer_index_obj.version or "*", "", 1, 1)
     if not buyer_index_version then
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+        nk.logger_error("auction_fulfill_buy_order: buyer index write failed for " .. buy_order.BuyerAccountId .. " (audit gap)")
     end
 
     -- 5. Update seller's index (add to purchase history)
@@ -208,7 +205,7 @@ local function auction_fulfill_buy_order(context, payload)
     end
     local seller_index_version = write_object(INDEX_COLLECTION, seller_id, seller_index, seller_index_obj and seller_index_obj.version or "*", "", 1, 1)
     if not seller_index_version then
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
+        nk.logger_error("auction_fulfill_buy_order: seller index write failed for " .. seller_id .. " (audit gap)")
     end
 
     return nk.json_encode({
