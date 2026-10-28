@@ -83,6 +83,7 @@ namespace MMO.Social
         private GuildBankService _guildBank;
         private RaidHandoffService _raidHandoff;
         private SocialReconciler _reconciler;
+        private RaidIntentsService _raidIntents;
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
 
@@ -363,6 +364,13 @@ namespace MMO.Social
 
             // Item ownership registry: single-writer authority for dupe protection.
             _ownershipRegistry = new ItemOwnershipRegistry();
+
+            _raidIntents = new RaidIntentsService(
+                _raidService,
+                _orchestrationService,
+                () => _repository,
+                () => _raidRepository,
+                SyncAsync);
         }
 
         private void EnsureChat()
@@ -916,106 +924,24 @@ namespace MMO.Social
         #region Raid intents
 
         /// <summary>Leader-only: allocates a raid instance for the requester's party.</summary>
-        public async Task<(RaidRule Rule, RaidInstanceRecord Instance)> AllocateRaidAsync(string requesterId)
-        {
-            if (_raidService == null)
-                return (RaidRule.BackendUnavailable, null);
+        public Task<(RaidRule Rule, RaidInstanceRecord Instance)> AllocateRaidAsync(string requesterId)
+            => _raidIntents.AllocateAsync(requesterId);
 
-            // Use orchestration service if enabled, otherwise fall back to direct allocation.
-            if (_orchestrationService != null)
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(requesterId);
-                if (index == null || string.IsNullOrEmpty(index.PartyId))
-                    return (RaidRule.NoParty, null);
-
-                PartyRecord party = await _repository.LoadPartyAsync(index.PartyId);
-                var orchestrated = await _orchestrationService.EnterRaidAsync(party, CancellationToken.None);
-                if (orchestrated.Rule == RaidRule.Ok)
-                    await SyncAsync();
-                return orchestrated;
-            }
-
-            var result = await _raidService.AllocateAsync(requesterId);
-            if (result.Rule == RaidRule.Ok)
-                await SyncAsync();
-            return result;
-        }
-
-        /// <summary>
-        /// Leader-only: joins the requester's party into an existing raid. Capacity is re-checked
-        /// against the live roster inside the service's CAS loop, so a race for the last seat loses
-        /// cleanly rather than oversubscribing the raid.
-        /// </summary>
-        public async Task<RaidRule> JoinRaidAsync(string requesterId, string raidId)
-        {
-            if (_raidService == null)
-                return RaidRule.BackendUnavailable;
-            RaidRule rule = await _raidService.JoinAsync(requesterId, raidId);
-            if (rule == RaidRule.Ok)
-                await SyncAsync();
-            return rule;
-        }
+        /// <summary>Leader-only: joins the requester's party into an existing raid.</summary>
+        public Task<RaidRule> JoinRaidAsync(string requesterId, string raidId)
+            => _raidIntents.JoinAsync(requesterId, raidId);
 
         /// <summary>Leader-only: pulls the requester's whole party out of its raid.</summary>
-        public async Task<RaidRule> LeaveRaidAsync(string requesterId)
-        {
-            if (_raidService == null)
-                return RaidRule.BackendUnavailable;
-            RaidRule rule = await _raidService.LeaveAsync(requesterId);
-            if (rule == RaidRule.Ok)
-                await SyncAsync();
-            return rule;
-        }
+        public Task<RaidRule> LeaveRaidAsync(string requesterId)
+            => _raidIntents.LeaveAsync(requesterId);
 
         /// <summary>Raid-leader-only: hands raid leadership to another member.</summary>
-        public async Task<RaidRule> PromoteRaidLeaderAsync(string requesterId, string targetId)
-        {
-            if (_raidService == null)
-                return RaidRule.BackendUnavailable;
-            RaidRule rule = await _raidService.PromoteLeaderAsync(requesterId, targetId);
-            if (rule == RaidRule.Ok)
-                await SyncAsync();
-            return rule;
-        }
+        public Task<RaidRule> PromoteRaidLeaderAsync(string requesterId, string targetId)
+            => _raidIntents.PromoteLeaderAsync(requesterId, targetId);
 
         /// <summary>Leader-only: completes the raid and tears its instance down.</summary>
-        public async Task<RaidRule> CompleteRaidAsync(string requesterId)
-        {
-            if (_raidService == null)
-                return RaidRule.BackendUnavailable;
-
-            // Get the instance ID before completing, so we can teardown orchestrated instances.
-            string instanceId = null;
-            if (_orchestrationService != null)
-            {
-                SocialIndexRecord index = await _repository.LoadIndexAsync(requesterId);
-                if (index != null && !string.IsNullOrEmpty(index.PartyId))
-                {
-                    PartyRecord party = await _repository.LoadPartyAsync(index.PartyId);
-                    if (party != null)
-                        instanceId = party.RaidInstanceId;
-                }
-            }
-
-            RaidRule rule = await _raidService.CompleteAsync(requesterId);
-            if (rule == RaidRule.Ok)
-            {
-                await SyncAsync();
-
-                // Teardown orchestrated container if this was an orchestrated raid.
-                if (_orchestrationService != null && !string.IsNullOrEmpty(instanceId))
-                {
-                    // Check if this was an orchestrated instance by looking at the raid record's host zone.
-                    // Orchestrated instances have HostZoneId starting with "orchestrator-".
-                    RaidInstanceRecord raid = await _raidRepository.LoadRaidInstanceAsync(instanceId);
-                    if (raid != null && raid.HostZoneId != null && raid.HostZoneId.StartsWith("orchestrator-"))
-                    {
-                        await _orchestrationService.TeardownAsync(instanceId, CancellationToken.None);
-                    }
-                }
-            }
-            return rule;
-        }
+        public Task<RaidRule> CompleteRaidAsync(string requesterId)
+            => _raidIntents.CompleteAsync(requesterId);
 
         #endregion
     }
