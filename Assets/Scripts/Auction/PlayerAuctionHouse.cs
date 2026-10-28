@@ -409,35 +409,35 @@ namespace MMO.Auction
         private async System.Threading.Tasks.Task SearchAndRespondAsync(string accountId, string itemNameFilter, long maxPrice, int page, int pageSize, NetworkConnection sender)
         {
             List<AuctionListingRecord> results = await SocialHubService.Instance.Auction.SearchAsync(itemNameFilter, maxPrice, page, pageSize);
-            string json = JsonUtility.ToJson(new AuctionSearchResults { listings = results });
+            string json = AuctionClientProtocol.EncodeListings(results);
             TargetRpcSearchResults(sender, json);
         }
 
         private async System.Threading.Tasks.Task MyListingsAndRespondAsync(string accountId, NetworkConnection sender)
         {
             List<AuctionListingRecord> results = await SocialHubService.Instance.Auction.GetMyListingsAsync(accountId);
-            string json = JsonUtility.ToJson(new AuctionSearchResults { listings = results });
+            string json = AuctionClientProtocol.EncodeListings(results);
             TargetRpcMyListings(sender, json);
         }
 
         private async System.Threading.Tasks.Task PurchaseHistoryAndRespondAsync(string accountId, int limit, NetworkConnection sender)
         {
             List<AuctionTransactionRecord> results = await SocialHubService.Instance.Auction.GetPurchaseHistoryAsync(accountId, limit);
-            string json = JsonUtility.ToJson(new AuctionTransactionHistory { transactions = results });
+            string json = AuctionClientProtocol.EncodeHistory(results);
             TargetRpcPurchaseHistory(sender, json);
         }
 
         private async System.Threading.Tasks.Task SearchBuyOrdersAndRespondAsync(string accountId, string itemNameFilter, long minPrice, int page, int pageSize, NetworkConnection sender)
         {
             List<AuctionBuyOrderRecord> results = await SocialHubService.Instance.Auction.SearchBuyOrdersAsync(itemNameFilter, minPrice, page, pageSize);
-            string json = JsonUtility.ToJson(new AuctionBuyOrderSearchResults { buyOrders = results });
+            string json = AuctionClientProtocol.EncodeBuyOrders(results);
             TargetRpcSearchBuyOrders(sender, json);
         }
 
         private async System.Threading.Tasks.Task MyBuyOrdersAndRespondAsync(string accountId, NetworkConnection sender)
         {
             List<AuctionBuyOrderRecord> results = await SocialHubService.Instance.Auction.GetMyBuyOrdersAsync(accountId);
-            string json = JsonUtility.ToJson(new AuctionBuyOrderSearchResults { buyOrders = results });
+            string json = AuctionClientProtocol.EncodeBuyOrders(results);
             TargetRpcMyBuyOrders(sender, json);
         }
 
@@ -447,8 +447,8 @@ namespace MMO.Auction
             if (!IsOwner)
                 return;
 
-            AuctionSearchResults results = JsonUtility.FromJson<AuctionSearchResults>(json);
-            OnSearchResultsReceived?.Invoke(results?.listings ?? new List<AuctionListingRecord>());
+            List<AuctionListingRecord> results = AuctionClientProtocol.DecodeListings(json);
+            OnSearchResultsReceived?.Invoke(results);
         }
 
         [TargetRpc]
@@ -457,8 +457,8 @@ namespace MMO.Auction
             if (!IsOwner)
                 return;
 
-            AuctionSearchResults results = JsonUtility.FromJson<AuctionSearchResults>(json);
-            OnMyListingsReceived?.Invoke(results?.listings ?? new List<AuctionListingRecord>());
+            List<AuctionListingRecord> results = AuctionClientProtocol.DecodeListings(json);
+            OnMyListingsReceived?.Invoke(results);
         }
 
         [TargetRpc]
@@ -467,8 +467,8 @@ namespace MMO.Auction
             if (!IsOwner)
                 return;
 
-            AuctionTransactionHistory history = JsonUtility.FromJson<AuctionTransactionHistory>(json);
-            OnPurchaseHistoryReceived?.Invoke(history?.transactions ?? new List<AuctionTransactionRecord>());
+            List<AuctionTransactionRecord> history = AuctionClientProtocol.DecodeHistory(json);
+            OnPurchaseHistoryReceived?.Invoke(history);
         }
 
         [TargetRpc]
@@ -477,8 +477,8 @@ namespace MMO.Auction
             if (!IsOwner)
                 return;
 
-            AuctionBuyOrderSearchResults results = JsonUtility.FromJson<AuctionBuyOrderSearchResults>(json);
-            OnSearchBuyOrdersReceived?.Invoke(results?.buyOrders ?? new List<AuctionBuyOrderRecord>());
+            List<AuctionBuyOrderRecord> results = AuctionClientProtocol.DecodeBuyOrders(json);
+            OnSearchBuyOrdersReceived?.Invoke(results);
         }
 
         [TargetRpc]
@@ -487,8 +487,8 @@ namespace MMO.Auction
             if (!IsOwner)
                 return;
 
-            AuctionBuyOrderSearchResults results = JsonUtility.FromJson<AuctionBuyOrderSearchResults>(json);
-            OnMyBuyOrdersReceived?.Invoke(results?.buyOrders ?? new List<AuctionBuyOrderRecord>());
+            List<AuctionBuyOrderRecord> results = AuctionClientProtocol.DecodeBuyOrders(json);
+            OnMyBuyOrdersReceived?.Invoke(results);
         }
 
         private string GetAccountId(NetworkConnection sender)
@@ -555,22 +555,5 @@ namespace MMO.Auction
         private void OnDisable()
             => _events.Unbind();
 
-        [Serializable]
-        private class AuctionSearchResults
-        {
-            public List<AuctionListingRecord> listings;
-        }
-
-        [Serializable]
-        private class AuctionTransactionHistory
-        {
-            public List<AuctionTransactionRecord> transactions;
-        }
-
-        [Serializable]
-        private class AuctionBuyOrderSearchResults
-        {
-            public List<AuctionBuyOrderRecord> buyOrders;
-        }
     }
 }

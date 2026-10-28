@@ -294,20 +294,14 @@ namespace MMO.Auction
             if (!TryFindBagItem(itemInstanceId, out ItemInstance item))
                 return false;
 
-            CurrencyData currency = CurrencyRegistry.ResolveByItem(item.ItemName);
-            if (currency == null || string.IsNullOrEmpty(currency.CurrencyId))
-                return false;
-
-            int count = item.StackCount < 1 ? 1 : item.StackCount;
-            long credit = (long)currency.ItemValue * count;
-            if (credit <= 0)
+            if (!CurrencyItemConverter.TryPlan(item, out string currencyId, out long credit))
                 return false;
 
             if (!_inventory.TryRemoveItem(itemInstanceId, out ItemInstance removed))
                 return false;
 
             long before = Gold;
-            if (WalletRules.Credit(_account.Balances, currency.CurrencyId, credit) != WalletError.Ok)
+            if (WalletRules.Credit(_account.Balances, currencyId, credit) != WalletError.Ok)
             {
                 // The credit was refused (for example, overflow). Put the item back rather than
                 // destroying it for nothing.
