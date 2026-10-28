@@ -93,33 +93,8 @@ namespace MMO.Persistence
                 !service.TryGetJoin(clientId, out _accountId, out PlayerSaveRecord record))
                 return;
 
-            // Apply the loaded save in one shot. Subscribing afterwards keeps the apply itself from
-            // re-triggering the same events it is creating.
-            PlayerSaveMapper.Apply(
-                record,
-                out List<ItemInstance> bag,
-                out List<ItemInstance> equipment,
-                out int skippedItems,
-                out long gold,
-                out int experience,
-                out List<string> completedQuestIds,
-                out List<QuestProgressEntry> questProgress);
-
-            if (skippedItems > 0)
-            {
-                Debug.LogWarning($"{nameof(PlayerSaveTrigger)}: dropped {skippedItems} item(s) from '{_accountId}' that no longer have a definition.");
-            }
-
-            if (record != null)
-            {
-                _stats.ApplySave(record.Health, record.Mana, record.Level);
-            }
-
-            _stats.ApplyExperience(experience);
-            _inventory.Restore(bag, equipment);
-            _quests?.Restore(completedQuestIds, questProgress);
-            _wallet?.InitializeFromSave(record);
-            _bank?.InitializeFromSave(record);
+            PlayerSaveApplier.Apply(
+                record, _accountId, _stats, _inventory, _quests, _wallet, _bank);
 
             service.RegisterLivePlayer(_accountId, Capture);
             _stats.LevelChanged += OnLevelChanged;
