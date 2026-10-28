@@ -94,10 +94,10 @@ namespace MMO.UI
 
             NetworkHud hud = root.AddComponent<NetworkHud>();
             hud.SetViews(
-                CreatePlayerHud(root.transform),
-                CreateTargetFrame(root.transform),
+                PlayerVitalsFactory.CreateHud(root.transform),
+                TargetFrameFactory.Create(root.transform),
                 inventoryGrid,
-                CreateActionBar(root.transform),
+                ActionBarFactory.Create(root.transform),
                 ChatFeed.Create(root.transform),
                 inventoryWindow,
                 equipmentWindow,
@@ -129,79 +129,6 @@ namespace MMO.UI
         /// dead. Reuses an existing router rather than fighting it for focus.
         /// </summary>
         public static EventSystem EnsureEventSystem() => HudEventSystem.Ensure();
-
-        private static PlayerHudView CreatePlayerHud(Transform parent)
-        {
-            GameObject panel = UIBuilder.Rect(
-                parent, "PlayerHud", new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(12f, -12f), new Vector2(300f, 84f));
-            panel.AddComponent<Image>().color = HudTheme.PanelColor;
-
-            PlayerHudView hud = panel.AddComponent<PlayerHudView>();
-            hud.SetBars(
-                CreateVitalBar(panel.transform, "HealthBar", VitalKind.Health,
-                    new Vector2(10f, -10f), HudTheme.HealthColor),
-                CreateVitalBar(panel.transform, "ManaBar", VitalKind.Mana,
-                    new Vector2(10f, -46f), HudTheme.ManaColor));
-
-            return hud;
-        }
-
-        private static VitalBarView CreateVitalBar(
-            Transform parent, string name, VitalKind kind, Vector2 position, Color fillColor)
-        {
-            GameObject barObject = UIBuilder.Rect(
-                parent, name, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                position, new Vector2(280f, 28f));
-            barObject.AddComponent<Image>().color = HudTheme.TroughColor;
-
-            GameObject fillObject = UIBuilder.Stretch(barObject.transform, "Fill");
-            Image fill = fillObject.AddComponent<Image>();
-            fill.color = fillColor;
-            fill.type = Image.Type.Filled;
-            fill.fillMethod = Image.FillMethod.Horizontal;
-
-            GameObject valueObject = UIBuilder.Stretch(barObject.transform, "Value");
-            Text value = valueObject.AddComponent<Text>();
-            UIBuilder.ApplyLabel(value, 13, TextAnchor.MiddleCenter);
-
-            VitalBarView bar = barObject.AddComponent<VitalBarView>();
-            bar.SetKind(kind);
-            bar.SetVisuals(fill, value);
-            return bar;
-        }
-
-        private static TargetFrameView CreateTargetFrame(Transform parent)
-        {
-            GameObject frame = UIBuilder.Rect(
-                parent, "TargetFrame", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(0f, -12f), new Vector2(260f, 64f));
-            frame.AddComponent<Image>().color = HudTheme.PanelColor;
-
-            GameObject nameRow = UIBuilder.Row(
-                frame.transform, "Name", 1f, new Vector2(0.5f, 1f),
-                new Vector2(0f, -4f), new Vector2(-20f, 26f));
-            Text nameText = UIBuilder.Label(nameRow.transform);
-            UIBuilder.ApplyLabel(nameText, 14, TextAnchor.MiddleCenter);
-
-            GameObject fillRow = UIBuilder.Row(
-                frame.transform, "HealthFill", 0f, new Vector2(0.5f, 0f),
-                new Vector2(0f, 6f), new Vector2(-20f, 26f));
-            Image healthFill = fillRow.GetComponent<Image>();
-            healthFill.color = HudTheme.HealthColor;
-            healthFill.type = Image.Type.Filled;
-            healthFill.fillMethod = Image.FillMethod.Horizontal;
-
-            GameObject valueRow = UIBuilder.Row(
-                frame.transform, "HealthValue", 0f, new Vector2(0.5f, 0f),
-                new Vector2(0f, 6f), new Vector2(-20f, 26f));
-            Text healthText = UIBuilder.Label(valueRow.transform);
-            UIBuilder.ApplyLabel(healthText, 13, TextAnchor.MiddleCenter);
-
-            TargetFrameView view = frame.AddComponent<TargetFrameView>();
-            view.SetVisuals(frame, nameText, healthFill, healthText);
-            return view;
-        }
 
         private static InventoryGridView CreateInventoryGrid(Transform parent, out CollapsiblePanelView window)
         {
@@ -307,19 +234,6 @@ namespace MMO.UI
             text.text = label;
 
             return button;
-        }
-
-        private static ActionBarView CreateActionBar(Transform parent)
-        {
-            GameObject panel = UIBuilder.Rect(
-                parent, "ActionBar", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0f, 16f),
-                new Vector2(AbilityLoadout.MaxSlots * ActionBarView.SlotSize, ActionBarView.SlotSize));
-            panel.AddComponent<Image>().color = HudTheme.PanelColor;
-
-            ActionBarView bar = panel.AddComponent<ActionBarView>();
-            bar.SetContainer(UIBuilder.Stretch(panel.transform, "Slots").GetComponent<RectTransform>());
-            return bar;
         }
 
     }
