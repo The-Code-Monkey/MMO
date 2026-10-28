@@ -15,6 +15,8 @@ namespace MMO.Auction
     /// </summary>
     public sealed class PlayerAuctionHouse : NetworkBehaviour
     {
+        private readonly AuctionClientEventRouter _events = new AuctionClientEventRouter();
+
         private PlayerInventory _inventory;
 
         public override void OnStartNetwork()
@@ -505,85 +507,53 @@ namespace MMO.Auction
         public event Action<List<AuctionBuyOrderRecord>> OnMyBuyOrdersReceived;
 
         // Events from server (via SocialHubService)
-        public event Action<AuctionListingRecord> OnListingCreated;
-        public event Action<AuctionListingRecord, AuctionTransactionRecord> OnListingBought;
-        public event Action<AuctionListingRecord> OnListingCancelled;
-        public event Action<AuctionTransactionRecord> OnPurchaseCompleted;
-        public event Action<AuctionBuyOrderRecord> OnBuyOrderCreated;
-        public event Action<AuctionBuyOrderRecord, AuctionTransactionRecord> OnBuyOrderFulfilled;
-        public event Action<AuctionBuyOrderRecord> OnBuyOrderCancelled;
+        public event Action<AuctionListingRecord> OnListingCreated
+        {
+            add => _events.ListingCreated += value;
+            remove => _events.ListingCreated -= value;
+        }
+
+        public event Action<AuctionListingRecord, AuctionTransactionRecord> OnListingBought
+        {
+            add => _events.ListingBought += value;
+            remove => _events.ListingBought -= value;
+        }
+
+        public event Action<AuctionListingRecord> OnListingCancelled
+        {
+            add => _events.ListingCancelled += value;
+            remove => _events.ListingCancelled -= value;
+        }
+
+        public event Action<AuctionTransactionRecord> OnPurchaseCompleted
+        {
+            add => _events.PurchaseCompleted += value;
+            remove => _events.PurchaseCompleted -= value;
+        }
+
+        public event Action<AuctionBuyOrderRecord> OnBuyOrderCreated
+        {
+            add => _events.BuyOrderCreated += value;
+            remove => _events.BuyOrderCreated -= value;
+        }
+
+        public event Action<AuctionBuyOrderRecord, AuctionTransactionRecord> OnBuyOrderFulfilled
+        {
+            add => _events.BuyOrderFulfilled += value;
+            remove => _events.BuyOrderFulfilled -= value;
+        }
+
+        public event Action<AuctionBuyOrderRecord> OnBuyOrderCancelled
+        {
+            add => _events.BuyOrderCancelled += value;
+            remove => _events.BuyOrderCancelled -= value;
+        }
 
         private void OnEnable()
-        {
-            if (SocialHubService.Instance != null)
-            {
-                SocialHubService.Instance.AuctionListingCreated += OnAuctionListingCreated;
-                SocialHubService.Instance.AuctionListingSold += OnAuctionListingSold;
-                SocialHubService.Instance.AuctionListingCancelled += OnAuctionListingCancelled;
-                SocialHubService.Instance.AuctionPurchaseCompleted += OnAuctionPurchaseCompleted;
-                SocialHubService.Instance.AuctionBuyOrderCreated += OnAuctionBuyOrderCreated;
-                SocialHubService.Instance.AuctionBuyOrderFulfilled += OnAuctionBuyOrderFulfilled;
-                SocialHubService.Instance.AuctionBuyOrderCancelled += OnAuctionBuyOrderCancelled;
-            }
-        }
+            => _events.Bind(SocialHubService.Instance, () => GetAccountId(Owner));
 
         private void OnDisable()
-        {
-            if (SocialHubService.Instance != null)
-            {
-                SocialHubService.Instance.AuctionListingCreated -= OnAuctionListingCreated;
-                SocialHubService.Instance.AuctionListingSold -= OnAuctionListingSold;
-                SocialHubService.Instance.AuctionListingCancelled -= OnAuctionListingCancelled;
-                SocialHubService.Instance.AuctionPurchaseCompleted -= OnAuctionPurchaseCompleted;
-                SocialHubService.Instance.AuctionBuyOrderCreated -= OnAuctionBuyOrderCreated;
-                SocialHubService.Instance.AuctionBuyOrderFulfilled -= OnAuctionBuyOrderFulfilled;
-                SocialHubService.Instance.AuctionBuyOrderCancelled -= OnAuctionBuyOrderCancelled;
-            }
-        }
-
-        private void OnAuctionListingCreated(string accountId, AuctionListingRecord listing)
-        {
-            if (IsOwner && GetAccountId(Owner) == accountId)
-                OnListingCreated?.Invoke(listing);
-        }
-
-        private void OnAuctionListingSold(string buyerAccountId, string sellerAccountId, AuctionListingRecord listing, AuctionTransactionRecord transaction)
-        {
-            string myAccountId = GetAccountId(Owner);
-            if (IsOwner && (myAccountId == buyerAccountId || myAccountId == sellerAccountId))
-                OnListingBought?.Invoke(listing, transaction);
-        }
-
-        private void OnAuctionListingCancelled(string sellerAccountId, AuctionListingRecord listing)
-        {
-            if (IsOwner && GetAccountId(Owner) == sellerAccountId)
-                OnListingCancelled?.Invoke(listing);
-        }
-
-        private void OnAuctionPurchaseCompleted(string buyerAccountId, AuctionTransactionRecord transaction)
-        {
-            if (IsOwner && GetAccountId(Owner) == buyerAccountId)
-                OnPurchaseCompleted?.Invoke(transaction);
-        }
-
-        private void OnAuctionBuyOrderCreated(string accountId, AuctionBuyOrderRecord buyOrder)
-        {
-            if (IsOwner && GetAccountId(Owner) == accountId)
-                OnBuyOrderCreated?.Invoke(buyOrder);
-        }
-
-        private void OnAuctionBuyOrderFulfilled(string sellerAccountId, string buyerAccountId, AuctionBuyOrderRecord buyOrder, AuctionTransactionRecord transaction)
-        {
-            string myAccountId = GetAccountId(Owner);
-            if (IsOwner && (myAccountId == sellerAccountId || myAccountId == buyerAccountId))
-                OnBuyOrderFulfilled?.Invoke(buyOrder, transaction);
-        }
-
-        private void OnAuctionBuyOrderCancelled(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
-        {
-            if (IsOwner && GetAccountId(Owner) == buyerAccountId)
-                OnBuyOrderCancelled?.Invoke(buyOrder);
-        }
+            => _events.Unbind();
 
         [Serializable]
         private class AuctionSearchResults
