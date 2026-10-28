@@ -45,10 +45,10 @@ namespace MMO.Persistence
         private readonly Dictionary<string, Func<PlayerSaveRecord>> _livePlayers = new();
         private readonly Dictionary<string, PlayerSaveRecord> _finalRecords = new();
         private readonly Dictionary<string, string> _storageVersions = new();
-        private readonly Dictionary<string, List<WalletReservationRecord>> _pendingWalletReservations = new();
         private readonly HashSet<string> _dirty = new();
         private readonly Dictionary<string, double> _debounceUntil = new();
 
+        private readonly WalletReservationStore _walletReservations = new WalletReservationStore();
         private IPlayerRepository _repository;
         private bool _connected;
         private bool _saving;
@@ -229,11 +229,7 @@ namespace MMO.Persistence
             // carry. Captured snapshots are fresh objects, so the service remembers it here.
             _storageVersions[accountId] = record != null ? record.StorageVersion : null;
 
-            List<WalletReservationRecord> reservations = CopyWalletReservations(record?.PendingWalletReservations);
-            if (reservations.Count > 0)
-                _pendingWalletReservations[accountId] = reservations;
-            else
-                _pendingWalletReservations.Remove(accountId);
+            _walletReservations.SetFromRecord(accountId, record);
         }
 
         /// <summary>
@@ -287,19 +283,9 @@ namespace MMO.Persistence
                 return false;
             }
 
-            if (!_pendingWalletReservations.TryGetValue(accountId, out List<WalletReservationRecord> reservations))
-            {
-                reservations = new List<WalletReservationRecord>();
-                _pendingWalletReservations.Add(accountId, reservations);
-            }
+            if (!_walletReservations.Add(accountId, reservation))
+                return false;
 
-            for (int i = 0; i < reservations.Count; i++)
-            {
-                if (reservations[i].ReservationId == reservation.ReservationId)
-                    return false;
-            }
-
-            reservations.Add(CopyWalletReservation(reservation));
             return await FlushAsync(accountId, requireConnected: true);
         }
 
@@ -309,23 +295,13 @@ namespace MMO.Persistence
             if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(reservationId))
                 return false;
 
-            if (_pendingWalletReservations.TryGetValue(accountId, out List<WalletReservationRecord> reservations))
-            {
-                reservations.RemoveAll(reservation => reservation.ReservationId == reservationId);
-                if (reservations.Count == 0)
-                    _pendingWalletReservations.Remove(accountId);
-            }
-
+            _walletReservations.Remove(accountId, reservationId);
             return await FlushAsync(accountId, requireConnected: true);
         }
 
         /// <summary>Returns a detached copy of this player's unresolved wallet reservations.</summary>
         public List<WalletReservationRecord> GetPendingWalletReservations(string accountId)
-        {
-            return _pendingWalletReservations.TryGetValue(accountId ?? string.Empty, out List<WalletReservationRecord> reservations)
-                ? CopyWalletReservations(reservations)
-                : new List<WalletReservationRecord>();
-        }
+            => _walletReservations.Get(accountId);
 
         /// <summary>
         /// Marks a player dirty. <paramref name="immediate"/> skips the debounce window (used for
@@ -517,41 +493,6 @@ namespace MMO.Persistence
             }
         }
 
-        private static List<WalletReservationRecord> CopyWalletReservations(
-            IReadOnlyList<WalletReservationRecord> reservations)
-        {
-            var copy = new List<WalletReservationRecord>();
-            if (reservations == null)
-                return copy;
-
-            for (int i = 0; i < reservations.Count; i++)
-            {
-                if (reservations[i] != null)
-                    copy.Add(CopyWalletReservation(reservations[i]));
-            }
-
-            return copy;
-        }
-
-        private static WalletReservationRecord CopyWalletReservation(WalletReservationRecord reservation)
-        {
-            return reservation == null ? null : new WalletReservationRecord
-            {
-                ReservationId = reservation.ReservationId,
-                TargetId = reservation.TargetId,
-                Kind = reservation.Kind,
-                Amount = reservation.Amount,
-            };
-        }
-
         #endregion
-
-        private async void OnApplicationQuit()
-        {
-            // Best-effort final flush; ConnectionButtons already triggers one before the transport
-            // stops, so this is only a safety net for hard quits.
-            if (_connected)
-                await StopAsync();
-        }
     }
 }
