@@ -356,24 +356,14 @@ namespace MMO.Inventory
                 return false;
             }
 
-            ItemInstance displaced = _equipment[(int)slot];
-
-            // Space gate for a swap: stage the bag without the moving item, so its own cell
-            // counts as free, and ask whether the displaced item has anywhere to land.
-            _scratch.Clear();
-            for (int i = 0; i < _items.Count; i++)
-            {
-                if (i != index)
-                    _scratch.Add(_items[i]);
-            }
-
-            int freeX = 0;
-            int freeY = 0;
-            if (!displaced.IsEmpty &&
-                !_grid.TryFindFreeSpace(_scratch, displaced.Width, displaced.Height, out freeX, out freeY, CellLimit))
+            if (!InventoryOperations.TryPlanEquip(
+                    _items, _equipment, _grid, CellLimit, index, definition, _scratch,
+                    out slot, out int freeX, out int freeY))
             {
                 return false;
             }
+
+            ItemInstance displaced = _equipment[(int)slot];
 
             // Every gate passed — now, and only now, mutate.
             _items.RemoveAt(index);
@@ -407,7 +397,7 @@ namespace MMO.Inventory
             if (worn.IsEmpty)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, worn.Width, worn.Height, out int x, out int y, CellLimit))
+            if (!InventoryOperations.TryPlanUnequip(_items, _grid, CellLimit, worn, out int x, out int y))
                 return false;
 
             _equipment.Set((int)slot, ItemInstance.Empty);
@@ -508,7 +498,7 @@ namespace MMO.Inventory
             if (item.IsEmpty)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, Math.Max(1, item.Width), Math.Max(1, item.Height), out int x, out int y, CellLimit))
+            if (!InventoryOperations.TryPlanFreeSpace(_items, _grid, CellLimit, item, out int x, out int y))
                 return false;
 
             item.GridX = x;
