@@ -77,7 +77,20 @@ namespace MMO.UI
             return labelObject.AddComponent<Text>();
         }
 
-        public static void ApplyLabel(Text label, int fontSize, TextAnchor alignment)
+        public static GameObject Inset(Transform parent, string name, Vector2 inset)
+        {
+            var rectObject = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = (RectTransform)rectObject.transform;
+            rect.SetParent(parent, false);
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = inset;
+            rect.offsetMax = -inset;
+            return rectObject;
+        }
+
+        public static void ApplyLabel(
+            Text label, int fontSize, TextAnchor alignment, int resizeTextMinSize = 7)
         {
             if (label == null)
                 return;
@@ -88,7 +101,7 @@ namespace MMO.UI
             label.color = Color.white;
             label.raycastTarget = false;
             label.resizeTextForBestFit = true;
-            label.resizeTextMinSize = 7;
+            label.resizeTextMinSize = resizeTextMinSize;
             label.resizeTextMaxSize = fontSize;
             label.text = string.Empty;
         }
