@@ -1255,6 +1255,215 @@ namespace MMO.Social
             return result;
         }
 
+        /// <summary>
+        /// Moves currency from the member's wallet into the guild vault. The vault is written first;
+        /// only once that write wins does the wallet lose the currency, so a failed write can never
+        /// create currency. The wallet is checked for the funds before the CAS.
+        /// </summary>
+        public async Task<GuildBankRule> DepositCurrencyAsync(string accountId, string currencyId, long amount)
+        {
+            if (!await EnsureConnectedAsync())
+                return GuildBankRule.BackendUnavailable;
+
+            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+                return GuildBankRule.NoGuild;
+
+            if (!TryGetWallet(accountId, out PlayerWallet wallet) || wallet == null)
+                return GuildBankRule.NoGuild;
+
+            if (string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return GuildBankRule.InvalidAmount;
+
+            if (wallet.GetBalance(currencyId) < amount)
+                return GuildBankRule.InsufficientFunds;
+
+            string guildId = null;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            GuildBankRule result = await RetryBankPermissionAsync(async () =>
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return GuildBankRule.NoGuild;
+
+                guildId = index.GuildId;
+                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+
+                GuildBankRule rule = GuildBankRules.CanDepositCurrency(guild, bank, accountId, currencyId, amount, now);
+                if (rule != GuildBankRule.Ok)
+                    return rule;
+
+                GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
+                if (!GuildBankRules.DepositCurrency(bank, currencyId, amount, rank, now))
+                    return GuildBankRule.InvalidAmount;
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                await AppendCurrencyLedgerAsync(guildId, accountId, GuildBankLedgerAction.Deposit, currencyId, amount);
+                return GuildBankRule.Ok;
+            });
+
+            if (result == GuildBankRule.Ok)
+            {
+                // The vault is durable. Only now may the wallet lose the currency; if it somehow
+                // cannot, take the amount back out of the vault so no currency is created.
+                if (!wallet.Remove(currencyId, amount))
+                {
+                    await RemoveCurrencyFromBankAsync(guildId, currencyId, amount);
+                    return GuildBankRule.Conflict;
+                }
+
+                await PushBankAsync(guildId);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Moves currency from the guild vault into the member's wallet. The vault is debited first;
+        /// if the wallet cannot accept it (overflow), the amount is returned to the vault.
+        /// </summary>
+        public async Task<GuildBankRule> WithdrawCurrencyAsync(string accountId, string currencyId, long amount)
+        {
+            if (!await EnsureConnectedAsync())
+                return GuildBankRule.BackendUnavailable;
+
+            if (!_localGuilds.TryGetValue(accountId ?? string.Empty, out PlayerGuild player) || player == null)
+                return GuildBankRule.NoGuild;
+
+            if (!TryGetWallet(accountId, out PlayerWallet wallet) || wallet == null)
+                return GuildBankRule.NoGuild;
+
+            if (string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return GuildBankRule.InvalidAmount;
+
+            string guildId = null;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            GuildBankRule result = await RetryBankPermissionAsync(async () =>
+            {
+                SocialIndexRecord index = await _repository.LoadIndexAsync(accountId, CancellationToken.None);
+                if (index == null || string.IsNullOrEmpty(index.GuildId))
+                    return GuildBankRule.NoGuild;
+
+                guildId = index.GuildId;
+                GuildRecord guild = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+
+                GuildBankRule rule = GuildBankRules.CanWithdrawCurrency(guild, bank, accountId, currencyId, amount, now);
+                if (rule != GuildBankRule.Ok)
+                    return rule;
+
+                GuildRank rank = GuildRules.RankOf(GuildRules.FindMember(guild, accountId));
+                if (!GuildBankRules.WithdrawCurrency(bank, currencyId, amount, rank, now))
+                    return GuildBankRule.InsufficientFunds;
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                await AppendCurrencyLedgerAsync(guildId, accountId, GuildBankLedgerAction.Withdraw, currencyId, amount);
+                return GuildBankRule.Ok;
+            });
+
+            if (result == GuildBankRule.Ok)
+            {
+                if (!wallet.Add(currencyId, amount))
+                {
+                    await ReturnCurrencyToBankAsync(guildId, currencyId, amount);
+                    return GuildBankRule.Conflict;
+                }
+
+                await PushBankAsync(guildId);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Takes currency back out of the vault when the wallet debit that was supposed to follow a
+        /// deposit failed; best effort, and it never spends a rank's quota.
+        /// </summary>
+        private async Task RemoveCurrencyFromBankAsync(string guildId, string currencyId, long amount)
+        {
+            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return;
+
+            await RetryBankAsync(async () =>
+            {
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+                if (!GuildBankRules.WithdrawCurrency(bank, currencyId, amount, GuildRank.None, DateTimeOffset.UtcNow))
+                    return new GuildBankResult(GuildBankRule.InsufficientFunds);
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return new GuildBankResult(GuildBankRule.Ok);
+            });
+
+            await PushBankAsync(guildId);
+        }
+
+        /// <summary>Puts currency back into the vault after a wallet credit race lost; best effort.</summary>
+        private async Task ReturnCurrencyToBankAsync(string guildId, string currencyId, long amount)
+        {
+            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return;
+
+            await RetryBankAsync(async () =>
+            {
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+                if (!GuildBankRules.DepositCurrency(bank, currencyId, amount, GuildRank.None, DateTimeOffset.UtcNow))
+                    return new GuildBankResult(GuildBankRule.InvalidAmount);
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return new GuildBankResult(GuildBankRule.Ok);
+            });
+
+            await PushBankAsync(guildId);
+        }
+
+        private async Task AppendCurrencyLedgerAsync(
+            string guildId, string actorAccountId, GuildBankLedgerAction action, string currencyId, long amount)
+        {
+            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return;
+
+            try
+            {
+                GuildBankLedgerRecord ledger = await _repository.LoadGuildBankLedgerAsync(guildId, CancellationToken.None);
+                if (ledger == null)
+                {
+                    ledger = new GuildBankLedgerRecord
+                    {
+                        GuildId = guildId,
+                        Entries = new List<GuildBankLedgerEntry>(),
+                    };
+                }
+                else if (ledger.Entries == null)
+                {
+                    ledger.Entries = new List<GuildBankLedgerEntry>();
+                }
+
+                ledger.Entries.Add(new GuildBankLedgerEntry
+                {
+                    GuildId = guildId,
+                    ActorAccountId = actorAccountId,
+                    Action = action,
+                    TabIndex = -1,
+                    ItemName = currencyId,
+                    Width = 0,
+                    Height = 0,
+                    GridX = 0,
+                    GridY = 0,
+                    StackCount = 0,
+                    ValuePerUnit = 1,
+                    TotalValue = amount,
+                    TimestampTicks = DateTimeOffset.UtcNow.UtcTicks,
+                    AffectedCells = new List<int>(),
+                });
+
+                await _repository.SaveGuildBankLedgerAsync(ledger, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Guild bank ledger append failed: {e.Message}");
+            }
+        }
+
         private async Task<GuildBankRecord> LoadOrCreateBankAsync(string guildId)
         {
             if (string.IsNullOrEmpty(guildId))

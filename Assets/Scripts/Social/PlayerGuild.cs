@@ -158,6 +158,24 @@ namespace MMO.Social
             RpcRequestWithdraw(tabIndex, gridX, gridY, stackCount);
         }
 
+        /// <summary>Deposits carried currency into the guild vault.</summary>
+        public void RequestDepositCurrency(string currencyId, long amount)
+        {
+            if (!OwnsSelf() || string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return;
+
+            RpcDepositCurrency(currencyId, amount);
+        }
+
+        /// <summary>Withdraws currency from the guild vault into the carried wallet.</summary>
+        public void RequestWithdrawCurrency(string currencyId, long amount)
+        {
+            if (!OwnsSelf() || string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return;
+
+            RpcWithdrawCurrency(currencyId, amount);
+        }
+
         /// <param name="rank">The <see cref="GuildRank"/> whose bank permissions are edited, as its int value.</param>
         public void RequestSetPermission(int rank, bool allowDeposit, bool allowWithdraw, int withdrawLimit)
         {
@@ -245,6 +263,24 @@ namespace MMO.Social
                 return;
 
             _ = ResolveBankAsync(SocialHubService.Instance.WithdrawAsync(_accountId, tabIndex, gridX, gridY, stackCount));
+        }
+
+        [ServerRpc]
+        private void RpcDepositCurrency(string currencyId, long amount, NetworkConnection sender = null)
+        {
+            if (!ValidSender(sender))
+                return;
+
+            _ = ResolveBankRuleAsync(SocialHubService.Instance.DepositCurrencyAsync(_accountId, currencyId, amount));
+        }
+
+        [ServerRpc]
+        private void RpcWithdrawCurrency(string currencyId, long amount, NetworkConnection sender = null)
+        {
+            if (!ValidSender(sender))
+                return;
+
+            _ = ResolveBankRuleAsync(SocialHubService.Instance.WithdrawCurrencyAsync(_accountId, currencyId, amount));
         }
 
         [ServerRpc]

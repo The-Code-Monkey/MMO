@@ -1,4 +1,5 @@
 using System;
+using MMO.Economy;
 using MMO.Inventory;
 using MMO.Social;
 using NUnit.Framework;
@@ -237,6 +238,113 @@ namespace MMO.Tests
             Assert.AreEqual("Shield", GuildBankRules.ItemAt(tab, 2, 1).ItemName);
             Assert.AreEqual("Shield", GuildBankRules.ItemAt(tab, 3, 2).ItemName);
             Assert.IsTrue(GuildBankRules.ItemAt(tab, 0, 0).IsEmpty);
+        }
+
+        [Test]
+        public void EnsureDefaults_InitialisesTheCurrencyVault()
+        {
+            var bank = new GuildBankRecord { GuildId = "g1" };
+
+            GuildBankRules.EnsureDefaults(bank);
+
+            Assert.IsNotNull(bank.Vault);
+            Assert.AreEqual(0, bank.Vault.Count);
+        }
+
+        [Test]
+        public void CanDepositCurrency_Member_IsAllowed()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Member));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+
+            Assert.AreEqual(
+                GuildBankRule.Ok,
+                GuildBankRules.CanDepositCurrency(guild, bank, "a", CurrencyIds.Gold, 50, Now));
+        }
+
+        [Test]
+        public void CanDepositCurrency_NonMember_IsRefused()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Member));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+
+            Assert.AreEqual(
+                GuildBankRule.NotInGuild,
+                GuildBankRules.CanDepositCurrency(guild, bank, "b", CurrencyIds.Gold, 50, Now));
+        }
+
+        [Test]
+        public void CanDepositCurrency_NonPositiveAmount_IsRefused()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Member));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+
+            Assert.AreEqual(
+                GuildBankRule.InvalidAmount,
+                GuildBankRules.CanDepositCurrency(guild, bank, "a", CurrencyIds.Gold, 0, Now));
+        }
+
+        [Test]
+        public void CanDepositCurrency_RankWithoutDeposit_IsRefused()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Member));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+            GuildBankRules.SetPermission(bank, GuildRank.Member, allowDeposit: false, allowWithdraw: true, withdrawLimit: 1);
+
+            Assert.AreEqual(
+                GuildBankRule.NotPermitted,
+                GuildBankRules.CanDepositCurrency(guild, bank, "a", CurrencyIds.Gold, 5, Now));
+        }
+
+        [Test]
+        public void DepositCurrency_CreditsTheVault()
+        {
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+
+            bool deposited = GuildBankRules.DepositCurrency(bank, CurrencyIds.Gold, 25, GuildRank.Member, Now);
+
+            Assert.IsTrue(deposited);
+            Assert.AreEqual(25, WalletRules.BalanceOf(bank.Vault, CurrencyIds.Gold));
+        }
+
+        [Test]
+        public void CanWithdrawCurrency_MoreThanTheVaultHolds_IsRefused()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Leader));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+            GuildBankRules.DepositCurrency(bank, CurrencyIds.Gold, 10, GuildRank.None, Now);
+
+            Assert.AreEqual(
+                GuildBankRule.InsufficientFunds,
+                GuildBankRules.CanWithdrawCurrency(guild, bank, "a", CurrencyIds.Gold, 11, Now));
+        }
+
+        [Test]
+        public void WithdrawCurrency_DebitsTheVault()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Leader));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+            GuildBankRules.DepositCurrency(bank, CurrencyIds.Gold, 40, GuildRank.None, Now);
+
+            Assert.AreEqual(
+                GuildBankRule.Ok,
+                GuildBankRules.CanWithdrawCurrency(guild, bank, "a", CurrencyIds.Gold, 15, Now));
+            Assert.IsTrue(GuildBankRules.WithdrawCurrency(bank, CurrencyIds.Gold, 15, GuildRank.Leader, Now));
+
+            Assert.AreEqual(25, WalletRules.BalanceOf(bank.Vault, CurrencyIds.Gold));
+        }
+
+        [Test]
+        public void CanWithdrawCurrency_RankWithoutWithdraw_IsRefused()
+        {
+            GuildRecord guild = Guild(("a", GuildRank.Member));
+            GuildBankRecord bank = GuildBankRules.CreateDefault("g1");
+            GuildBankRules.DepositCurrency(bank, CurrencyIds.Gold, 10, GuildRank.None, Now);
+            GuildBankRules.SetPermission(bank, GuildRank.Member, allowDeposit: true, allowWithdraw: false, withdrawLimit: 1);
+
+            Assert.AreEqual(
+                GuildBankRule.NotPermitted,
+                GuildBankRules.CanWithdrawCurrency(guild, bank, "a", CurrencyIds.Gold, 5, Now));
         }
     }
 }

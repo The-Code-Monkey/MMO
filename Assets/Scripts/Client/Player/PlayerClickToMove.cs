@@ -1,4 +1,5 @@
 using FishNet.Object;
+using MMO.Banking;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.UI;
@@ -20,6 +21,7 @@ namespace MMO.Client
         private GameObject _marker;
         private CraftingStation _pendingStation;
         private ResourceNode _pendingNode;
+        private BankTeller _pendingTeller;
         private readonly ClickToMoveMarkerTracker _tracker = new ClickToMoveMarkerTracker();
         private CraftingPanelView _craftingPanel;
 
@@ -67,6 +69,7 @@ namespace MMO.Client
             {
                 OpenPendingStation();
                 GatherPendingNode();
+                OpenPendingTeller();
             }
         }
 
@@ -135,12 +138,22 @@ namespace MMO.Client
                     return;
                 }
 
+                // A bank teller is walked to exactly like a crafting station; its window opens on
+                // arrival.
+                if (hit.collider.TryGetComponent(out BankTeller teller))
+                {
+                    BeginTellerApproach(teller);
+                    return;
+                }
+
                 // A click on anything else is just a destination: the pending station is dropped,
                 // because the walk this click starts is not towards a station, and the panel goes
                 // with it — the player is walking away from the station it was showing.
                 _pendingStation = null;
                 _pendingNode = null;
+                _pendingTeller = null;
                 CloseCraftingPanel();
+                CloseBank();
 
                 // The server accepts a click by sampling the NavMesh within 1 m and walks to the
                 // sampled point, so the client must mark and measure against the same point —
@@ -185,6 +198,7 @@ namespace MMO.Client
         {
             _pendingStation = null;
             _pendingNode = null;
+            _pendingTeller = null;
 
             if (station == null)
                 return;
@@ -228,6 +242,59 @@ namespace MMO.Client
         }
 
         /// <summary>
+        /// The player clicked a bank teller: stand in front of it and open its window when the
+        /// walk is over. Already within reach, the teller opens at once.
+        /// </summary>
+        public void BeginTellerApproach(BankTeller teller)
+        {
+            _pendingTeller = null;
+            _pendingStation = null;
+            _pendingNode = null;
+
+            if (teller == null)
+                return;
+
+            if (BankTeller.IsWithinReach(transform.position, teller.transform.position))
+            {
+                teller.RequestOpenFromLocalPlayer();
+                return;
+            }
+
+            _pendingTeller = teller;
+
+            Vector3 destination = teller.StandOffPosition;
+            if (NavMesh.SamplePosition(destination, out NavMeshHit navHit, 1f, NavMesh.AllAreas))
+                destination = navHit.position;
+
+            _target = destination;
+            _mover?.RequestMoveTo(destination);
+            ShowMarker(destination);
+        }
+
+        /// <summary>The walk is over: open the teller the player walked to, if still in reach.</summary>
+        private void OpenPendingTeller()
+        {
+            BankTeller teller = _pendingTeller;
+            _pendingTeller = null;
+
+            if (teller == null)
+                return;
+
+            if (!BankTeller.IsWithinReach(transform.position, teller.transform.position))
+                return;
+
+            teller.RequestOpenFromLocalPlayer();
+        }
+
+        /// <summary>Closes the bank window, if one is open.</summary>
+        public void CloseBank()
+        {
+            BankFrameView frame = FindFirstObjectByType<BankFrameView>();
+            if (frame != null && frame.IsOpen)
+                frame.Conceal();
+        }
+
+        /// <summary>
         /// The player clicked a vein: walk to where they can reach it and start gathering on
         /// arrival. Already within reach, the click gathers at once — the server bounds the
         /// session on its own, so this only saves the walk.
@@ -236,6 +303,7 @@ namespace MMO.Client
         {
             _pendingNode = null;
             _pendingStation = null;
+            _pendingTeller = null;
 
             if (node == null)
                 return;

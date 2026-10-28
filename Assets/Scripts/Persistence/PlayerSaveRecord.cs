@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MMO.Content;
+using MMO.Economy;
 using MMO.Gameplay;
 using UnityEngine;
 
@@ -56,7 +57,7 @@ namespace MMO.Persistence
     public class PlayerSaveRecord
     {
         /// <summary>Bump when the shape below stops round-tripping old saves.</summary>
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 4;
 
         /// <summary>The player's stable account key; the storage key this record lives under.</summary>
         public string UserId;
@@ -79,8 +80,27 @@ namespace MMO.Persistence
 /// <summary>The backend's revision hash for optimistic concurrency; not player data.</summary>
         public string StorageVersion;
 
-        /// <summary>Player's gold currency.</summary>
+        /// <summary>
+        /// Legacy single-currency gold balance. Kept so saves written before the multi-currency
+        /// wallet still load; the wallet migrates it into <see cref="Currencies"/> on first load
+        /// and keeps it in sync on save.
+        /// </summary>
         public long Gold = 0;
+
+        /// <summary>
+        /// The player's multi-currency wallet balances. Empty in a legacy save, in which case the
+        /// loader seeds it from <see cref="Gold"/>.
+        /// </summary>
+        public List<CurrencyBalance> Currencies = new List<CurrencyBalance>();
+
+        /// <summary>
+        /// Currency held in the player's personal bank vault, separate from the carried wallet.
+        /// Banked currency is only moved at a bank; it is never lost on death.
+        /// </summary>
+        public List<CurrencyBalance> BankVault = new List<CurrencyBalance>();
+
+        /// <summary>Items held in the player's personal bank grid, separate from the carried bag.</summary>
+        public List<ItemSaveData> BankItems = new List<ItemSaveData>();
 
         public List<ItemSaveData> Items = new List<ItemSaveData>();
 

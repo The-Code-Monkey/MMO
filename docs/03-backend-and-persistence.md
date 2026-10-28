@@ -35,14 +35,18 @@ The unit that travels to and from the database is `PlayerSaveRecord`
 | Field | Type | Meaning | Line |
 |---|---|---|---|
 | `UserId` | `string` | The player's account id. This is the database key. | 62 |
-| `SchemaVersion` | `int` | Format version, currently `2`. Lets future code migrate old saves. | 64 |
+| `SchemaVersion` | `int` | Format version, currently `4`. Lets future code migrate old saves. | 64 |
 | `Level` | `int` | Player level. | 66 |
 | `Health` | `int` | Current health, clamped to the cap when applied. | 69 |
 | `Mana` | `int` | Current mana. | 71 |
 | `Experience` | `int` | Quest/event XP. There is no player level curve yet. | 74 |
 | `Position` | `Vector3` | Reserved. Round-trips but is not applied yet (there is no movement save/load). | 77 |
 | `StorageVersion` | `string` | The backend's revision hash. Not player data; used for safe concurrent writes. | 80 |
-| `Items` | `List<ItemSaveData>` | Both inventory containers flattened into one list (bag + worn). | 85 |
+| `Gold` | `long` | Legacy scalar gold. Kept so pre-wallet saves load; the wallet migrates it into `Currencies` and keeps it in sync. | 88 |
+| `Currencies` | `List<CurrencyBalance>` | The player's multi-currency wallet (gold, silver, faction marks). Empty in a legacy save. | 96 |
+| `BankVault` | `List<CurrencyBalance>` | Currency held in the personal bank vault, separate from the carried wallet. | 103 |
+| `BankItems` | `List<ItemSaveData>` | Items held in the personal bank's 8x6 grid. Same item shape as the bag; never worn. | 108 |
+| `Items` | `List<ItemSaveData>` | Both inventory containers flattened into one list (bag + worn). | 108 |
 | `CompletedQuestIds` | `List<string>` | Quest ids that have already paid their reward. | 88 |
 | `QuestProgress` | `List<QuestProgressEntry>` | Active objective counters. | 91 |
 

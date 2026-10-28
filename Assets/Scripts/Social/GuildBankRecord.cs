@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MMO.Economy;
 using MMO.Inventory;
 
 namespace MMO.Social
@@ -98,6 +99,12 @@ namespace MMO.Social
         public string GuildId;
 
         public List<GuildBankTab> Tabs = new List<GuildBankTab>();
+
+        /// <summary>
+        /// Currency held by the guild, deposited and withdrawn under the same rank permissions and
+        /// quota as the item tabs. A guild vault is a balance list, not a second wallet record.
+        /// </summary>
+        public List<CurrencyBalance> Vault = new List<CurrencyBalance>();
 
         public List<GuildBankPermission> Permissions = new List<GuildBankPermission>();
 

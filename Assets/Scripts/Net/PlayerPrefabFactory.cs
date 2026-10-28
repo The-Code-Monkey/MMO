@@ -7,6 +7,7 @@ using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
 using MMO.Auction;
+using MMO.Banking;
 using MMO.Client;
 using MMO.Content;
 using MMO.Crafting;
@@ -176,6 +177,11 @@ namespace MMO.Net
             // server. Appended last so every behaviour added before it keeps the NetworkBehaviour
             // and RPC index the baked prefab already uses.
             go.AddComponent<LocalPlayerHud>();
+
+            // Personal bank storage and the teller open flow. Appended last so every behaviour
+            // added before it keeps the NetworkBehaviour and RPC index the baked prefab already
+            // uses.
+            go.AddComponent<PlayerBank>();
 
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.

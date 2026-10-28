@@ -1,5 +1,7 @@
 using FishNet.Connection;
 using FishNet.Object;
+using MMO.Auction;
+using MMO.Banking;
 using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
@@ -34,6 +36,8 @@ namespace MMO.Client
     public sealed class LocalPlayerHud : NetworkBehaviour
     {
         private NetworkHud _hud;
+        private PlayerBank _bank;
+        private IBankSource _bankSource;
 
         /// <summary>This client's HUD, or null when none was built (a remote player, or a server).</summary>
         public NetworkHud Hud => _hud;
@@ -120,7 +124,7 @@ namespace MMO.Client
                 abilities: GetComponent<PlayerAbilities>(),
                 target: null,
                 createEventSystem: true,
-                createGuildBankFrame: false,
+                createBankFrame: true,
                 crafting: GetComponent<PlayerCrafting>(),
                 mount: GetComponent<PlayerMount>(),
                 dialogue: GetComponent<PlayerDialogue>(),
@@ -129,7 +133,37 @@ namespace MMO.Client
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
             _hud.BindTrade(GetComponent<PlayerTrade>(), GetComponent<PlayerInventory>());
 
+            _bank = GetComponent<PlayerBank>();
+            if (_bank != null)
+                _bank.BankOpened += OnBankOpened;
+
             return _hud;
+        }
+
+        /// <summary>
+        /// The server accepted a teller open: build the matching bank source and show the window.
+        /// A guild teller also passes the guild so the rank editor appears.
+        /// </summary>
+        private void OnBankOpened(BankKind kind)
+        {
+            if (_hud == null)
+                return;
+
+            _bankSource?.Unsubscribe();
+
+            PlayerInventory bag = GetComponent<PlayerInventory>();
+            PlayerGuild guild = GetComponent<PlayerGuild>();
+
+            if (kind == BankKind.Guild)
+            {
+                _bankSource = new GuildBankSource(guild);
+                _hud.OpenBank(_bankSource, bag, guild);
+            }
+            else
+            {
+                _bankSource = new PersonalBankSource(_bank, GetComponent<PlayerWallet>());
+                _hud.OpenBank(_bankSource, bag);
+            }
         }
 
         /// <summary>
@@ -140,6 +174,12 @@ namespace MMO.Client
         {
             if (_hud == null)
                 return;
+
+            if (_bank != null)
+                _bank.BankOpened -= OnBankOpened;
+
+            _bankSource?.Unsubscribe();
+            _bankSource = null;
 
             // Destroying the root runs NetworkHud.OnDestroy, which unbinds every screen first; the
             // reference is cleared so a later ownership change can build a fresh HUD.
