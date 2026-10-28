@@ -180,7 +180,7 @@ namespace MMO.Editor
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            CreateSun();
+            ZoneNetworkAuthoring.CreateSun();
 
             // The one camera a client looks through. Authored in the zone (rather than on the
             // player prefab) so the menu never gets one and the rig survives scene loads. Every
@@ -196,8 +196,8 @@ namespace MMO.Editor
                 useTokenAuth: true);
 
             NetworkManager manager = NetworkManagerSceneBaker.CreateInActiveScene(settings);
-            ConfigureZoneIdentity(manager, serverId, templateId, port);
-            EnableTransportReuseAddress(manager);
+            ZoneNetworkAuthoring.ConfigureZoneIdentity(manager, serverId, templateId, port);
+            ZoneNetworkAuthoring.EnableTransportReuseAddress(manager);
 
             // NetworkManagerFactory attaches a fixed single target-dummy spawner and
             // crafting-station spawner so a bare dev scene has one of each. A zone authors those —
@@ -205,7 +205,7 @@ namespace MMO.Editor
             // zone would spawn two dummies (and the tutorial, which is only a dummy, would also get
             // an unwanted station). The PlayerSpawner stays: WorldBootstrap hands it the zone's
             // spawn points.
-            RemoveFixedSpawners(manager);
+            ZoneNetworkAuthoring.RemoveFixedSpawners(manager);
 
             var zoneRoot = new GameObject(ZoneRootName);
             Transform ground = CreateChild(GroundName, zoneRoot.transform).transform;
@@ -223,7 +223,7 @@ namespace MMO.Editor
                 GrayboxZoneGeometry.BuildWilderness(
                     CreateChild(ScatterName, zoneRoot.transform).transform,
                     CreateChild(HazardsName, zoneRoot.transform).transform);
-                CreateClaimFlag(zoneRoot.transform);
+                ZoneRiskAuthor.CreateClaimFlag(zoneRoot.transform);
             }
             // The tutorial zone is deliberately bare: flat ground and boundary only.
 
@@ -235,8 +235,9 @@ namespace MMO.Editor
             WorldBootstrapBaker.EnsureInActiveScene();
             WorldBootstrapBaker.RegisterMarkerPrefabs(manager);
 
-            CreateRiskConfig(zoneRoot.transform, risk);
-            CreatePortal(zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName);
+            ZoneRiskAuthor.CreateRiskConfig(zoneRoot.transform, risk);
+            ZonePortalAuthor.Create(
+                zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName);
 
             // --- INJECT NAVMESH BAKING HERE ---
             // No obstacle is placed here: the crafting station carries its own NavMeshObstacle
@@ -258,58 +259,6 @@ namespace MMO.Editor
             _ => SpawnPointCount,
         };
 
-        /// <summary>
-        /// Removes the factory's single fixed dummy/station spawners so the zone's markers are the
-        /// only thing that puts interactive objects in the world.
-        /// </summary>
-        private static void RemoveFixedSpawners(NetworkManager manager)
-        {
-            foreach (TargetDummySpawner dummy in manager.GetComponents<TargetDummySpawner>())
-                UnityEngine.Object.DestroyImmediate(dummy);
-
-            foreach (CraftingStationSpawner station in manager.GetComponents<CraftingStationSpawner>())
-                UnityEngine.Object.DestroyImmediate(station);
-        }
-
-        // ---- Zone identity -------------------------------------------------
-
-        /// <summary>
-        /// Turns on <c>SO_REUSEADDR</c> for the zone's Tugboat socket. Tugboat exposes this only as
-        /// a private serialized field (<c>_reuseAddress</c>, no public setter) and defaults it to
-        /// off, so a dedicated server restarted while sockets from the previous run are still in
-        /// TIME_WAIT fails to bind its port with "Address already in use" and the zone silently
-        /// comes up offline. Baking the flag into every zone scene makes rebinding the port a
-        /// property of the scene rather than something each launch has to arrange.
-        /// </summary>
-        private static void EnableTransportReuseAddress(NetworkManager manager)
-        {
-            var tugboat = manager.GetComponent<Tugboat>();
-            if (tugboat == null)
-                return;
-
-            var serialized = new SerializedObject(tugboat);
-            serialized.FindProperty("_reuseAddress").boolValue = true;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static void ConfigureZoneIdentity(NetworkManager manager, string serverId, string templateId, ushort port)
-        {
-            SocialHubService hub = manager.GetComponent<SocialHubService>();
-            if (hub == null)
-                return;
-
-            hub.ZoneId = serverId;
-
-            // The raid registry heartbeat (issue #57) advertises this zone's host/port/template;
-            // the fields are private serialized so they are set the same way the project sets other
-            // inspector-only data (see PlayerPrefabBaker).
-            var serialized = new SerializedObject(hub);
-            serialized.FindProperty("_instanceHostAddress").stringValue = DefaultTargetHost;
-            serialized.FindProperty("_instanceHostPort").intValue = port;
-            serialized.FindProperty("_zoneTemplateId").stringValue = templateId;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         // ---- Geometry ------------------------------------------------------
 
         // ---- Spawns, risk and portal ---------------------------------------
@@ -322,78 +271,7 @@ namespace MMO.Editor
         /// publishes, never a loose object in the scene. Heights sit each object on the ground
         /// (a cube's mesh is centred on its origin).
         /// </summary>
-        private static void CreateRiskConfig(Transform zoneRoot, ZoneRiskTier tier)
-        {
-            var go = CreateChild(RiskConfigName, zoneRoot);
-            var config = go.AddComponent<ZoneRiskConfig>();
-            config.SetTier(tier);
-        }
-
-        /// <summary>
-        /// Authors the Wilderness claim flag: a scene volume (no prefab, no NetworkObject) clear of
-        /// the spawn clearing, portal corridor, nodes and hazards.
-        /// </summary>
-        private static void CreateClaimFlag(Transform zoneRoot)
-        {
-            var go = CreateChild(TerritoryName, zoneRoot);
-            go.transform.localPosition = new Vector3(-16f, 0f, 16f);
-
-            var collider = go.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
-            collider.center = new Vector3(0f, 1f, 0f);
-            collider.size = new Vector3(8f, 2f, 8f);
-
-            var flag = go.AddComponent<ClaimFlag>();
-            flag.Configure("wilderness-keep", new VulnerabilityWindow
-            {
-                Days = new[] { DayOfWeek.Saturday, DayOfWeek.Sunday },
-                StartMinuteUtc = 18 * 60,
-                EndMinuteUtc = 22 * 60,
-            });
-        }
-
-        private static void CreatePortal(
-            Transform zoneRoot,
-            string portalName,
-            string sourceServerId,
-            string targetHost,
-            ushort targetPort,
-            string targetServerId,
-            string targetZoneName)
-        {
-            var go = CreateChild(portalName, zoneRoot);
-            go.transform.localPosition = new Vector3(0f, PortalHeight / 2f, GroundExtent / 2f - 0.5f);
-
-            // ZoneTransferTrigger requires a Collider; add the BoxCollider first so the required
-            // component is already satisfied. It is a trigger volume, not an obstacle.
-            var collider = go.AddComponent<BoxCollider>();
-            collider.isTrigger = true;
-            collider.size = new Vector3(GroundTile * 2f, PortalHeight, GroundTile);
-
-            var trigger = go.AddComponent<ZoneTransferTrigger>();
-            var serialized = new SerializedObject(trigger);
-            serialized.FindProperty("_targetHost").stringValue = targetHost;
-            serialized.FindProperty("_targetPort").intValue = targetPort;
-            serialized.FindProperty("_targetServerId").stringValue = targetServerId;
-            serialized.FindProperty("_targetZoneName").stringValue = targetZoneName;
-            serialized.FindProperty("_sourceServerId").stringValue = sourceServerId;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         // ---- Helpers -------------------------------------------------------
-
-        private static void CreateSun()
-        {
-            var go = new GameObject("Directional Light");
-            go.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
-            go.transform.position = new Vector3(0f, 3f, 0f);
-
-            Light light = go.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.intensity = 1f;
-            light.color = new Color(1f, 0.956f, 0.839f);
-            light.shadows = LightShadows.Soft;
-        }
 
         private static GameObject CreateChild(string name, Transform parent)
             => ZoneSceneScaffold.CreateChild(name, parent);
