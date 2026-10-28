@@ -52,16 +52,10 @@ namespace MMO.Net
         private bool _globalSceneRegistered;
         private bool _navMeshDiagnosticsLogged;
 
-        // One spawned network object per authored marker, keyed by the marker component. Cleared
-        // when the server stops, because FishNet despawns and destroys everything it spawned.
-        private readonly Dictionary<Component, NetworkObject> _spawnedFromMarkers = new();
-
-        // Built-in fallback, created at most once per server run and kept out of sight like every
-        // other runtime source prefab.
-        private NetworkObject _fallbackNodePrefab;
+        private ZoneWorldSpawner _worldSpawner;
 
         /// <summary>How many world objects this bootstrap has spawned from markers.</summary>
-        public int SpawnedWorldObjectCount => _spawnedFromMarkers.Count;
+        public int SpawnedWorldObjectCount => _worldSpawner != null ? _worldSpawner.Count : 0;
 
         private void OnEnable()
         {
@@ -69,6 +63,10 @@ namespace MMO.Net
             if (_manager == null)
                 _manager = FindFirstObjectByType<NetworkManager>();
 
+            _worldSpawner = new ZoneWorldSpawner(
+                () => _manager,
+                new MarkerPrefabResolver(() => _manager),
+                WireSpawnPoints);
             Subscribe();
         }
 
@@ -166,8 +164,7 @@ namespace MMO.Net
             {
                 // FishNet destroyed every spawned object with the server; drop the bookkeeping so a
                 // later restart spawns a fresh world instead of reusing dead references.
-                _spawnedFromMarkers.Clear();
-                _fallbackNodePrefab = null;
+                _worldSpawner?.Reset();
                 _globalSceneRegistered = false;
             }
         }
@@ -240,252 +237,7 @@ namespace MMO.Net
                 return;
 
             LogNavMeshDiagnostics();
-
-            RecipeRegistry.LoadAllFromResources();
-
-            // The item assets too: the tool gate reads a tool's kind and tier from its
-            // definition, and it resolves that definition by the item's name — so an item
-            // nobody loads is a tool the server cannot recognise.
-            ItemDefinitionRegistry.LoadAllFromResources();
-
-            // Mounts are summoned by item name, so the server needs the mount assets loaded
-            // before the first mount request can resolve one.
-            MountDataRegistry.LoadAllFromResources();
-
-            // Content registries resolve persisted quest ids and loot tables by name. Their
-            // assets self-register on load, but nothing walks Resources unless this does.
-            QuestRegistry.LoadAllFromResources();
-            LootTableRegistry.LoadAllFromResources();
-
-            WireSpawnPoints();
-
-            SpawnFromMarkers(
-                FindObjectsByType<ResourceNodeMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
-                SpawnResourceNode);
-
-            SpawnFromMarkers(
-                FindObjectsByType<CraftingStationMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
-                SpawnCraftingStation);
-
-            SpawnFromMarkers(
-                FindObjectsByType<BankTellerMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
-                SpawnBankTeller);
-
-            ConfigureSpawnControllers(
-                FindObjectsByType<EnemyMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
-        }
-
-        private void SpawnFromMarkers<T>(T[] markers, System.Func<T, NetworkObject> spawn) where T : Component
-        {
-            foreach (T marker in markers)
-            {
-                if (marker == null)
-                    continue;
-
-                if (_spawnedFromMarkers.TryGetValue(marker, out NetworkObject existing) &&
-                    existing != null && existing.IsSpawned)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    NetworkObject spawned = spawn(marker);
-                    if (spawned != null)
-                        _spawnedFromMarkers[marker] = spawned;
-                }
-                catch (System.Exception e)
-                {
-                    // One bad marker must not abort the whole world spawn.
-                    Debug.LogError($"{nameof(WorldBootstrap)}: '{marker.name}' could not be spawned. {e.Message}", marker);
-                }
-            }
-        }
-
-        private NetworkObject SpawnResourceNode(ResourceNodeMarker marker)
-        {
-            NetworkObject prefab = marker.NodePrefab != null
-                ? EnsureNodeRegistered(marker.NodePrefab)
-                : ResolveDefaultNodePrefab();
-
-            if (prefab == null)
-            {
-                Debug.LogError($"{nameof(WorldBootstrap)}: no ResourceNode prefab for marker '{marker.name}'; skipping.", marker);
-                return null;
-            }
-
-            return SpawnAt(prefab, marker.transform);
-        }
-
-        private NetworkObject SpawnCraftingStation(CraftingStationMarker marker)
-        {
-            NetworkObject prefab = marker.StationPrefab != null
-                ? EnsureStationRegistered(marker.StationPrefab)
-                : ResolveRegisteredPrefab(CraftingStationPrefabFactory.PrefabName);
-
-            if (prefab == null)
-            {
-                Debug.LogError($"{nameof(WorldBootstrap)}: no CraftingStation prefab for marker '{marker.name}'; skipping.", marker);
-                return null;
-            }
-
-            NetworkObject spawned = SpawnAt(prefab, marker.transform);
-            if (spawned != null && marker.StationType != CraftingStationType.None)
-            {
-                CraftingStation station = spawned.GetComponent<CraftingStation>();
-                if (station != null)
-                    station.Configure(marker.StationType);
-
-                // Ensure the BoxCollider is not a trigger so OnMouseDown() fires and
-                // players cannot walk through the crafting station.
-                if (spawned.TryGetComponent(out BoxCollider boxCollider))
-                {
-                    boxCollider.isTrigger = false;
-                }
-            }
-
-            return spawned;
-        }
-
-        private NetworkObject SpawnBankTeller(BankTellerMarker marker)
-        {
-            NetworkObject prefab = marker.TellerPrefab != null
-                ? EnsureTellerRegistered(marker.TellerPrefab)
-                : ResolveRegisteredPrefab(BankTellerPrefabFactory.PrefabName);
-
-            if (prefab == null)
-            {
-                Debug.LogError($"{nameof(WorldBootstrap)}: no BankTeller prefab for marker '{marker.name}'; skipping.", marker);
-                return null;
-            }
-
-            NetworkObject spawned = SpawnAt(prefab, marker.transform);
-            if (spawned != null && spawned.TryGetComponent(out BankTeller teller))
-                teller.Configure(marker.Kind);
-
-            return spawned;
-        }
-
-        /// <summary>
-        /// Server-only: gives every authored enemy marker its own population controller. The
-        /// controller owns spawning, density and respawn; the bootstrap only resolves the prefab
-        /// and wires the pieces once.
-        /// </summary>
-        private void ConfigureSpawnControllers(EnemyMarker[] markers)
-        {
-            foreach (EnemyMarker marker in markers)
-            {
-                if (marker == null)
-                    continue;
-
-                try
-                {
-                    NetworkObject prefab = marker.EnemyPrefab != null
-                        ? EnsureEnemyRegistered(marker.EnemyPrefab)
-                        : ResolveRegisteredPrefab(TargetDummyPrefabFactory.PrefabName);
-
-                    if (prefab == null)
-                    {
-                        Debug.LogError(
-                            $"{nameof(WorldBootstrap)}: no enemy prefab for marker '{marker.name}'; skipping.", marker);
-                        continue;
-                    }
-
-                    SpawnController controller = marker.GetComponent<SpawnController>();
-                    if (controller == null)
-                        controller = marker.gameObject.AddComponent<SpawnController>();
-
-                    controller.Configure(marker, prefab, _manager);
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError(
-                        $"{nameof(WorldBootstrap)}: enemy marker '{marker.name}' could not be configured. {e.Message}",
-                        marker);
-                }
-            }
-        }
-
-        private NetworkObject SpawnAt(NetworkObject prefab, Transform marker)
-        {
-            if (prefab == null)
-                return null;
-
-            // A prefab is never itself spawnable: instantiate, activate (a runtime-built source is
-            // deactivated), place, then let the server validate and publish the clone.
-            GameObject instance = Instantiate(prefab.gameObject);
-            instance.name = prefab.name;
-            instance.SetActive(true);
-            instance.transform.SetPositionAndRotation(marker.position, marker.rotation);
-
-            _manager.ServerManager.Spawn(instance);
-            NetworkObject spawned = instance.GetComponent<NetworkObject>();
-            return spawned != null && spawned.IsSpawned ? spawned : null;
-        }
-
-        private NetworkObject ResolveDefaultNodePrefab()
-        {
-            NetworkObject registered = ResolveRegisteredPrefab(ResourceNodePrefabFactory.PrefabName);
-            if (registered != null)
-                return registered;
-
-            if (_fallbackNodePrefab == null)
-            {
-                _fallbackNodePrefab = ResourceNodePrefabFactory.Create();
-                _fallbackNodePrefab.gameObject.SetActive(false);
-            }
-
-            return EnsureNodeRegistered(_fallbackNodePrefab);
-        }
-
-        private NetworkObject EnsureNodeRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            ResourceNodePrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject EnsureStationRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            CraftingStationPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject EnsureTellerRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            BankTellerPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject EnsureEnemyRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            TargetDummyPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject ResolveRegisteredPrefab(string prefabName)
-        {
-            if (_manager == null || _manager.SpawnablePrefabs is not SinglePrefabObjects single)
-                return null;
-
-            foreach (NetworkObject prefab in single.Prefabs)
-            {
-                if (prefab != null && prefab.name == prefabName)
-                    return prefab;
-            }
-
-            return null;
+            _worldSpawner.SpawnAll();
         }
 
         /// <summary>
@@ -503,14 +255,7 @@ namespace MMO.Net
                 return;
 
             PlayerSpawnPoint[] points = FindObjectsByType<PlayerSpawnPoint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            if (points.Length == 0)
-                return;
-
-            var transforms = new Transform[points.Length];
-            for (int i = 0; i < points.Length; i++)
-                transforms[i] = points[i].transform;
-
-            _playerSpawner.Spawns = transforms;
+            PlayerSpawnPointWiring.Wire(_playerSpawner, points);
         }
 
         private void OnPlayerSpawned(NetworkObject player)
@@ -545,83 +290,8 @@ namespace MMO.Net
                 return;
 
             PlayerSpawnPoint[] points = FindObjectsByType<PlayerSpawnPoint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            Vector3? restored = NormaliseSavedPosition(points, savedPosition);
-            bool restoring = restored.HasValue && IsOnZoneNavMesh(restored.Value);
-            Vector3 position = PlayerSpawnPoint.ChooseSpawn(points, restored, IsOnZoneNavMesh);
-
-            PlayerMover mover = player.GetComponent<PlayerMover>();
-            if (mover != null)
-                mover.SetAuthoritativePosition(position);
-            else
-                player.transform.position = position;
-
-            Debug.Log(restoring
-                ? $"[WorldBootstrap] Restored saved position {position} for {player.name}."
-                : $"[WorldBootstrap] Placed {player.name} at spawn point {position}.");
+            PlayerJoinPlacement.Place(player, savedPosition, points);
         }
 
-        /// <summary>
-        /// Server-only: whether a restored position is close enough to the zone NavMesh to stand at.
-        /// The 1 m tolerance matches <see cref="PlayerMover"/>'s own click gate, so a position the
-        /// mover would accept for movement is exactly the one a relog restores.
-        /// </summary>
-        private static bool IsOnZoneNavMesh(Vector3 position) =>
-            NavMesh.SamplePosition(position, out _, RestoreSampleDistance, NavMesh.AllAreas);
-
-        /// <summary>
-        /// Snaps a saved capsule pose onto the zone NavMesh and lifts it back to the capsule's
-        /// standing centre. The NavMesh sits slightly above the floor, so using its Y directly
-        /// would bury the capsule; the offset is measured from the zone's own spawn point.
-        /// </summary>
-        private static Vector3? NormaliseSavedPosition(
-            IReadOnlyList<PlayerSpawnPoint> points, Vector3? savedPosition)
-        {
-            if (!savedPosition.HasValue)
-                return null;
-
-            if (!NavMesh.SamplePosition(
-                    savedPosition.Value, out NavMeshHit restored, RestoreSampleDistance, NavMesh.AllAreas))
-            {
-                return savedPosition;
-            }
-
-            float standingOffset = StandingOffset(points);
-            return new Vector3(restored.position.x, restored.position.y + standingOffset, restored.position.z);
-        }
-
-        /// <summary>
-        /// Distance from the zone NavMesh to a standing capsule centre, taken from an authored
-        /// spawn point so flat and raised floors both use the scene's own convention.
-        /// </summary>
-        private static float StandingOffset(IReadOnlyList<PlayerSpawnPoint> points)
-        {
-            if (points == null || points.Count == 0)
-                return 1f;
-
-            PlayerSpawnPoint reference = null;
-            foreach (PlayerSpawnPoint point in points)
-            {
-                if (point == null)
-                    continue;
-
-                if (reference == null || point.IsDefault)
-                    reference = point;
-            }
-
-            if (reference == null ||
-                !NavMesh.SamplePosition(
-                    reference.transform.position, out NavMeshHit spawn, RestoreSampleDistance, NavMesh.AllAreas))
-            {
-                return 1f;
-            }
-
-            return Mathf.Max(0.5f, reference.transform.position.y - spawn.position.y);
-        }
-
-        /// <summary>
-        /// How far a saved position may be from the zone NavMesh and still count as the same
-        /// place. Wider than the movement gate because a saved capsule pose is not a mesh point.
-        /// </summary>
-        private const float RestoreSampleDistance = 2f;
     }
 }

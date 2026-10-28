@@ -96,8 +96,7 @@ namespace MMO.Gameplay
             if (_volume == null)
                 return false;
 
-            Vector3 closest = _volume.ClosestPoint(position);
-            return (closest - position).sqrMagnitude <= InteractionPadding * InteractionPadding;
+            return ZoneGateProximity.InRange(_volume, position, InteractionPadding);
         }
 
         /// <summary>The gate nearest <paramref name="position"/> whose range contains it, or null.</summary>
@@ -105,24 +104,7 @@ namespace MMO.Gameplay
         {
             ZoneTransferTrigger[] gates =
                 FindObjectsByType<ZoneTransferTrigger>(FindObjectsSortMode.None);
-
-            ZoneTransferTrigger best = null;
-            float bestDistance = float.PositiveInfinity;
-
-            foreach (ZoneTransferTrigger gate in gates)
-            {
-                if (gate == null || !gate.IsPositionInRange(position))
-                    continue;
-
-                float distance = (gate.transform.position - position).sqrMagnitude;
-                if (distance >= bestDistance)
-                    continue;
-
-                bestDistance = distance;
-                best = gate;
-            }
-
-            return best;
+            return ZoneGateProximity.FindNearest(gates, position, InteractionPadding);
         }
 
         /// <summary>
