@@ -34,6 +34,7 @@ namespace MMO.UI
         private EquipmentPanelView _equipmentPanel;
         private MountCastBarView _mountCastBar;
         private DialogueView _dialogueView;
+        private ZoneTransferPromptView _zoneTransferPrompt;
 
         /// <summary>The health/mana pair, or null before views were assigned.</summary>
         public PlayerHudView PlayerHud => _playerHud;
@@ -74,6 +75,9 @@ namespace MMO.UI
         /// <summary>The dialogue panel, or null before views were assigned.</summary>
         public DialogueView DialogueView => _dialogueView;
 
+        /// <summary>The zone-gate prompt, or null before views were assigned.</summary>
+        public ZoneTransferPromptView ZoneTransferPrompt => _zoneTransferPrompt;
+
         /// <summary>
         /// Hands the assembled screens to the HUD; called by the factory.
         /// </summary>
@@ -86,7 +90,8 @@ namespace MMO.UI
             CollapsiblePanelView inventoryWindow = null,
             CollapsiblePanelView equipmentWindow = null,
             EquipmentPanelView equipmentPanel = null,
-            MountCastBarView mountCastBar = null)
+            MountCastBarView mountCastBar = null,
+            ZoneTransferPromptView zoneTransferPrompt = null)
         {
             _playerHud = playerHud;
             _targetFrame = targetFrame;
@@ -97,6 +102,7 @@ namespace MMO.UI
             _equipmentWindow = equipmentWindow;
             _equipmentPanel = equipmentPanel;
             _mountCastBar = mountCastBar;
+            _zoneTransferPrompt = zoneTransferPrompt;
         }
 
         /// <summary>Gives the HUD the generic bank window the factory built; starts concealed.</summary>
@@ -234,6 +240,8 @@ namespace MMO.UI
 
             if (_tradeFrame != null)
                 _tradeFrame.Conceal();
+
+            _zoneTransferPrompt?.Hide();
         }
 
         private void OnDestroy() => Unbind();

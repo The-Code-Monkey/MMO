@@ -26,6 +26,8 @@ namespace MMO.Social
         private readonly IRaidInstanceRepository _raids;
         private readonly IZoneRegistryRepository _zones;
         private readonly int _casRetries;
+        private readonly RaidPointerCleanup _pointerCleanup;
+        private readonly RaidHostCapacityService _capacity;
 
         public RaidInstanceService(
             ISocialRepository social, IRaidInstanceRepository raids, IZoneRegistryRepository zones,
@@ -35,6 +37,8 @@ namespace MMO.Social
             _raids = raids ?? throw new ArgumentNullException(nameof(raids));
             _zones = zones ?? throw new ArgumentNullException(nameof(zones));
             _casRetries = casRetries;
+            _pointerCleanup = new RaidPointerCleanup(_social, _raids, casRetries);
+            _capacity = new RaidHostCapacityService(_zones, casRetries);
         }
 
         /// <summary>
@@ -82,7 +86,7 @@ namespace MMO.Social
                     {
                         // Another zone won the race after we wrote our instance: drop the orphan.
                         if (instanceWritten)
-                            await SafeDeleteAsync(instanceId);
+                            await _pointerCleanup.DeleteOrphanAsync(instanceId);
                         return (rule, null);
                     }
 
@@ -98,7 +102,7 @@ namespace MMO.Social
                         ZoneTemplateId = host.ZoneTemplateId,
                     };
                     instance.MemberPartyIds.Add(party.PartyId);
-                    RefreshMembers(instance, new[] { party });
+                    RaidRosterProjector.Refresh(instance, new[] { party });
 
                     await _raids.SaveRaidInstanceAsync(instance);
                     instanceWritten = true;
@@ -109,28 +113,28 @@ namespace MMO.Social
                     // Best-effort capacity accounting on the chosen host so the next selection sees
                     // this instance. A missed write only costs a slightly stale load signal (the
                     // heartbeat preserves it); recency is a follow-up, not a correctness requirement.
-                    await AdjustHostInstancesAsync(host.ServerId, +1);
+                    await _capacity.AdjustAsync(host.ServerId, +1);
 
                     // Only after the winning CAS: peers start the handoff before the next reconcile
                     // tick. A lost CAS or a rule failure never reaches this line.
-                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, instance));
+                    await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidAllocated, instance));
                     return (RaidRule.Ok, instance);
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await RaidBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
                     Debug.LogError($"[Raid] Allocate failed: {e.Message}");
                     if (instanceWritten)
-                        await SafeDeleteAsync(instanceId);
+                        await _pointerCleanup.DeleteOrphanAsync(instanceId);
                     return (RaidRule.CasExhausted, null);
                 }
             }
 
             if (instanceWritten)
-                await SafeDeleteAsync(instanceId);
+                await _pointerCleanup.DeleteOrphanAsync(instanceId);
             return (RaidRule.CasExhausted, null);
         }
 
@@ -168,7 +172,7 @@ namespace MMO.Social
                     if (raid == null)
                         return RaidRule.NoRaid;
 
-                    EnsureMemberList(raid);
+                    RaidRosterProjector.Normalize(raid);
                     if (raid.MemberPartyIds.Contains(party.PartyId))
                     {
                         party.RaidInstanceId = raidId;
@@ -183,18 +187,18 @@ namespace MMO.Social
 
                     raid.MemberPartyIds.Add(party.PartyId);
                     memberParties.Add(party);
-                    RefreshMembers(raid, memberParties);
+                    RaidRosterProjector.Refresh(raid, memberParties);
                     await _raids.SaveRaidInstanceAsync(raid);
 
                     party.RaidInstanceId = raidId;
                     await _social.SavePartyAsync(party);
 
-                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, raid));
+                    await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidAllocated, raid));
                     return RaidRule.Ok;
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await RaidBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -233,11 +237,11 @@ namespace MMO.Social
                     if (raid == null)
                     {
                         // The record vanished underneath us; just repair the dangling pointer.
-                        await ClearRaidPointerAsync(party.PartyId);
+                        await _pointerCleanup.ClearAsync(party.PartyId);
                         return RaidRule.Ok;
                     }
 
-                    EnsureMemberList(raid);
+                    RaidRosterProjector.Normalize(raid);
                     string raidId = raid.InstanceId;
                     List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
                     var originalMemberIds = new List<string>(raid.MemberPartyIds ?? new List<string>());
@@ -248,25 +252,25 @@ namespace MMO.Social
                         // Last party left: full teardown. The snapshot still names every account.
                         await _raids.DeleteRaidInstanceAsync(raidId);
                         foreach (string pid in originalMemberIds)
-                            await ClearRaidPointerAsync(pid);
-                        await AdjustHostInstancesAsync(raid.HostZoneId, -1);
-                        await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidCompleted, raid));
+                            await _pointerCleanup.ClearAsync(pid);
+                        await _capacity.AdjustAsync(raid.HostZoneId, -1);
+                        await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidCompleted, raid));
                         return RaidRule.Ok;
                     }
 
                     remaining.LeaderId = RaidRules.ResolveLeader(remaining, memberParties);
-                    RefreshMembers(remaining, memberParties);
+                    RaidRosterProjector.Refresh(remaining, memberParties);
                     await _raids.SaveRaidInstanceAsync(remaining);
 
                     party.RaidInstanceId = null;
                     await _social.SavePartyAsync(party);
 
-                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, remaining));
+                    await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidAllocated, remaining));
                     return RaidRule.Ok;
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await RaidBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -297,7 +301,7 @@ namespace MMO.Social
                     if (raid == null)
                         return RaidRule.NoRaid;
 
-                    EnsureMemberList(raid);
+                    RaidRosterProjector.Normalize(raid);
                     List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
                     RaidRule rule = RaidRules.CanPromote(raid, memberParties, requesterId, targetId);
                     if (rule != RaidRule.Ok)
@@ -305,12 +309,12 @@ namespace MMO.Social
 
                     raid.LeaderId = targetId;
                     await _raids.SaveRaidInstanceAsync(raid);
-                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, raid));
+                    await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidAllocated, raid));
                     return RaidRule.Ok;
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await RaidBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -343,32 +347,32 @@ namespace MMO.Social
                     RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(party.RaidInstanceId);
                     if (raid == null)
                     {
-                        await ClearRaidPointerAsync(partyId);
+                        await _pointerCleanup.ClearAsync(partyId);
                         return;
                     }
 
-                    EnsureMemberList(raid);
+                    RaidRosterProjector.Normalize(raid);
                     List<PartyRecord> memberParties = await LoadMemberPartiesAsync(raid);
                     RaidInstanceRecord remaining = RaidRules.RemoveParty(raid, partyId);
                     if (remaining == null)
                     {
                         await _raids.DeleteRaidInstanceAsync(raid.InstanceId);
-                        await ClearRaidPointerAsync(partyId);
-                        await AdjustHostInstancesAsync(raid.HostZoneId, -1);
-                        await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidCompleted, raid));
+                        await _pointerCleanup.ClearAsync(partyId);
+                        await _capacity.AdjustAsync(raid.HostZoneId, -1);
+                        await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidCompleted, raid));
                         return;
                     }
 
                     remaining.LeaderId = RaidRules.ResolveLeader(remaining, memberParties);
-                    RefreshMembers(remaining, memberParties);
+                    RaidRosterProjector.Refresh(remaining, memberParties);
                     await _raids.SaveRaidInstanceAsync(remaining);
-                    await ClearRaidPointerAsync(partyId);
-                    await SafeNotifyAsync(RaidNotification(SocialNotificationKind.RaidAllocated, remaining));
+                    await _pointerCleanup.ClearAsync(partyId);
+                    await SafeNotifyAsync(RaidNotificationFactory.ForRaid(SocialNotificationKind.RaidAllocated, remaining));
                     return;
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await RaidBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -400,7 +404,7 @@ namespace MMO.Social
                     string instanceId = party.RaidInstanceId;
                     RaidInstanceRecord raid = await _raids.LoadRaidInstanceAsync(instanceId);
                     if (raid != null)
-                        EnsureMemberList(raid);
+                        RaidRosterProjector.Normalize(raid);
 
                     // Multi-party: only the raid leader may complete, even if another party's leader
                     // asked. Transferred leadership is honoured; the seed alone is not special here.
@@ -409,21 +413,21 @@ namespace MMO.Social
 
                     var memberPartyIds = raid?.MemberPartyIds ?? new List<string> { party.PartyId };
                     foreach (string pid in new List<string>(memberPartyIds))
-                        await ClearRaidPointerAsync(pid);
+                        await _pointerCleanup.ClearAsync(pid);
 
                     // Only after the winning CAS: peers clear their local raid handoff before the
                     // next reconcile tick (feeds the return pass in #55).
                     await SafeNotifyAsync(
-                        PartyRaidNotification(SocialNotificationKind.RaidCompleted, instanceId, party));
+                        RaidNotificationFactory.ForParty(SocialNotificationKind.RaidCompleted, instanceId, party));
                     if (!string.IsNullOrEmpty(instanceId))
                         await _raids.DeleteRaidInstanceAsync(instanceId);
                     if (raid != null)
-                        await AdjustHostInstancesAsync(raid.HostZoneId, -1);
+                        await _capacity.AdjustAsync(raid.HostZoneId, -1);
                     return RaidRule.Ok;
                 }
                 catch (StorageVersionConflictException)
                 {
-                    await Backoff(i);
+                    await RaidBackoff.DelayAsync(i);
                 }
                 catch (Exception e)
                 {
@@ -441,20 +445,6 @@ namespace MMO.Social
         public Task DisbandAndClearRaidAsync(string partyId)
             => RemovePartyFromRaidAsync(partyId);
 
-        /// <summary>
-        /// Normalizes a legacy #51 record, which carried only a single <see cref="RaidInstanceRecord.PartyId"/>,
-        /// into the multi-party shape before it is mutated. Idempotent.
-        /// </summary>
-        private static void EnsureMemberList(RaidInstanceRecord raid)
-        {
-            if (raid.MemberPartyIds == null)
-                raid.MemberPartyIds = new List<string>();
-            if (raid.MemberPartyIds.Count == 0 && !string.IsNullOrEmpty(raid.PartyId))
-                raid.MemberPartyIds.Add(raid.PartyId);
-            if (string.IsNullOrEmpty(raid.SeedPartyId))
-                raid.SeedPartyId = raid.PartyId;
-        }
-
         private async Task<List<PartyRecord>> LoadMemberPartiesAsync(RaidInstanceRecord raid)
         {
             var parties = new List<PartyRecord>();
@@ -469,176 +459,6 @@ namespace MMO.Social
             }
 
             return parties;
-        }
-
-        /// <summary>Refreshes the derived flat <see cref="RaidInstanceRecord.Members"/> snapshot.</summary>
-        private static void RefreshMembers(RaidInstanceRecord raid, IReadOnlyList<PartyRecord> memberParties)
-        {
-            if (raid.Members == null)
-                raid.Members = new List<RaidInstanceMember>();
-            raid.Members.Clear();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            if (raid.MemberPartyIds == null || memberParties == null)
-                return;
-
-            foreach (string partyId in raid.MemberPartyIds)
-            {
-                PartyRecord party = FindParty(memberParties, partyId);
-                if (party?.Members == null)
-                    continue;
-
-                foreach (PartyMemberRecord member in party.Members)
-                {
-                    if (!string.IsNullOrEmpty(member.AccountId) && seen.Add(member.AccountId))
-                        raid.Members.Add(new RaidInstanceMember
-                        {
-                            AccountId = member.AccountId,
-                            PlayerName = member.PlayerName,
-                        });
-                }
-            }
-        }
-
-        private static PartyRecord FindParty(IReadOnlyList<PartyRecord> parties, string partyId)
-        {
-            for (int i = 0; i < parties.Count; i++)
-            {
-                if (parties[i] != null && parties[i].PartyId == partyId)
-                    return parties[i];
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Clears one party's raid pointer, retrying on a version conflict. Best-effort: the reconcile
-        /// pass is the backstop, so a failure is logged and never thrown to the caller.
-        /// </summary>
-        private async Task ClearRaidPointerAsync(string partyId)
-        {
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    PartyRecord party = await _social.LoadPartyAsync(partyId);
-                    if (party == null || string.IsNullOrEmpty(party.RaidInstanceId))
-                        return;
-
-                    party.RaidInstanceId = null;
-                    await _social.SavePartyAsync(party);
-                    return;
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await Backoff(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Raid] Failed to clear raid pointer for party '{partyId}': {e.Message}");
-                    return;
-                }
-            }
-        }
-
-        private async Task SafeDeleteAsync(string instanceId)
-        {
-            try
-            {
-                await _raids.DeleteRaidInstanceAsync(instanceId);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[Raid] Failed to clean up orphan instance '{instanceId}': {e.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Best-effort CAS bump of a zone's <see cref="ZoneRegistryRecord.ActiveInstances"/> so the
-        /// next selection sees the new load. A missed write only leaves the load signal slightly
-        /// stale (the zone's own heartbeat preserves the last stored value) and never fails the
-        /// allocation, so a failure is logged and never thrown to the caller.
-        /// </summary>
-        private async Task AdjustHostInstancesAsync(string serverId, int delta)
-        {
-            if (string.IsNullOrEmpty(serverId))
-                return;
-
-            for (int i = 0; i < _casRetries; i++)
-            {
-                try
-                {
-                    List<ZoneRegistryRecord> zones = await _zones.LoadZonesAsync();
-                    ZoneRegistryRecord zone = FindZone(zones, serverId);
-                    if (zone == null)
-                        return;
-
-                    zone.ActiveInstances = Math.Max(0, zone.ActiveInstances + delta);
-                    await _zones.SaveZoneAsync(zone);
-                    return;
-                }
-                catch (StorageVersionConflictException)
-                {
-                    await Backoff(i);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[Raid] Failed to adjust host instance count for '{serverId}': {e.Message}");
-                    return;
-                }
-            }
-        }
-
-        private static ZoneRegistryRecord FindZone(IReadOnlyList<ZoneRegistryRecord> zones, string serverId)
-        {
-            if (zones == null)
-                return null;
-
-            for (int i = 0; i < zones.Count; i++)
-            {
-                if (zones[i] != null && zones[i].ServerId == serverId)
-                    return zones[i];
-            }
-
-            return null;
-        }
-
-        private static SocialNotification RaidNotification(
-            SocialNotificationKind kind, RaidInstanceRecord instance)
-        {
-            var notification = new SocialNotification
-            {
-                Kind = kind,
-                RaidId = instance.InstanceId,
-                PartyId = instance.PartyId,
-                HostZoneId = instance.HostZoneId,
-            };
-
-            if (instance.Members != null)
-            {
-                foreach (RaidInstanceMember member in instance.Members)
-                    notification.AccountIds.Add(member.AccountId);
-            }
-
-            return notification;
-        }
-
-        private static SocialNotification PartyRaidNotification(
-            SocialNotificationKind kind, string instanceId, PartyRecord party)
-        {
-            var notification = new SocialNotification
-            {
-                Kind = kind,
-                RaidId = instanceId,
-                PartyId = party?.PartyId,
-            };
-
-            if (party?.Members != null)
-            {
-                foreach (PartyMemberRecord member in party.Members)
-                    notification.AccountIds.Add(member.AccountId);
-            }
-
-            return notification;
         }
 
         /// <summary>
@@ -656,12 +476,6 @@ namespace MMO.Social
             {
                 Debug.LogWarning($"[Raid] social_notify push failed; reconcile will converge. {e.Message}");
             }
-        }
-
-        private static Task Backoff(int attempt)
-        {
-            int ms = Math.Min(8, 1 << attempt) * 10;
-            return Task.Delay(ms);
         }
     }
 }

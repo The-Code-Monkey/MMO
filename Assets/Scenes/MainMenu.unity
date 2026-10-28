@@ -132,11 +132,12 @@ MonoBehaviour:
   m_Name: MMOSpawnablePrefabs
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Managing.Object.SinglePrefabObjects
   _prefabs:
-  - {fileID: 1248092469509279395, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
-  - {fileID: 3212296777553377136, guid: 599f70a9751a0c8e4b4a2ea62b911e46, type: 3}
+  - {fileID: 5132567845639072608, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
+  - {fileID: 4597774150623513001, guid: 599f70a9751a0c8e4b4a2ea62b911e46, type: 3}
   - {fileID: 716579080863088202, guid: fa38e3e1000cc85269c7c98d611d72f9, type: 3}
   - {fileID: 53440267552716857, guid: 5fdf8c61728429dd18c766e3e1df6411, type: 3}
-  - {fileID: 2341980686118000731, guid: e5c0d253e2f664bd9976d1c421e73e7e, type: 3}
+  - {fileID: 3988032019876809668, guid: e5c0d253e2f664bd9976d1c421e73e7e, type: 3}
+  - {fileID: 5592969042921838602, guid: 4c9bdf27a2f8a34dd8a5bf7a39bdea46, type: 3}
 --- !u!1 &758188860
 GameObject:
   m_ObjectHideFlags: 0
@@ -445,7 +446,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 211a9f6ec51ddc14f908f5acc0cd0423, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FishNet.Runtime::FishNet.Component.Spawning.PlayerSpawner
-  _playerPrefab: {fileID: 1248092469509279395, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
+  _playerPrefab: {fileID: 5132567845639072608, guid: aae2426653844ccc08fd0311dcd2b327, type: 3}
   _addToDefaultScene: 1
   Spawns: []
 --- !u!114 &1410006609

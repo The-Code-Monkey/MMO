@@ -102,6 +102,7 @@ namespace MMO.UI
             InventoryGridView inventoryGrid = CreateInventoryGrid(root.transform, out CollapsiblePanelView inventoryWindow);
             EquipmentPanelView equipmentPanel = CreateEquipmentPanel(root.transform, out CollapsiblePanelView equipmentWindow);
             MountCastBarView mountCastBar = CreateMountCastBar(root.transform);
+            ZoneTransferPromptView zoneTransferPrompt = ZoneTransferPromptView.Create(root.transform);
 
             NetworkHud hud = root.AddComponent<NetworkHud>();
             hud.SetViews(
@@ -113,7 +114,8 @@ namespace MMO.UI
                 inventoryWindow,
                 equipmentWindow,
                 equipmentPanel,
-                mountCastBar);
+                mountCastBar,
+                zoneTransferPrompt);
             hud.SetCraftingPanel(CraftingPanelFactory.Create(root.transform));
             hud.SetDialogueView(DialogueView.Create(root.transform));
 

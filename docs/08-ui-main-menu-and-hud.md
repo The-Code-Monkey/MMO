@@ -79,7 +79,8 @@ does the end-to-end flow:
    the server it names — orchestrated raids are ephemeral containers — so the stale record heals
    itself instead of blocking the login.
 9. `RecordZoneAsync` (`:185`) — write the `last_zone` record now that the connection is admitted;
-   whichever zone actually admitted (stored or fallback) is what gets recorded.
+   whichever zone actually admitted (stored or fallback) is what gets recorded. `ZoneTransferClient`
+   performs the same write after each transfer admission, refreshing the session first.
 10. Return success.
 
 The admission timeout is `AdmissionTimeoutMilliseconds = 10000` (`:36`) per attempt.
@@ -122,6 +123,7 @@ windows. The useful methods are:
 | `ActionBarView` | `Assets/Scripts/UI/ActionBarView.cs` | `IAbilityBarSource` | Up to 6 ability slots. |
 | `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs` | `ICraftingSource` | A scrollable list of the server's recipe offers for the open station. |
 | `DialogueView` | `Assets/Scripts/UI/DialogueView.cs` | `PlayerDialogue` | Speaker, text and one button per server-sent dialogue choice. |
+| `ZoneTransferPromptView` | `Assets/Scripts/UI/ZoneTransferPromptView.cs` | — | Bottom-centre "To switch to zone X, press E" prompt, driven by `PlayerZoneTransfer`. |
 | `BankFrameView` | `Assets/Scripts/UI/BankFrameView.cs` | `IBankSource` | The generic bank window: bank grid + currency strip left, backpack right; optional guild tabs and rank editor. |
 
 How the views work:

@@ -92,7 +92,8 @@ namespace MMO.Bootstrap
 
                 if (_joinClient != null)
                 {
-                    _joinClient.SetAuthToken(result.Token);
+                    _joinClient.SetSession(result.Token, result.RefreshToken, result.UserId);
+                    _joinClient.SetCredentials(username.Trim(), password);
                     _joinClient.SetPlayerName(result.Username ?? username.Trim());
                 }
 
@@ -213,18 +214,15 @@ namespace MMO.Bootstrap
             }
         }
 
-        /// <summary>The address the transport is actually pointed at — what the connection proved reachable.</summary>
+        /// <summary>
+        /// The zone this login applied. The transport's own accessors report the client socket
+        /// after connection, which is a local ephemeral port — never the server's listening port
+        /// to store for the next login.
+        /// </summary>
         private LastZoneInfo ReadAppliedZone()
-        {
-            Transport transport = _networkManager.TransportManager?.Transport;
-            if (transport == null)
-                return LastZone;
-
-            return LastZoneInfo.Create(
-                transport.GetClientAddress(),
-                transport.GetPort(),
-                DateTime.UtcNow);
-        }
+            => LastZone != null && LastZone.IsValid
+                ? LastZone
+                : null;
 
         private void SetStatus(string message) => StatusChanged?.Invoke(message);
 

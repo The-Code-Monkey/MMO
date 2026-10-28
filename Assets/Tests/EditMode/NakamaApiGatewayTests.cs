@@ -120,6 +120,22 @@ namespace MMO.Tests
             Assert.IsNull(NakamaApiGateway.ParseSessionToken("not json at all"));
         }
 
+        [Test]
+        public void ParseRefreshToken_GrabsTheRotatingTokenFromTheAuthResponse()
+        {
+            Assert.AreEqual(
+                "rotate-me",
+                NakamaApiGateway.ParseRefreshToken("{\"token\":\"abc123\",\"refresh_token\":\"rotate-me\"}"));
+        }
+
+        [Test]
+        public void ParseRefreshToken_NullBlankAndAbsent_ReadAsNoToken()
+        {
+            Assert.IsNull(NakamaApiGateway.ParseRefreshToken(null));
+            Assert.IsNull(NakamaApiGateway.ParseRefreshToken("{}"));
+            Assert.IsNull(NakamaApiGateway.ParseRefreshToken("not json at all"));
+        }
+
         #endregion
 
         #region ParseAccountResponse

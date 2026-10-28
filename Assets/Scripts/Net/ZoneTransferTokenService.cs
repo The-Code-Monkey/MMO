@@ -1,3 +1,4 @@
+using FishNet.Managing;
 using MMO.Persistence;
 using UnityEngine;
 
@@ -44,6 +45,19 @@ namespace MMO.Net
                 string secret = string.IsNullOrEmpty(_secretKey) ? BackendSettings.DefaultServerKey : _secretKey;
                 Store = new ZoneTransferTokenStore(secret, _tokenTtlSeconds);
             }
+        }
+
+        private void Start()
+        {
+            // Runtime properties are not serialized, so a baked scene boots with a gate that has
+            // no transfer-token store. Wire it here exactly as the factory does when it builds one.
+            NetworkManager manager = GetComponentInParent<NetworkManager>();
+            MMOConnectionGate gate = manager != null
+                ? manager.GetComponentInChildren<MMOConnectionGate>(true)
+                : null;
+
+            if (gate != null && gate.TransferTokenStore == null)
+                gate.TransferTokenStore = Store;
         }
 
         private void OnDestroy()

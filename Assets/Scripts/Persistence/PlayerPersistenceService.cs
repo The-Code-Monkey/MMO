@@ -44,6 +44,7 @@ namespace MMO.Persistence
         private readonly Dictionary<string, PlayerSaveRecord> _spawnRecords = new();
         private readonly Dictionary<string, Func<PlayerSaveRecord>> _livePlayers = new();
         private readonly Dictionary<string, PlayerSaveRecord> _finalRecords = new();
+        private readonly Dictionary<string, string> _storageVersions = new();
         private readonly Dictionary<string, List<WalletReservationRecord>> _pendingWalletReservations = new();
         private readonly HashSet<string> _dirty = new();
         private readonly Dictionary<string, double> _debounceUntil = new();
@@ -54,6 +55,7 @@ namespace MMO.Persistence
         private float _nextAutosaveTime;
         private NetworkManager _manager;
         private bool _subscribed;
+        private MMOConnectionGate _attachedGate;
 
         private void Awake()
         {
@@ -72,6 +74,10 @@ namespace MMO.Persistence
         {
             _manager = GetComponentInParent<NetworkManager>();
             _nextAutosaveTime = Time.time + _autosaveInterval;
+
+            // Runtime properties are not serialized, so a baked scene boots with a gate that has
+            // no loader. Attach here exactly as the factory does for a freshly built manager.
+            AttachTo(_manager != null ? _manager.GetComponentInChildren<MMOConnectionGate>(true) : null);
         }
 
         /// <summary>
@@ -203,9 +209,13 @@ namespace MMO.Persistence
         /// </summary>
         public void AttachTo(MMOConnectionGate gate)
         {
-            if (gate == null)
+            if (gate == null || _attachedGate == gate)
                 return;
 
+            if (_attachedGate != null)
+                _attachedGate.PlayerJoinLoaded -= OnJoinLoaded;
+
+            _attachedGate = gate;
             gate.PlayerLoader = this;
             gate.PlayerJoinLoaded += OnJoinLoaded;
         }
@@ -214,6 +224,10 @@ namespace MMO.Persistence
         {
             _accountByClientId[clientId] = accountId;
             _spawnRecords[accountId] = record;
+
+            // The record's version is the optimistic-concurrency token every later save must
+            // carry. Captured snapshots are fresh objects, so the service remembers it here.
+            _storageVersions[accountId] = record != null ? record.StorageVersion : null;
 
             List<WalletReservationRecord> reservations = CopyWalletReservations(record?.PendingWalletReservations);
             if (reservations.Count > 0)
@@ -485,9 +499,15 @@ namespace MMO.Persistence
 
             record.PendingWalletReservations = GetPendingWalletReservations(accountId);
 
+            // A captured snapshot never carries the version it was loaded under; without this the
+            // first successful create would make every later save a doomed "*" create-again.
+            if (_storageVersions.TryGetValue(accountId, out string version))
+                record.StorageVersion = version;
+
             try
             {
                 await _repository.SaveAsync(record, CancellationToken.None);
+                _storageVersions[accountId] = record.StorageVersion;
                 return true;
             }
             catch (Exception e)
