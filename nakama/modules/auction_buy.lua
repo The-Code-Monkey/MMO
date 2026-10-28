@@ -1,21 +1,19 @@
 -- auction_buy: purchase of an auction listing.
 --
--- Runs on the Nakama server (Lua runtime). Reads the listing, validates it is active,
--- checks the buyer's gold (wallet), then claims the listing first with a version-guarded
--- (CAS) write to "Sold" so exactly one buyer wins. Only the winner moves gold from buyer
--- to seller; the wallet writes are the commit point. The transaction record and index
--- updates that follow are audit metadata: if any of them fails, the purchase is still
--- valid and the error is logged, not surfaced as a CONFLICT (which would strand the moved
--- gold with no recovery path for the caller).
+-- Runs on the Nakama server (Lua runtime). Reads the listing, validates it is active, then
+-- claims it first with a version-guarded (CAS) write to "Sold" so exactly one buyer wins.
+-- Gold settlement is not done here: the buyer's reserve is held by the buyer's own zone and
+-- the seller is credited by the auction zone after the claim wins (see AuctionService). The
+-- transaction record and index updates that follow are audit metadata: if any of them fails,
+-- the purchase is still valid and the error is logged, not surfaced as a CONFLICT.
 --
--- The listing and wallet objects are version-guarded: if another RPC call moves the
--- same object between our read and write, Nakama returns 409 and the caller retries.
+-- The listing object is version-guarded: if another RPC call moves the same object between
+-- our read and write, Nakama returns 409 and the caller retries.
 local nk = require("nakama")
 
 local LISTING_COLLECTION = "auction_listings"
 local TRANSACTION_COLLECTION = "auction_transactions"
 local INDEX_COLLECTION = "auction_index"
-local WALLET_COLLECTION = "player_wallet"
 
 local function read_object(collection, key, user_id)
     local objects = nk.storage_read({
@@ -54,18 +52,6 @@ local function delete_object(collection, key, user_id)
     })
 end
 
-local function get_wallet(account_id)
-    local obj = read_object(WALLET_COLLECTION, "wallet", account_id)
-    if obj and obj.value then
-        return obj.value
-    end
-    return { gold = 0, version = "*" }
-end
-
-local function update_wallet(account_id, wallet, version)
-    return write_object(WALLET_COLLECTION, "wallet", wallet, version, account_id, 1, 1)
-end
-
 local function auction_buy(context, payload)
     local args = nk.json_decode(payload or "{}")
     local buyer_id = args.buyerAccountId
@@ -101,20 +87,8 @@ local function auction_buy(context, payload)
 
     local total_price = listing.PricePerUnit * listing.StackCount
 
-    -- Read buyer's wallet
-    local buyer_wallet = get_wallet(buyer_id)
-    local buyer_gold = buyer_wallet.gold or 0
-
-    if buyer_gold < total_price then
-        return nk.json_encode({ success = false, errorCode = "INSUFFICIENT_FUNDS" })
-    end
-
-    -- Read seller's wallet
-    local seller_wallet = get_wallet(listing.SellerAccountId)
-    local seller_gold = seller_wallet.gold or 0
-
     -- 1. CLAIM THE LISTING FIRST (version-guarded) - this is the exclusivity point.
-    -- If this fails, no money has moved and we return CONFLICT cleanly.
+    -- If this fails, nothing has moved and we return CONFLICT cleanly.
     listing.Status = 1 -- Sold = 1
     listing.BuyerAccountId = buyer_id
     local listing_version = write_object(LISTING_COLLECTION, listing_id, listing, listing_obj.version, "", 1, 1)
@@ -123,34 +97,7 @@ local function auction_buy(context, payload)
     end
     listing.StorageVersion = listing_version
 
-    -- 2. MOVE MONEY (only the winner reaches here)
-    buyer_wallet.gold = buyer_gold - total_price
-    seller_wallet.gold = seller_gold + total_price
-
-    -- Write buyer wallet
-    local buyer_version = update_wallet(buyer_id, buyer_wallet, buyer_wallet.version)
-    if not buyer_version then
-        -- Rollback listing to Active
-        listing.Status = 0 -- Active
-        listing.BuyerAccountId = nil
-        write_object(LISTING_COLLECTION, listing_id, listing, listing_version, "", 1, 1)
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
-    end
-
-    -- Write seller wallet
-    local seller_version = update_wallet(listing.SellerAccountId, seller_wallet, seller_wallet.version)
-    if not seller_version then
-        -- Rollback buyer wallet
-        buyer_wallet.gold = buyer_gold
-        update_wallet(buyer_id, buyer_wallet, buyer_version)
-        -- Rollback listing to Active
-        listing.Status = 0 -- Active
-        listing.BuyerAccountId = nil
-        write_object(LISTING_COLLECTION, listing_id, listing, listing_version, "", 1, 1)
-        return nk.json_encode({ success = false, errorCode = "CONFLICT" })
-    end
-
-    -- 3. Create transaction record
+    -- 2. Create transaction record
     local transaction_id = nk.uuid_v4()
     local transaction = {
         TransactionId = transaction_id,
@@ -170,7 +117,7 @@ local function auction_buy(context, payload)
         transaction.StorageVersion = tx_version
     end
 
-    -- 4. Update buyer's index (add to purchase history)
+    -- 3. Update buyer's index (add to purchase history)
     local buyer_index_obj = read_object(INDEX_COLLECTION, buyer_id, "")
     local buyer_index = buyer_index_obj and buyer_index_obj.value or { AccountId = buyer_id, ActiveListingIds = {}, PurchaseHistoryIds = {} }
     if not buyer_index.PurchaseHistoryIds then
@@ -190,7 +137,7 @@ local function auction_buy(context, payload)
         nk.logger_error("auction_buy: buyer index write failed for " .. buyer_id .. " (audit gap)")
     end
 
-    -- 5. Update seller's index (remove from active)
+    -- 4. Update seller's index (remove from active)
     local seller_index_obj = read_object(INDEX_COLLECTION, listing.SellerAccountId, "")
     if seller_index_obj and seller_index_obj.value then
         local seller_index = seller_index_obj.value
