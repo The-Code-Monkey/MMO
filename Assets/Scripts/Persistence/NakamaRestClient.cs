@@ -96,9 +96,9 @@ namespace MMO.Persistence
         {
             _baseUrl = $"{_settings.Scheme}://{_settings.Host}:{_settings.Port}";
 
-            AuthSession session = await PostAsync<AuthSession>(
+            RestAuthSession session = await PostAsync<RestAuthSession>(
                 "/v2/account/authenticate/device?create=true&username=" + Uri.EscapeDataString(_settings.ServerUsername),
-                JsonUtility.ToJson(new AccountDeviceRequest { id = _settings.ServerDeviceId }),
+                JsonUtility.ToJson(new RestAccountDeviceRequest { id = _settings.ServerDeviceId }),
                 useBasic: true,
                 ct);
 
@@ -109,7 +109,7 @@ namespace MMO.Persistence
             _refreshToken = session.refresh_token;
             _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
 
-            AccountResponse account = await GetAsync<AccountResponse>("/v2/account", ct);
+            RestAccountResponse account = await GetAsync<RestAccountResponse>("/v2/account", ct);
             if (account?.user == null || string.IsNullOrEmpty(account.user.id))
                 throw new InvalidOperationException("Nakama returned a session without a user id.");
 
@@ -144,9 +144,9 @@ namespace MMO.Persistence
             {
                 // Nakama's refresh endpoint takes the *refresh* token in the "token" field; the
                 // access token is not part of the request at all.
-                RefreshResponse refreshed = await PostAsync<RefreshResponse>(
+                RestRefreshResponse refreshed = await PostAsync<RestRefreshResponse>(
                     "/v2/account/session/refresh",
-                    JsonUtility.ToJson(new RefreshRequest { token = _refreshToken }),
+                    JsonUtility.ToJson(new RestRefreshRequest { token = _refreshToken }),
                     useBasic: true,
                     ct);
 
@@ -191,7 +191,7 @@ namespace MMO.Persistence
             RequireSession();
             await GetFreshTokenAsync(ct);
 
-            RpcEnvelope response = await PostAsync<RpcEnvelope>(
+            RestRpcEnvelope response = await PostAsync<RestRpcEnvelope>(
                 "/v2/rpc/" + id, jsonPayload, useBasic: false, ct);
             return response?.payload;
         }
@@ -234,13 +234,13 @@ namespace MMO.Persistence
             if (keys == null || keys.Count == 0)
                 return result;
 
-            var request = new ReadStorageObjectsRequest { objectIds = new List<ReadStorageObjectId>() };
+            var request = new RestReadStorageObjectsRequest { objectIds = new List<RestReadStorageObjectId>() };
             foreach (string key in keys)
             {
                 if (string.IsNullOrEmpty(key))
                     continue;
 
-                request.objectIds.Add(new ReadStorageObjectId
+                request.objectIds.Add(new RestReadStorageObjectId
                 {
                     collection = collection,
                     key = key,
@@ -251,13 +251,13 @@ namespace MMO.Persistence
             if (request.objectIds.Count == 0)
                 return result;
 
-            StorageObjectsResponse response = await PostAsync<StorageObjectsResponse>(
+            RestStorageObjectsResponse response = await PostAsync<RestStorageObjectsResponse>(
                 "/v2/storage", JsonUtility.ToJson(request), useBasic: false, ct);
 
             if (response?.objects == null)
                 return result;
 
-            foreach (StorageObject obj in response.objects)
+            foreach (RestStorageObject obj in response.objects)
             {
                 result.Add(new StorageObjectData
                 {
@@ -290,11 +290,11 @@ namespace MMO.Persistence
                 + "?user_id=" + Uri.EscapeDataString(_userId ?? string.Empty)
                 + "&limit=100";
 
-            StorageObjectListResponse response = await GetAsync<StorageObjectListResponse>(path, ct);
+            RestStorageObjectListResponse response = await GetAsync<RestStorageObjectListResponse>(path, ct);
             if (response?.objects == null)
                 return result;
 
-            foreach (StorageObject obj in response.objects)
+            foreach (RestStorageObject obj in response.objects)
             {
                 result.Add(new StorageObjectData
                 {
@@ -319,7 +319,7 @@ namespace MMO.Persistence
             RequireSession();
             await GetFreshTokenAsync(ct);
 
-            var write = new StorageObjectWrite
+            var write = new RestStorageObjectWrite
             {
                 collection = collection,
                 key = key,
@@ -329,12 +329,12 @@ namespace MMO.Persistence
                 permissionWrite = 1,  // owner write
             };
 
-            var request = new WriteStorageObjectsRequest
+            var request = new RestWriteStorageObjectsRequest
             {
-                objects = new List<StorageObjectWrite> { write },
+                objects = new List<RestStorageObjectWrite> { write },
             };
 
-            WriteStorageObjectsResponse response = await PutAsync<WriteStorageObjectsResponse>(
+            RestWriteStorageObjectsResponse response = await PutAsync<RestWriteStorageObjectsResponse>(
                 "/v2/storage", JsonUtility.ToJson(request), ct);
 
             if (response?.acks == null || response.acks.Count == 0 || string.IsNullOrEmpty(response.acks[0].version))
@@ -349,15 +349,15 @@ namespace MMO.Persistence
             RequireSession();
             await GetFreshTokenAsync(ct);
 
-            var request = new DeleteStorageObjectsRequest
+            var request = new RestDeleteStorageObjectsRequest
             {
-                objectIds = new List<DeleteStorageObjectId>
+                objectIds = new List<RestDeleteStorageObjectId>
                 {
-                    new DeleteStorageObjectId { collection = collection, key = key },
+                    new RestDeleteStorageObjectId { collection = collection, key = key },
                 },
             };
 
-            await PutAsync<EmptyResponse>("/v2/storage/delete", JsonUtility.ToJson(request), ct);
+            await PutAsync<RestEmptyResponse>("/v2/storage/delete", JsonUtility.ToJson(request), ct);
         }
 
         private void RequireSession()
@@ -441,135 +441,5 @@ namespace MMO.Persistence
             await tcs.Task;
         }
 
-        [Serializable]
-        private class AccountDeviceRequest
-        {
-            public string id;
-        }
-
-        [Serializable]
-        private class AuthSession
-        {
-            public string token;
-
-            // Nakama returns snake_case; JsonUtility is an exact match.
-            public string refresh_token;
-        }
-
-        [Serializable]
-        private class RefreshRequest
-        {
-            public string token;
-        }
-
-        [Serializable]
-        private class RefreshResponse
-        {
-            public string token;
-            public string refresh_token;
-        }
-
-        [Serializable]
-        private class RpcEnvelope
-        {
-            public string id;
-            public string payload;
-        }
-
-        [Serializable]
-        private class AccountResponse
-        {
-            public AccountUser user;
-        }
-
-        [Serializable]
-        private class AccountUser
-        {
-            public string id;
-        }
-
-        [Serializable]
-        private class ReadStorageObjectsRequest
-        {
-            public List<ReadStorageObjectId> objectIds;
-        }
-
-        [Serializable]
-        private class ReadStorageObjectId
-        {
-            public string collection;
-            public string key;
-            public string userId;
-        }
-
-        [Serializable]
-        private class StorageObjectsResponse
-        {
-            public List<StorageObject> objects;
-        }
-
-        [Serializable]
-        private class StorageObjectListResponse
-        {
-            public List<StorageObject> objects;
-            public string cursor;
-        }
-
-        [Serializable]
-        private class StorageObject
-        {
-            public string collection;
-            public string key;
-            public string userId;
-            public string value;
-            public string version;
-        }
-
-        [Serializable]
-        private class WriteStorageObjectsRequest
-        {
-            public List<StorageObjectWrite> objects;
-        }
-
-        [Serializable]
-        private class StorageObjectWrite
-        {
-            public string collection;
-            public string key;
-            public string value;
-            public string version;
-            public int permissionRead;
-            public int permissionWrite;
-        }
-
-        [Serializable]
-        private class WriteStorageObjectsResponse
-        {
-            public List<StorageObjectAck> acks;
-        }
-
-        [Serializable]
-        private class StorageObjectAck
-        {
-            public string version;
-        }
-
-        [Serializable]
-        private class DeleteStorageObjectsRequest
-        {
-            public List<DeleteStorageObjectId> objectIds;
-        }
-
-        [Serializable]
-        private class DeleteStorageObjectId
-        {
-            public string collection;
-            public string key;
-        }
-
-        [Serializable]
-        private class EmptyResponse
-        {
-        }
     }
 }
