@@ -22,6 +22,10 @@ namespace MMO.Net
 
         private string _accountId;
         private string _authToken = string.Empty;
+        private string _refreshToken = string.Empty;
+        private string _userId = string.Empty;
+        private string _loginUsername = string.Empty;
+        private string _loginPassword = string.Empty;
         private string _transferToken = string.Empty;
 
         public string PlayerName => _playerName;
@@ -31,6 +35,22 @@ namespace MMO.Net
         /// can authenticate the join. Empty when token authentication is not in use.
         /// </summary>
         public string AuthToken => _authToken;
+
+        /// <summary>The refresh token that can renew <see cref="AuthToken"/> after it expires.</summary>
+        public string RefreshToken => _refreshToken;
+
+        /// <summary>The backend user id the session token belongs to.</summary>
+        public string UserId => _userId;
+
+        /// <summary>The sign-in name, kept for a silent re-authentication when refresh fails.</summary>
+        public string LoginUsername => _loginUsername;
+
+        /// <summary>The sign-in secret, kept only in memory for the same silent re-authentication.</summary>
+        public string LoginPassword => _loginPassword;
+
+        /// <summary>True when this session can be renewed by signing in again.</summary>
+        public bool HasCredentials =>
+            !string.IsNullOrEmpty(_loginUsername) && !string.IsNullOrEmpty(_loginPassword);
 
         /// <summary>
         /// Stable account key announced to the server. Generated once as a device GUID and persisted
@@ -50,6 +70,29 @@ namespace MMO.Net
 
         /// <summary>Points the join announcement at the session token the login screen received.</summary>
         public void SetAuthToken(string authToken) => _authToken = authToken ?? string.Empty;
+
+        /// <summary>Remembers the login session, including the refresh token used during play.</summary>
+        public void SetSession(string authToken, string refreshToken, string userId)
+        {
+            _authToken = authToken ?? string.Empty;
+            _refreshToken = refreshToken ?? string.Empty;
+            _userId = userId ?? string.Empty;
+        }
+
+        /// <summary>Remembers the sign-in credentials for a session refresh fallback.</summary>
+        public void SetCredentials(string username, string password)
+        {
+            _loginUsername = username ?? string.Empty;
+            _loginPassword = password ?? string.Empty;
+        }
+
+        /// <summary>Replaces the live tokens after a successful refresh.</summary>
+        public void ApplyRefreshedSession(string authToken, string refreshToken)
+        {
+            _authToken = authToken ?? string.Empty;
+            if (!string.IsNullOrEmpty(refreshToken))
+                _refreshToken = refreshToken;
+        }
 
         /// <summary>Arms the next join announcement with a zone-transfer token.</summary>
         public void SetTransferToken(string transferToken) => _transferToken = transferToken ?? string.Empty;

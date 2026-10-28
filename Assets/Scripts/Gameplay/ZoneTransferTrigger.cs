@@ -12,18 +12,19 @@ using UnityEngine;
 namespace MMO.Gameplay
 {
     /// <summary>
-    /// A physical trigger volume on the edge of a zone — the road to the next town. When the server
-    /// sees a player's authoritative capsule enter it, it runs the handoff in
+    /// A physical volume on the edge of a zone — the road to the next town. The owning client sees
+    /// a prompt while its player stands in range and asks the server to transfer on E; the server
+    /// re-checks the authoritative position, then runs the handoff in
     /// <see cref="ZoneTransferHandoff"/>: force a final database save, mint a transfer token, then
     /// tell that client to disconnect and reconnect to the destination server with the token. The
     /// client's <see cref="ZoneTransferClient"/> performs the reconnect; the destination server's
     /// gate consumes the token and loads the freshly saved record.
     ///
     /// <para>
-    /// Everything here is server-side: the client reaches its own copy of this scene but never has
+    /// The handoff itself is server-side: the client reaches its own copy of this scene but never has
     /// <c>IsServerStarted</c>, so it only ever re-acts to the resulting broadcast. If the save
     /// cannot be completed the handoff is aborted and the player stays put, ready to retry on the
-    /// next entry rather than arriving at the destination as a fresh character.
+    /// next interaction rather than arriving at the destination as a fresh character.
     /// </para>
     /// </summary>
     [RequireComponent(typeof(Collider))]
@@ -48,20 +49,31 @@ namespace MMO.Gameplay
         [SerializeField] private bool _disconnectAfterSend = true;
         [SerializeField, Min(0f)] private float _graceSeconds = 0.5f;
 
+        /// <summary>
+        /// How far outside the collider a player still counts as "at the gate". It gives the prompt
+        /// a little breathing room before the capsule centre crosses the volume.
+        /// </summary>
+        public const float InteractionPadding = 1f;
+
         private readonly HashSet<int> _transferringClientIds = new();
 
         private NetworkManager _networkManager;
         private IZoneTransferTokenStore _tokenStore;
         private WaitForSecondsRealtime _graceWait;
+        private Collider _volume;
+
+        /// <summary>The zone name shown to the player, falling back to the server id.</summary>
+        public string TargetZoneName =>
+            string.IsNullOrWhiteSpace(_targetZoneName) ? _targetServerId : _targetZoneName;
 
         /// <summary>True while a handoff for this client is being prepared.</summary>
         public bool IsTransferring(int clientId) => _transferringClientIds.Contains(clientId);
 
         private void Awake()
         {
-            Collider volume = GetComponent<Collider>();
-            if (volume != null)
-                volume.isTrigger = true;
+            _volume = GetComponent<Collider>();
+            if (_volume != null)
+                _volume.isTrigger = true;
 
             _networkManager = FindFirstObjectByType<NetworkManager>();
             _graceWait = new WaitForSecondsRealtime(_graceSeconds);
@@ -71,33 +83,68 @@ namespace MMO.Gameplay
         /// <summary>Injects the token store; production resolves it from <see cref="ZoneTransferTokenService"/>.</summary>
         public void SetTokenStore(IZoneTransferTokenStore store) => _tokenStore = store;
 
-        private void OnTriggerEnter(Collider other)
+        /// <summary>
+        /// True when <paramref name="position"/> is inside the gate's volume, or within
+        /// <see cref="InteractionPadding"/> of it. Used by the owning client for the prompt and by
+        /// the server to re-check that an intent really came from a player at this gate.
+        /// </summary>
+        public bool IsPositionInRange(Vector3 position)
         {
-            if (_networkManager == null || !_networkManager.IsServerStarted)
-                return;
+            if (_volume == null)
+                _volume = GetComponent<Collider>();
 
-            NetworkObject player = other != null ? other.GetComponentInParent<NetworkObject>() : null;
-            if (player == null || !player.IsSpawned)
-                return;
+            if (_volume == null)
+                return false;
 
-            NetworkConnection owner = player.Owner;
-            if (owner == null || !owner.IsValid)
-                return;
-
-            if (!_transferringClientIds.Add(owner.ClientId))
-                return;
-
-            _ = HandoffAsync(player, owner);
+            Vector3 closest = _volume.ClosestPoint(position);
+            return (closest - position).sqrMagnitude <= InteractionPadding * InteractionPadding;
         }
 
-        private void OnTriggerExit(Collider other)
+        /// <summary>The gate nearest <paramref name="position"/> whose range contains it, or null.</summary>
+        public static ZoneTransferTrigger FindNearestInRange(Vector3 position)
         {
-            if (other == null)
-                return;
+            ZoneTransferTrigger[] gates =
+                FindObjectsByType<ZoneTransferTrigger>(FindObjectsSortMode.None);
 
-            NetworkObject player = other.GetComponentInParent<NetworkObject>();
-            if (player != null && player.Owner != null)
-                _transferringClientIds.Remove(player.Owner.ClientId);
+            ZoneTransferTrigger best = null;
+            float bestDistance = float.PositiveInfinity;
+
+            foreach (ZoneTransferTrigger gate in gates)
+            {
+                if (gate == null || !gate.IsPositionInRange(position))
+                    continue;
+
+                float distance = (gate.transform.position - position).sqrMagnitude;
+                if (distance >= bestDistance)
+                    continue;
+
+                bestDistance = distance;
+                best = gate;
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Server-side entry point for a transfer intent. Re-validates the player and the gate, then
+        /// starts the handoff; one client may only have one handoff in flight.
+        /// </summary>
+        public bool BeginHandoff(NetworkObject player, NetworkConnection owner)
+        {
+            if (player == null || !player.IsSpawned || owner == null || !owner.IsValid)
+                return false;
+
+            if (_networkManager == null)
+                _networkManager = FindFirstObjectByType<NetworkManager>();
+
+            if (_networkManager == null || !_networkManager.IsServerStarted)
+                return false;
+
+            if (!_transferringClientIds.Add(owner.ClientId))
+                return false;
+
+            _ = HandoffAsync(player, owner);
+            return true;
         }
 
         private async System.Threading.Tasks.Task HandoffAsync(NetworkObject player, NetworkConnection owner)
@@ -163,6 +210,11 @@ namespace MMO.Gameplay
                     _transferringClientIds.Remove(clientId);
                     return;
                 }
+
+                // The handoff already flushed the final record. Marking it transferred keeps the
+                // disconnect callback from writing that same record again after the destination
+                // has loaded it — a second write would bump the version under the new zone.
+                save?.MarkTransferred();
 
                 _networkManager.ServerManager.Broadcast(owner, redirect.Value, requireAuthenticated: true);
 

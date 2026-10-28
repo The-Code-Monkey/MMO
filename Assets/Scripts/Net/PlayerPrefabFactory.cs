@@ -183,6 +183,10 @@ namespace MMO.Net
             // uses.
             go.AddComponent<PlayerBank>();
 
+            // Zone-gate prompt and E intent. Appended after the bank for the same reason: its
+            // ServerRpc index must not shift any behaviour the baked prefab already carries.
+            go.AddComponent<PlayerZoneTransfer>();
+
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.
             PrimitiveAppearance.ApplyRenderPipelineMaterial(go);

@@ -13,6 +13,9 @@ namespace MMO.Persistence
         /// <summary>The bearer token the backend issued; proves the login on the join handshake.</summary>
         public string Token { get; }
 
+        /// <summary>The refresh token that can renew <see cref="Token"/> after it expires.</summary>
+        public string RefreshToken { get; }
+
         /// <summary>The Nakama user id the token belongs to; the server's account key from here on.</summary>
         public string UserId { get; }
 
@@ -26,20 +29,24 @@ namespace MMO.Persistence
         public string Error { get; }
 
         private LoginResult(
-            bool success, string token, string userId, string username, LastZoneInfo lastZone, string error)
+            bool success, string token, string userId, string username, LastZoneInfo lastZone,
+            string refreshToken, string error)
         {
             Success = success;
             Token = token;
             UserId = userId;
             Username = username;
             LastZone = lastZone;
+            RefreshToken = refreshToken;
             Error = error;
         }
 
-        public static LoginResult Ok(string token, string userId, string username, LastZoneInfo lastZone = null)
-            => new(true, token, userId, username, lastZone, null);
+        public static LoginResult Ok(
+            string token, string userId, string username, LastZoneInfo lastZone = null,
+            string refreshToken = null)
+            => new(true, token, userId, username, lastZone, refreshToken, null);
 
         public static LoginResult Fail(string error)
-            => new(false, null, null, null, null, string.IsNullOrWhiteSpace(error) ? "Sign-in failed." : error);
+            => new(false, null, null, null, null, null, string.IsNullOrWhiteSpace(error) ? "Sign-in failed." : error);
     }
 }

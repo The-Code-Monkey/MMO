@@ -247,9 +247,14 @@ Task SaveLastZoneAsync(string userId, string token, LastZoneInfo zone, Cancellat
    its configured default zone.
 
 `LoginResult` (`Assets/Scripts/Persistence/LoginResult.cs:9`) is the outcome: either success (token,
-validated user id, username, optional last zone) or a `LoginResult.Fail(...)` with a
+refresh token, validated user id, username, optional last zone) or a `LoginResult.Fail(...)` with a
 player-readable message. Refusals are normal results, not exceptions: `LoginAsync` never throws for
 a bad password, so the UI can just show the message.
+
+The refresh token is what keeps a long session alive. `NakamaApiGateway.RefreshSessionAsync` posts
+it as the `token` field of `POST /v2/account/session/refresh` (Nakama's wire format for a refresh
+request), stores both rotated tokens back on `JoinRequestClient`, and falls back to a silent sign-in
+with the in-memory credentials only if Nakama rejects the refresh token itself.
 
 ### Username rules and the email mapping
 
@@ -274,7 +279,9 @@ standing: `Ip`, `Port` and `SavedAt` (an ISO-8601 UTC string for diagnostics). T
 address (not the sentinel) and a port between 1 and 65535.
 
 The record lives in the player's own account, collection `player_metadata`, key `last_zone`. It is
-read at login and written by the client only after the zone connection has actually been admitted.
+read at login and written by the client only after a zone connection has actually been admitted:
+once for the initial login, and again after every zone-transfer reconnect, so quitting or crashing
+in SafeZone/Wilderness routes the next login back to the zone the player actually reached.
 
 ## 11. Fail-open, and why it matters
 

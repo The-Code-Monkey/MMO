@@ -119,6 +119,46 @@ namespace MMO.Tests
 
         private JoinRequestBroadcast Build() => _client.BuildJoinRequest();
 
+        #region Session tokens
+
+        [Test]
+        public void SetSession_KeepsTheRefreshTokenAndUserId()
+        {
+            JoinRequestClient client = NewClient();
+
+            client.SetSession("session-tok", "refresh-tok", "user-1");
+
+            Assert.AreEqual("session-tok", client.AuthToken);
+            Assert.AreEqual("refresh-tok", client.RefreshToken);
+            Assert.AreEqual("user-1", client.UserId);
+        }
+
+        [Test]
+        public void SetCredentials_RemembersTheSignInForRenewal()
+        {
+            JoinRequestClient client = NewClient();
+
+            client.SetCredentials("Carol", "password123");
+
+            Assert.IsTrue(client.HasCredentials);
+            Assert.AreEqual("Carol", client.LoginUsername);
+            Assert.AreEqual("password123", client.LoginPassword);
+        }
+
+        [Test]
+        public void ApplyRefreshedSession_ReplacesBothTokens()
+        {
+            JoinRequestClient client = NewClient();
+            client.SetSession("old-session", "old-refresh", "user-1");
+
+            client.ApplyRefreshedSession("new-session", "new-refresh");
+
+            Assert.AreEqual("new-session", client.AuthToken);
+            Assert.AreEqual("new-refresh", client.RefreshToken);
+        }
+
+        #endregion
+
         #region TransferToken
 
         [Test]

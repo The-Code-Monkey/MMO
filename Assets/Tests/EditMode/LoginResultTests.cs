@@ -21,6 +21,14 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Ok_CarriesTheRefreshTokenForRenewingTheSession()
+        {
+            LoginResult result = LoginResult.Ok("token-1", "user-1", "Carol", null, "refresh-1");
+
+            Assert.AreEqual("refresh-1", result.RefreshToken);
+        }
+
+        [Test]
         public void Ok_AllowsANullZoneForFirstEverLogin()
         {
             LoginResult result = LoginResult.Ok("token-1", "user-1", "Carol");

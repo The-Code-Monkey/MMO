@@ -151,6 +151,7 @@ namespace MMO.Gameplay
             {
                 // Standing on the waypoint: the last corner of a route is the destination.
                 _moveTarget = null;
+                GetComponent<Persistence.PlayerSaveTrigger>()?.MarkDirtyOnArrival();
                 return;
             }
 

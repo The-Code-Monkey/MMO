@@ -115,6 +115,22 @@ namespace MMO.Persistence
             }
         }
 
+        /// <summary>Extracts the refresh token from an authenticate or refresh response.</summary>
+        public static string ParseRefreshToken(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return null;
+
+            try
+            {
+                return JsonUtility.FromJson<LoginSession>(json).refresh_token;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+
         /// <summary>Extracts the identity from a <c>GET /v2/account</c> response; invalid when absent.</summary>
         public static TokenIdentity ParseAccountResponse(string json)
         {
@@ -197,6 +213,8 @@ namespace MMO.Persistence
                 if (string.IsNullOrEmpty(token))
                     return LoginResult.Fail("The backend returned no session token.");
 
+                string refreshToken = ParseRefreshToken(authText);
+
                 TokenIdentity identity = await ValidateAsync(token, ct);
                 if (!identity.IsValid)
                     return LoginResult.Fail("The backend did not vouch for the session token.");
@@ -213,7 +231,7 @@ namespace MMO.Persistence
                     Debug.LogWarning($"Last-zone record unavailable; joining the default zone. {e.Message}");
                 }
 
-                return LoginResult.Ok(token, identity.UserId, identity.Username, zone);
+                return LoginResult.Ok(token, identity.UserId, identity.Username, zone, refreshToken);
             }
             catch (OperationCanceledException)
             {
@@ -250,6 +268,40 @@ namespace MMO.Persistence
 
             string text = await SendAsync("POST", BaseUrl + "/v2/storage", BuildZoneReadJson(userId), null, token, ct);
             return ParseZoneReadResponse(text);
+        }
+
+        /// <summary>
+        /// Renews an expired session token. Returns null when the refresh token was refused; the
+        /// caller keeps its old session and lets the server decide what to do with it.
+        /// </summary>
+        public async Task<SessionTokens> RefreshSessionAsync(
+            string refreshToken, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                return null;
+
+            try
+            {
+                // Nakama's refresh endpoint takes the *refresh* token in the "token" field; the
+                // access token is not part of the request at all.
+                string text = await SendAsync(
+                    "POST",
+                    BaseUrl + "/v2/account/session/refresh",
+                    JsonUtility.ToJson(new RefreshRequest { token = refreshToken }),
+                    BuildBasicAuth(), null, ct);
+
+                string token = ParseSessionToken(text);
+                if (string.IsNullOrEmpty(token))
+                    return null;
+
+                string nextRefresh = ParseRefreshToken(text);
+                return new SessionTokens(token, string.IsNullOrEmpty(nextRefresh) ? refreshToken : nextRefresh);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"Could not refresh the session token: {e.Message}");
+                return null;
+            }
         }
 
         /// <inheritdoc cref="IApiGateway.SaveLastZoneAsync"/>
@@ -374,6 +426,13 @@ namespace MMO.Persistence
 
         [Serializable]
         private class LoginSession
+        {
+            public string token;
+            public string refresh_token;
+        }
+
+        [Serializable]
+        private class RefreshRequest
         {
             public string token;
         }
