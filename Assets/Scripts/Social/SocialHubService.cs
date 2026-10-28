@@ -82,8 +82,7 @@ namespace MMO.Social
         private PartyService _partyService;
         private GuildBankService _guildBank;
         private RaidHandoffService _raidHandoff;
-        private readonly Dictionary<string, SocialIndexRecord> _lastIndexes = new Dictionary<string, SocialIndexRecord>();
-
+        private SocialReconciler _reconciler;
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
 
@@ -294,6 +293,18 @@ namespace MMO.Social
                 record => RaidChanged?.Invoke(record),
                 (accountId, record) => RaidTransferRequested?.Invoke(accountId, record),
                 (accountId, anchor) => RaidReturnRequested?.Invoke(accountId, anchor));
+            _reconciler = new SocialReconciler(
+                () => _repository,
+                EnsureConnectedAsync,
+                _localPlayers,
+                _friends,
+                _raidHandoff,
+                () => _raidRepository,
+                record => PartyChanged?.Invoke(record),
+                record => GuildChanged?.Invoke(record),
+                record => BankChanged?.Invoke(record),
+                (accountId, invite) => PartyInviteReceived?.Invoke(accountId, invite),
+                (accountId, invite) => GuildInviteReceived?.Invoke(accountId, invite));
 
             if (repository is NakamaSocialRepository nakama)
             {
@@ -805,116 +816,13 @@ namespace MMO.Social
         /// Diffs this zone's live players against the backend and pushes roster/invite changes to
         /// their FishNet objects. Public so tests can drive one pass without waiting a frame.
         /// </summary>
-        public async Task SyncAsync()
-        {
-            if (!await EnsureConnectedAsync() || _localPlayers.Count == 0)
-                return;
+        public Task SyncAsync() => _reconciler.SyncAsync();
 
-            var ids = _localPlayers.AccountIds();
-            List<SocialIndexRecord> indexes = await _repository.LoadIndexesAsync(ids, CancellationToken.None);
-
-            var partyIds = new HashSet<string>();
-            var guildIds = new HashSet<string>();
-
-            foreach (SocialIndexRecord index in indexes)
-            {
-                if (index == null || string.IsNullOrEmpty(index.AccountId))
-                    continue;
-
-                _lastIndexes.TryGetValue(index.AccountId, out SocialIndexRecord known);
-
-                // Membership that vanished (a kick, or leaving on another zone) has to clear the
-                // local roster view; the authoritative refresh below repaints the remaining members.
-                if (known != null && !string.IsNullOrEmpty(known.PartyId) && string.IsNullOrEmpty(index.PartyId))
-                    PartyChanged?.Invoke(null);
-                if (known != null && !string.IsNullOrEmpty(known.GuildId) && string.IsNullOrEmpty(index.GuildId))
-                    GuildChanged?.Invoke(null);
-
-                if (known == null ||
-                    known.PendingPartyInvite.PartyId != index.PendingPartyInvite.PartyId ||
-                    known.PendingPartyInvite.ExpiresAtTicks != index.PendingPartyInvite.ExpiresAtTicks)
-                {
-                    if (!string.IsNullOrEmpty(index.PendingPartyInvite.PartyId))
-                        PartyInviteReceived?.Invoke(index.AccountId, index.PendingPartyInvite);
-                }
-
-                if (known == null ||
-                    known.PendingGuildInvite.GuildId != index.PendingGuildInvite.GuildId ||
-                    known.PendingGuildInvite.ExpiresAtTicks != index.PendingGuildInvite.ExpiresAtTicks)
-                {
-                    if (!string.IsNullOrEmpty(index.PendingGuildInvite.GuildId))
-                        GuildInviteReceived?.Invoke(index.AccountId, index.PendingGuildInvite);
-                }
-
-                _lastIndexes[index.AccountId] = index;
-
-                // Keep the local roster's party pointer in step so party chat can route.
-                if (_localPlayers.TryGet(index.AccountId, out LocalPlayerHandle localHandle))
-                    localHandle.PartyId = index.PartyId;
-
-                if (!string.IsNullOrEmpty(index.PartyId))
-                    partyIds.Add(index.PartyId);
-
-                if (!string.IsNullOrEmpty(index.GuildId))
-                    guildIds.Add(index.GuildId);
-            }
-
-            foreach (string partyId in partyIds)
-            {
-                PartyRecord record = await _repository.LoadPartyAsync(partyId, CancellationToken.None);
-                if (record != null)
-                    PartyChanged?.Invoke(record);
-
-                // Detect raid completion: RaidInstanceId went from set → empty while members are local.
-                if (record != null && _raidRepository != null)
-                    await _raidHandoff.SyncCompletionAsync(record);
-            }
-
-            foreach (string guildId in guildIds)
-            {
-                GuildRecord record = await _repository.LoadGuildAsync(guildId, CancellationToken.None);
-                if (record != null)
-                    GuildChanged?.Invoke(record);
-
-                // A bank that was never written opens with the default tabs and rank rules, so a
-                // brand-new guild still has something to render on every zone hosting its members.
-                GuildBankRecord bank = await _repository.LoadGuildBankAsync(guildId, CancellationToken.None);
-                if (bank == null)
-                    bank = GuildBankRules.CreateDefault(guildId);
-                else
-                    GuildBankRules.EnsureDefaults(bank);
-
-                BankChanged?.Invoke(bank);
-            }
-
-            // Repair any half-accepted friendship whose mirror write or notify was lost.
-            await _friends.RepairAsync();
-
-            // Raid handoff: a party whose raid instance is hosted on another zone must move its
-            // local members there. The pointer is authoritative; only the zone already holding a
-            // member reacts, and only once per instance id.
-            if (_raidRepository != null)
-                await _raidHandoff.SyncTransfersAsync(partyIds);
-        }
-
-        /// <summary>
-        /// A peer zone pushed a social change hint. The body is never trusted beyond ids: we funnel
-        /// the notification straight back into <see cref="SyncAsync"/>, which re-reads the record,
-        /// re-runs the same <c>RaidRules</c> and repository validation as the poll path, and only
-        /// then acts. A stale, duplicate or tampered push can at worst cause an early correct pass,
-        /// never an incorrect action. Public so tests can drive one push without a socket.
-        /// </summary>
+        /// <summary>A peer zone pushed a social change hint; re-run one reconcile pass.</summary>
         public Task OnSocialNotification(SocialNotification notification)
-        {
-            if (notification == null)
-                return Task.CompletedTask;
+            => _reconciler.OnSocialNotification(notification);
 
-            if (notification.Kind != SocialNotificationKind.RaidAllocated &&
-                notification.Kind != SocialNotificationKind.RaidCompleted)
-                return Task.CompletedTask;
-
-            return SyncAsync();
-        }
+        #endregion
 
         /// <summary>
         /// Removes a disbanding party (its last member left) from its raid. Since #54 a raid groups
@@ -935,8 +843,6 @@ namespace MMO.Social
                 Debug.LogWarning($"[Social] Failed to tear down raid membership for '{party.PartyId}': {e.Message}");
             }
         }
-
-        #endregion
 
         #region Presence
 
