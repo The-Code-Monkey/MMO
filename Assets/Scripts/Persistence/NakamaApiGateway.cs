@@ -52,148 +52,32 @@ namespace MMO.Persistence
 
         #region Builders (pure, unit-testable)
 
-        /// <summary>
-        /// Email sign-in with auto-registration. <c>create=true</c> lets a first-time player's
-        /// credentials create the account; an existing account matches on the email and the
-        /// username query is ignored, exactly like a real login form.
-        /// </summary>
         public static string BuildAuthenticateUrl(string baseUrl, string username)
-            => $"{baseUrl}/v2/account/authenticate/email?create=true&username={Uri.EscapeDataString(username ?? string.Empty)}";
+            => NakamaApiPayloads.BuildAuthenticateUrl(baseUrl, username);
 
         public static string BuildAuthenticateJson(string email, string password)
-            => JsonUtility.ToJson(new AccountEmailRequest { email = email, password = password });
+            => NakamaApiPayloads.BuildAuthenticateJson(email, password);
 
         public static string BuildZoneReadJson(string userId)
-            => JsonUtility.ToJson(new ReadStorageObjectsRequest
-            {
-                objectIds = new List<ReadStorageObjectId>
-                {
-                    new ReadStorageObjectId
-                    {
-                        collection = LastZoneCollection,
-                        key = LastZoneKey,
-                        userId = userId,
-                    },
-                },
-            });
+            => NakamaApiPayloads.BuildZoneReadJson(userId);
 
-        /// <summary>
-        /// Writes the zone record under the <em>caller's</em> ownership with an empty version —
-        /// unconditional upsert, which is what overwriting "where I last stood" needs. Read/write
-        /// permission 1 keeps the record visible only to its owner.
-        /// </summary>
         public static string BuildZoneWriteJson(LastZoneInfo zone)
-            => JsonUtility.ToJson(new WriteStorageObjectsRequest
-            {
-                objects = new List<StorageObjectWrite>
-                {
-                    new StorageObjectWrite
-                    {
-                        collection = LastZoneCollection,
-                        key = LastZoneKey,
-                        value = JsonUtility.ToJson(zone),
-                        version = string.Empty,
-                        permissionRead = 1,
-                        permissionWrite = 1,
-                    },
-                },
-            });
+            => NakamaApiPayloads.BuildZoneWriteJson(zone);
 
-        /// <summary>Extracts the bearer token from an authenticate response; null when absent.</summary>
         public static string ParseSessionToken(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
+            => NakamaApiPayloads.ParseSessionToken(json);
 
-            try
-            {
-                return JsonUtility.FromJson<LoginSession>(json).token;
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
-
-        /// <summary>Extracts the refresh token from an authenticate or refresh response.</summary>
         public static string ParseRefreshToken(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
+            => NakamaApiPayloads.ParseRefreshToken(json);
 
-            try
-            {
-                return JsonUtility.FromJson<LoginSession>(json).refresh_token;
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
-
-        /// <summary>Extracts the identity from a <c>GET /v2/account</c> response; invalid when absent.</summary>
         public static TokenIdentity ParseAccountResponse(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-                return default;
+            => NakamaApiPayloads.ParseAccountResponse(json);
 
-            try
-            {
-                AccountResponse response = JsonUtility.FromJson<AccountResponse>(json);
-                if (response.user == null)
-                    return default;
-
-                return new TokenIdentity(response.user.id, response.user.username);
-            }
-            catch (ArgumentException)
-            {
-                return default;
-            }
-        }
-
-        /// <summary>
-        /// Extracts the zone record from a storage read response. Missing objects, empty object
-        /// lists, and malformed payloads all read as "no zone yet" (null); a foreign payload must
-        /// never take the login down.
-        /// </summary>
         public static LastZoneInfo ParseZoneReadResponse(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
+            => NakamaApiPayloads.ParseZoneReadResponse(json);
 
-            try
-            {
-                StorageObjectsResponse response = JsonUtility.FromJson<StorageObjectsResponse>(json);
-                if (response.objects == null || response.objects.Count == 0)
-                    return null;
-
-                StorageObjectValue obj = response.objects[0];
-                if (string.IsNullOrWhiteSpace(obj.value))
-                    return null;
-
-                return LastZoneInfo.FromJson(obj.value);
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
-
-        /// <summary>Extracts the human-readable message from a Nakama error body; null when absent.</summary>
         public static string ParseErrorMessage(string responseBody)
-        {
-            if (string.IsNullOrWhiteSpace(responseBody))
-                return null;
-
-            try
-            {
-                return JsonUtility.FromJson<NakamaError>(responseBody).message;
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
+            => NakamaApiPayloads.ParseErrorMessage(responseBody);
 
         #endregion
 
@@ -287,7 +171,7 @@ namespace MMO.Persistence
                 string text = await SendAsync(
                     "POST",
                     BaseUrl + "/v2/account/session/refresh",
-                    JsonUtility.ToJson(new RefreshRequest { token = refreshToken }),
+                    JsonUtility.ToJson(new GatewayRefreshRequest { token = refreshToken }),
                     BuildBasicAuth(), null, ct);
 
                 string token = ParseSessionToken(text);
@@ -318,10 +202,10 @@ namespace MMO.Persistence
 
             string text = await SendAsync("PUT", BaseUrl + "/v2/storage", BuildZoneWriteJson(zone), null, token, ct);
 
-            WriteStorageObjectsResponse response = null;
+            GatewayWriteStorageObjectsResponse response = null;
             try
             {
-                response = JsonUtility.FromJson<WriteStorageObjectsResponse>(text);
+                response = JsonUtility.FromJson<GatewayWriteStorageObjectsResponse>(text);
             }
             catch (ArgumentException)
             {
@@ -417,98 +301,5 @@ namespace MMO.Persistence
             }
         }
 
-        [Serializable]
-        private class AccountEmailRequest
-        {
-            public string email;
-            public string password;
-        }
-
-        [Serializable]
-        private class LoginSession
-        {
-            public string token;
-            public string refresh_token;
-        }
-
-        [Serializable]
-        private class RefreshRequest
-        {
-            public string token;
-        }
-
-        [Serializable]
-        private class AccountResponse
-        {
-            public AccountUser user;
-        }
-
-        [Serializable]
-        private class AccountUser
-        {
-            public string id;
-            public string username;
-        }
-
-        [Serializable]
-        private class NakamaError
-        {
-            public string message;
-        }
-
-        [Serializable]
-        private class ReadStorageObjectsRequest
-        {
-            public List<ReadStorageObjectId> objectIds;
-        }
-
-        [Serializable]
-        private class ReadStorageObjectId
-        {
-            public string collection;
-            public string key;
-            public string userId;
-        }
-
-        [Serializable]
-        private class StorageObjectsResponse
-        {
-            public List<StorageObjectValue> objects;
-        }
-
-        [Serializable]
-        private class StorageObjectValue
-        {
-            public string value;
-        }
-
-        [Serializable]
-        private class WriteStorageObjectsRequest
-        {
-            public List<StorageObjectWrite> objects;
-        }
-
-        [Serializable]
-        private class StorageObjectWrite
-        {
-            public string collection;
-            public string key;
-            public string value;
-            public string version;
-            public int permissionRead;
-            public int permissionWrite;
-        }
-
-        [Serializable]
-        private class WriteStorageObjectsResponse
-        {
-            public List<WriteStorageObjectAck> acks;
-        }
-
-        [Serializable]
-        private class WriteStorageObjectAck
-        {
-            public string version;
-        }
     }
 }
