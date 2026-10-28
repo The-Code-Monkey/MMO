@@ -29,6 +29,8 @@ namespace MMO.Tests
             int maxDurability = 0,
             ToolKind toolKind = ToolKind.None,
             int toolTier = 0,
+            bool isStackable = false,
+            int maxStackSize = 1,
             bool register = true)
         {
             var inspector = new SerializedObject(definition);
@@ -42,6 +44,8 @@ namespace MMO.Tests
             inspector.FindProperty("_maxDurability").intValue = maxDurability;
             inspector.FindProperty("_toolKind").intValue = (int)toolKind;
             inspector.FindProperty("_toolTier").intValue = toolTier;
+            inspector.FindProperty("_isStackable").boolValue = isStackable;
+            inspector.FindProperty("_maxStackSize").intValue = maxStackSize;
             inspector.ApplyModifiedPropertiesWithoutUndo();
 
             if (register)
@@ -61,7 +65,9 @@ namespace MMO.Tests
             int maxManaBonus = 0,
             int maxDurability = 0,
             ToolKind toolKind = ToolKind.None,
-            int toolTier = 0)
+            int toolTier = 0,
+            bool isStackable = false,
+            int maxStackSize = 1)
         {
             return Write(
                 ScriptableObject.CreateInstance<ItemDefinition>(),
@@ -74,7 +80,9 @@ namespace MMO.Tests
                 maxManaBonus,
                 maxDurability,
                 toolKind,
-                toolTier);
+                toolTier,
+                isStackable,
+                maxStackSize);
         }
     }
 }
