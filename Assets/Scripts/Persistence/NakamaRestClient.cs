@@ -58,128 +58,41 @@ namespace MMO.Persistence
     /// by construction.
     /// </para>
     /// </summary>
-    public sealed class NakamaRestClient : INakamaConnected, INakamaSession
+    public sealed class NakamaRestClient : INakamaConnected, INakamaSession, INakamaAuthTransport
     {
         public const int RequestTimeoutSeconds = 10;
 
-        /// <summary>Refresh the session when fewer than this many seconds of life remain.</summary>
-        public const int RefreshMarginSeconds = 30;
-
-        /// <summary>How long a freshly issued/refreshed token is treated as valid for.</summary>
-        public const int AssumedTokenLifetimeSeconds = 45;
-
         private readonly BackendSettings _settings;
-        private string _baseUrl;
-        private string _sessionToken;
-        private string _refreshToken;
-        private string _userId;
-        private DateTime _tokenValidUntil = DateTime.MinValue;
+        private readonly NakamaSession _session;
 
         public NakamaRestClient(BackendSettings settings = null)
-            => _settings = settings ?? new BackendSettings();
+        {
+            _settings = settings ?? new BackendSettings();
+            _session = new NakamaSession(_settings, this);
+        }
 
-        public bool IsConnected => !string.IsNullOrEmpty(_sessionToken);
+        public bool IsConnected => _session.IsConnected;
 
         /// <summary>The shared service account's user id; the storage owner every object lives under.</summary>
-        public string UserId => _userId;
+        public string UserId => _session.UserId;
 
         /// <summary>Scheme://host:port the REST calls are made against.</summary>
-        public string BaseUrl => _baseUrl ??= $"{_settings.Scheme}://{_settings.Host}:{_settings.Port}";
+        public string BaseUrl => _session.BaseUrl;
 
         /// <summary>
         /// The socket handshake URL is derived from this, so it mirrors <see cref="BaseUrl"/>.
         /// Part of <see cref="INakamaSession"/>.
         /// </summary>
-        public string HttpBaseUrl => BaseUrl;
+        public string HttpBaseUrl => _session.HttpBaseUrl;
 
-        public async Task ConnectAsync(CancellationToken ct)
-        {
-            _baseUrl = $"{_settings.Scheme}://{_settings.Host}:{_settings.Port}";
-
-            RestAuthSession session = await PostAsync<RestAuthSession>(
-                "/v2/account/authenticate/device?create=true&username=" + Uri.EscapeDataString(_settings.ServerUsername),
-                JsonUtility.ToJson(new RestAccountDeviceRequest { id = _settings.ServerDeviceId }),
-                useBasic: true,
-                ct);
-
-            if (session == null || string.IsNullOrEmpty(session.token))
-                throw new InvalidOperationException("Nakama returned a session without a token.");
-
-            _sessionToken = session.token;
-            _refreshToken = session.refresh_token;
-            _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
-
-            RestAccountResponse account = await GetAsync<RestAccountResponse>("/v2/account", ct);
-            if (account?.user == null || string.IsNullOrEmpty(account.user.id))
-                throw new InvalidOperationException("Nakama returned a session without a user id.");
-
-            _userId = account.user.id;
-        }
+        public Task ConnectAsync(CancellationToken ct)
+            => _session.ConnectAsync(ct);
 
         public Task DisconnectAsync()
-        {
-            _sessionToken = null;
-            _refreshToken = null;
-            _userId = null;
-            _tokenValidUntil = DateTime.MinValue;
-            return Task.CompletedTask;
-        }
+            => _session.DisconnectAsync();
 
-        /// <summary>
-        /// Returns a session token that is valid for at least another
-        /// <see cref="RefreshMarginSeconds"/> seconds. Nakama's default session expiry is 60 s, so a
-        /// long-running zone server outlives its first token by definition: the socket reconnect
-        /// path and every long-idle REST call refresh through here before they go stale.
-        /// </summary>
-        public async Task<string> GetFreshTokenAsync(CancellationToken ct)
-        {
-            RequireSession();
-
-            if (_tokenValidUntil > DateTime.UtcNow.AddSeconds(RefreshMarginSeconds) ||
-                string.IsNullOrEmpty(_refreshToken))
-                return _sessionToken;
-
-            string tokenBeforeRefresh = _sessionToken;
-            try
-            {
-                // Nakama's refresh endpoint takes the *refresh* token in the "token" field; the
-                // access token is not part of the request at all.
-                RestRefreshResponse refreshed = await PostAsync<RestRefreshResponse>(
-                    "/v2/account/session/refresh",
-                    JsonUtility.ToJson(new RestRefreshRequest { token = _refreshToken }),
-                    useBasic: true,
-                    ct);
-
-                if (refreshed != null && !string.IsNullOrEmpty(refreshed.token))
-                {
-                    _sessionToken = refreshed.token;
-                    if (!string.IsNullOrEmpty(refreshed.refresh_token))
-                        _refreshToken = refreshed.refresh_token;
-
-                    _tokenValidUntil = DateTime.UtcNow.AddSeconds(AssumedTokenLifetimeSeconds);
-                }
-
-                return _sessionToken;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                // A refresh token can be revoked or outlive Nakama's session window. Re-issue a
-                // session with the shared service credentials instead of leaving the server dead.
-                if (_sessionToken != tokenBeforeRefresh && !string.IsNullOrEmpty(_sessionToken))
-                    return _sessionToken;
-
-                _sessionToken = null;
-                _refreshToken = null;
-                _userId = null;
-                _tokenValidUntil = DateTime.MinValue;
-                await ConnectAsync(ct);
-                return _sessionToken;
-            }
-        }
+        public Task<string> GetFreshTokenAsync(CancellationToken ct)
+            => _session.GetFreshTokenAsync(ct);
 
         /// <summary>
         /// Calls a registered server-side Lua RPC (<c>POST /v2/rpc/{id}</c>). Nakama wraps the
@@ -244,7 +157,7 @@ namespace MMO.Persistence
                 {
                     collection = collection,
                     key = key,
-                    userId = _userId,
+                    userId = _session.UserId,
                 });
             }
 
@@ -287,7 +200,7 @@ namespace MMO.Persistence
                 return result;
 
             string path = "/v2/storage/" + Uri.EscapeDataString(collection)
-                + "?user_id=" + Uri.EscapeDataString(_userId ?? string.Empty)
+                + "?user_id=" + Uri.EscapeDataString(_session.UserId ?? string.Empty)
                 + "&limit=100";
 
             RestStorageObjectListResponse response = await GetAsync<RestStorageObjectListResponse>(path, ct);
@@ -361,11 +274,13 @@ namespace MMO.Persistence
         }
 
         private void RequireSession()
-        {
-            if (string.IsNullOrEmpty(_sessionToken) || string.IsNullOrEmpty(_userId))
-                throw new InvalidOperationException(
-                    $"{nameof(NakamaRestClient)} is not connected to the backend.");
-        }
+            => _session.RequireSession();
+
+        Task<T> INakamaAuthTransport.PostAsync<T>(string path, string jsonBody, bool useBasic, CancellationToken ct)
+            => PostAsync<T>(path, jsonBody, useBasic, ct);
+
+        Task<T> INakamaAuthTransport.GetAsync<T>(string path, CancellationToken ct)
+            => GetAsync<T>(path, ct);
 
         private Task<T> GetAsync<T>(string path, CancellationToken ct)
             => SendAsync<T>("GET", path, null, false, ct);
@@ -396,8 +311,8 @@ namespace MMO.Persistence
 
             if (useBasic)
                 request.SetRequestHeader("Authorization", BuildBasicAuth());
-            else if (!string.IsNullOrEmpty(_sessionToken))
-                request.SetRequestHeader("Authorization", "Bearer " + _sessionToken);
+            else if (!string.IsNullOrEmpty(_session.SessionToken))
+                request.SetRequestHeader("Authorization", "Bearer " + _session.SessionToken);
 
             await SendAndWaitAsync(request);
 
