@@ -350,7 +350,7 @@ namespace MMO.UI
             foreach (AuctionListingRecord listing in listings)
             {
                 GameObject item = Instantiate(_listingItemPrefab, _browseListContent);
-                SetupBrowseListingItem(item, listing);
+                AuctionListRowBinder.BrowseListing(item, listing, id => _auctionHouse.RequestBuyListing(id));
             }
         }
 
@@ -362,7 +362,7 @@ namespace MMO.UI
             foreach (AuctionBuyOrderRecord buyOrder in buyOrders)
             {
                 GameObject item = Instantiate(_buyOrderItemPrefab, _buyOrdersListContent);
-                SetupBrowseBuyOrderItem(item, buyOrder);
+                AuctionListRowBinder.BrowseBuyOrder(item, buyOrder, OpenFulfillBuyOrder);
             }
         }
 
@@ -373,7 +373,7 @@ namespace MMO.UI
             foreach (AuctionListingRecord listing in listings)
             {
                 GameObject item = Instantiate(_myListingItemPrefab, _myListingsContent);
-                SetupMyListingItem(item, listing);
+                AuctionListRowBinder.MyListing(item, listing, id => _auctionHouse.RequestCancelListing(id));
             }
         }
 
@@ -384,7 +384,7 @@ namespace MMO.UI
             foreach (AuctionBuyOrderRecord buyOrder in buyOrders)
             {
                 GameObject item = Instantiate(_myBuyOrderItemPrefab, _myBuyOrdersContent);
-                SetupMyBuyOrderItem(item, buyOrder);
+                AuctionListRowBinder.MyBuyOrder(item, buyOrder, id => _auctionHouse.RequestCancelBuyOrder(id));
             }
         }
 
@@ -395,7 +395,7 @@ namespace MMO.UI
             foreach (AuctionTransactionRecord tx in transactions)
             {
                 GameObject item = Instantiate(_historyItemPrefab, _historyContent);
-                SetupHistoryItem(item, tx);
+                AuctionListRowBinder.History(item, tx);
             }
         }
 
@@ -442,175 +442,11 @@ namespace MMO.UI
             RequestSearchBuyOrders();
         }
 
-        private void SetupBrowseListingItem(GameObject item, AuctionListingRecord listing)
-        {
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
-            string displayName = def != null ? def.ItemName : listing.ItemName;
-
-            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
-            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
-            Text sellerText = item.transform.Find("SellerText")?.GetComponent<Text>();
-            Text stackText = item.transform.Find("StackText")?.GetComponent<Text>();
-            Button buyButton = item.transform.Find("BuyButton")?.GetComponent<Button>();
-
-            if (nameText != null) nameText.text = displayName;
-            if (priceText != null) priceText.text = $"{listing.TotalPrice:N0} gold ({listing.PricePerUnit:N0} each)";
-            if (sellerText != null) sellerText.text = $"Seller: {listing.SellerPlayerName}";
-            if (stackText != null) stackText.text = listing.StackCount > 1 ? $"x{listing.StackCount}" : "";
-
-            if (buyButton != null)
-            {
-                buyButton.onClick.RemoveAllListeners();
-                buyButton.onClick.AddListener(() => _auctionHouse.RequestBuyListing(listing.ListingId));
-            }
-        }
-
-        private void SetupMyListingItem(GameObject item, AuctionListingRecord listing)
-        {
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
-            string displayName = def != null ? def.ItemName : listing.ItemName;
-
-            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
-            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
-            Text stackText = item.transform.Find("StackText")?.GetComponent<Text>();
-            Text statusText = item.transform.Find("StatusText")?.GetComponent<Text>();
-            Button cancelButton = item.transform.Find("CancelButton")?.GetComponent<Button>();
-
-            if (nameText != null) nameText.text = displayName;
-            if (priceText != null) priceText.text = $"{listing.TotalPrice:N0} gold ({listing.PricePerUnit:N0} each)";
-            if (stackText != null) stackText.text = listing.StackCount > 1 ? $"x{listing.StackCount}" : "";
-
-            if (statusText != null)
-            {
-                switch (listing.Status)
-                {
-                    case AuctionListingStatus.Active:
-                        statusText.text = "Active";
-                        statusText.color = Color.green;
-                        break;
-                    case AuctionListingStatus.Sold:
-                        statusText.text = "Sold";
-                        statusText.color = Color.blue;
-                        break;
-                    case AuctionListingStatus.Cancelled:
-                        statusText.text = "Cancelled";
-                        statusText.color = Color.gray;
-                        break;
-                    case AuctionListingStatus.Expired:
-                        statusText.text = "Expired";
-                        statusText.color = Color.red;
-                        break;
-                }
-            }
-
-            if (cancelButton != null)
-            {
-                cancelButton.gameObject.SetActive(listing.Status == AuctionListingStatus.Active);
-                cancelButton.onClick.RemoveAllListeners();
-                cancelButton.onClick.AddListener(() => _auctionHouse.RequestCancelListing(listing.ListingId));
-            }
-        }
-
-        private void SetupHistoryItem(GameObject item, AuctionTransactionRecord tx)
-        {
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(tx.ItemName);
-            string displayName = def != null ? def.ItemName : tx.ItemName;
-
-            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
-            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
-            Text countText = item.transform.Find("CountText")?.GetComponent<Text>();
-            Text dateText = item.transform.Find("DateText")?.GetComponent<Text>();
-
-            if (nameText != null) nameText.text = displayName;
-            if (priceText != null) priceText.text = $"{tx.TotalPrice:N0} gold";
-            if (countText != null) countText.text = tx.StackCount > 1 ? $"x{tx.StackCount}" : "";
-            if (dateText != null)
-            {
-                DateTime date = new DateTime(tx.CompletedAtTicks, DateTimeKind.Utc).ToLocalTime();
-                dateText.text = date.ToString("yyyy-MM-dd HH:mm");
-            }
-        }
-
         private void ClearList(Transform content)
         {
             if (content == null) return;
             for (int i = content.childCount - 1; i >= 0; i--)
-            {
                 Destroy(content.GetChild(i).gameObject);
-            }
-        }
-
-        private void SetupBrowseBuyOrderItem(GameObject item, AuctionBuyOrderRecord buyOrder)
-        {
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(buyOrder.ItemName);
-            string displayName = def != null ? def.ItemName : buyOrder.ItemName;
-
-            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
-            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
-            Text buyerText = item.transform.Find("BuyerText")?.GetComponent<Text>();
-            Text quantityText = item.transform.Find("QuantityText")?.GetComponent<Text>();
-            Button fulfillButton = item.transform.Find("FulfillButton")?.GetComponent<Button>();
-
-            if (nameText != null) nameText.text = displayName;
-            if (priceText != null) priceText.text = $"{buyOrder.PricePerUnit:N0} gold each (Total: {buyOrder.TotalValue:N0})";
-            if (buyerText != null) buyerText.text = $"Buyer: {buyOrder.BuyerPlayerName}";
-            if (quantityText != null) quantityText.text = $"{buyOrder.QuantityRemaining}/{buyOrder.QuantityTotal}";
-
-            if (fulfillButton != null)
-            {
-                fulfillButton.onClick.RemoveAllListeners();
-                fulfillButton.onClick.AddListener(() => OpenFulfillBuyOrder(buyOrder));
-            }
-        }
-
-        private void SetupMyBuyOrderItem(GameObject item, AuctionBuyOrderRecord buyOrder)
-        {
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(buyOrder.ItemName);
-            string displayName = def != null ? def.ItemName : buyOrder.ItemName;
-
-            Text nameText = item.transform.Find("NameText")?.GetComponent<Text>();
-            Text priceText = item.transform.Find("PriceText")?.GetComponent<Text>();
-            Text quantityText = item.transform.Find("QuantityText")?.GetComponent<Text>();
-            Text statusText = item.transform.Find("StatusText")?.GetComponent<Text>();
-            Button cancelButton = item.transform.Find("CancelButton")?.GetComponent<Button>();
-
-            if (nameText != null) nameText.text = displayName;
-            if (priceText != null) priceText.text = $"{buyOrder.PricePerUnit:N0} gold each";
-            if (quantityText != null) quantityText.text = $"{buyOrder.QuantityRemaining}/{buyOrder.QuantityTotal}";
-
-            if (statusText != null)
-            {
-                switch (buyOrder.Status)
-                {
-                    case AuctionBuyOrderStatus.Active:
-                        statusText.text = "Active";
-                        statusText.color = Color.green;
-                        break;
-                    case AuctionBuyOrderStatus.PartiallyFilled:
-                        statusText.text = "Partially Filled";
-                        statusText.color = Color.yellow;
-                        break;
-                    case AuctionBuyOrderStatus.Filled:
-                        statusText.text = "Filled";
-                        statusText.color = Color.blue;
-                        break;
-                    case AuctionBuyOrderStatus.Cancelled:
-                        statusText.text = "Cancelled";
-                        statusText.color = Color.gray;
-                        break;
-                    case AuctionBuyOrderStatus.Expired:
-                        statusText.text = "Expired";
-                        statusText.color = Color.red;
-                        break;
-                }
-            }
-
-            if (cancelButton != null)
-            {
-                cancelButton.gameObject.SetActive(buyOrder.Status == AuctionBuyOrderStatus.Active || buyOrder.Status == AuctionBuyOrderStatus.PartiallyFilled);
-                cancelButton.onClick.RemoveAllListeners();
-                cancelButton.onClick.AddListener(() => _auctionHouse.RequestCancelBuyOrder(buyOrder.BuyOrderId));
-            }
         }
 
         private void OpenFulfillBuyOrder(AuctionBuyOrderRecord buyOrder)
