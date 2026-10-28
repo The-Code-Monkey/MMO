@@ -102,6 +102,9 @@ namespace MMO.Persistence
         /// </summary>
         public List<CurrencyBalance> BankVault = new List<CurrencyBalance>();
 
+        /// <summary>Wallet debits awaiting confirmation from the auction backend.</summary>
+        public List<WalletReservationRecord> PendingWalletReservations = new List<WalletReservationRecord>();
+
         /// <summary>Items held in the player's personal bank grid, separate from the carried bag.</summary>
         public List<ItemSaveData> BankItems = new List<ItemSaveData>();
 

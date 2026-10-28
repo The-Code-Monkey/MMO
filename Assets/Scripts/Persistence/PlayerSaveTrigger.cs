@@ -1,10 +1,12 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using FishNet.Object;
 using MMO.Auction;
 using MMO.Banking;
 using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Social;
 using UnityEngine;
 
 namespace MMO.Persistence
@@ -36,6 +38,8 @@ namespace MMO.Persistence
         private PlayerBank _bank;
         private string _accountId;
         private bool _subscribed;
+        private bool _reconcilingWalletReservations;
+        private float _nextWalletReservationReconcileTime;
 
         /// <summary>The account this player's record lives under; empty until the join is applied.</summary>
         public string AccountId => _accountId;
@@ -164,6 +168,50 @@ namespace MMO.Persistence
             }
 
             _accountId = null;
+        }
+
+        private void Update()
+        {
+            if (!IsServer || !_subscribed || _reconcilingWalletReservations ||
+                Time.unscaledTime < _nextWalletReservationReconcileTime)
+            {
+                return;
+            }
+
+            PlayerPersistenceService service = PlayerPersistenceService.Instance;
+            if (service == null || service.GetPendingWalletReservations(_accountId).Count == 0)
+                return;
+
+            _nextWalletReservationReconcileTime = Time.unscaledTime + 5f;
+            _ = ReconcileWalletReservationsAsync(service);
+        }
+
+        private async Task ReconcileWalletReservationsAsync(PlayerPersistenceService service)
+        {
+            _reconcilingWalletReservations = true;
+            try
+            {
+                AuctionService auction = SocialHubService.Instance != null
+                    ? SocialHubService.Instance.Auction
+                    : null;
+                if (auction == null)
+                    return;
+
+                List<WalletReservationRecord> reservations = service.GetPendingWalletReservations(_accountId);
+                for (int i = 0; i < reservations.Count; i++)
+                {
+                    if (!await auction.ReconcileWalletReservationAsync(_accountId, _wallet, reservations[i]))
+                        break;
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"{nameof(PlayerSaveTrigger)}: failed to reconcile wallet reservations for '{_accountId}': {e.Message}");
+            }
+            finally
+            {
+                _reconcilingWalletReservations = false;
+            }
         }
 
         private void OnLevelChanged()

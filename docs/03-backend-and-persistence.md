@@ -45,6 +45,7 @@ The unit that travels to and from the database is `PlayerSaveRecord`
 | `Gold` | `long` | Legacy scalar gold. Kept so pre-wallet saves load; the wallet migrates it into `Currencies` and keeps it in sync. | 88 |
 | `Currencies` | `List<CurrencyBalance>` | The player's multi-currency wallet (gold, silver, faction marks). Empty in a legacy save. | 96 |
 | `BankVault` | `List<CurrencyBalance>` | Currency held in the personal bank vault, separate from the carried wallet. | 103 |
+| `PendingWalletReservations` | `List<WalletReservationRecord>` | Auction debits reconciled against listing/order state after interruption. | — |
 | `BankItems` | `List<ItemSaveData>` | Items held in the personal bank's 8x6 grid. Same item shape as the bag; never worn. | 108 |
 | `Items` | `List<ItemSaveData>` | Both inventory containers flattened into one list (bag + worn). | 108 |
 | `CompletedQuestIds` | `List<string>` | Quest ids that have already paid their reward. | 88 |
@@ -105,6 +106,7 @@ Here is every way a save can be triggered:
 | **Disconnect / despawn** | `PlayerSaveTrigger.OnStopNetwork` → `QueueFinalSave(...)` | Immediate, using a snapshot taken while the SyncVars are still live. |
 | **Server stop / app quit** | `FlushAsync()` | Forces every dirty player to save now. |
 | **Zone transfer** | `FlushAsync(accountId)` | Forces one player to save now; the handoff aborts if it fails. |
+| **Auction / buy-order reserve** | `AddWalletReservationAsync` | Saves debit and pending operation together before mutation; join-time reconciliation refunds if operation never committed. |
 
 `MarkDirty` is the core (`PlayerPersistenceService.cs:264`):
 
@@ -124,6 +126,12 @@ public void MarkDirty(string accountId, bool immediate)
 which collects every account whose debounce deadline has passed and saves it. If a save fails, the
 account stays dirty and is re-debounced (pushed 2 s into the future) so a dead backend cannot spin in
 a tight retry loop.
+
+`AddWalletReservationAsync` saves the debit and its listing/order id in one player record before the
+auction mutation. A crash before that mutation leaves a pending marker. On the next join,
+`PlayerSaveTrigger` checks the listing or order: it keeps committed debits and refunds missing or
+uncommitted operations. `CompleteWalletReservationAsync` saves the resolved balance and removes the
+marker. A failed refund save leaves the marker for another reconciliation attempt.
 
 The save pump is single-flight: a `_saving` flag means only one save batch runs at a time.
 

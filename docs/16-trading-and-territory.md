@@ -164,6 +164,10 @@ that attempt's mail and finishes the settlement (claim into the bag, seller cred
 removal) instead of refunding or delivering twice. When the mail is absent, the call really failed
 and the normal failure path runs.
 
+Buyer debits are saved with a `PendingWalletReservations` marker before the claim or buy-order write.
+After a restart, the joining zone checks listing/order state and clears committed reservations; it
+refunds uncommitted purchases and the remaining value of cancelled or expired buy orders.
+
 The zone-side helper `DeliverItemAsync` remains only as a fallback for a backend that predates the
 atomic `deliveryMailId`; it uses `AuctionDeliveryRules` and a C# mail write that bypasses the inbox
 cap and retries a transient backend failure.

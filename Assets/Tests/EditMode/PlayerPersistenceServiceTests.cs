@@ -171,14 +171,84 @@ namespace MMO.Tests
         }
 
         [Test]
+        public async Task FlushAsync_ForOnePlayer_RequireConnected_PersistsReservedGoldBeforeReturning()
+        {
+            long liveGold = 500;
+            _service.RegisterLivePlayer("u-1", () => new PlayerSaveRecord { UserId = "u-1", Gold = liveGold });
+            liveGold -= 125;
+
+            bool saved = await _service.FlushAsync("u-1", requireConnected: true);
+
+            Assert.IsTrue(saved);
+            Assert.AreEqual(375L, _repo.Records["u-1"].Gold);
+        }
+
+        [Test]
+        public async Task FlushAsync_ForOnePlayer_RequireConnected_FailsWhenBackendIsUnavailable()
+        {
+            var unconnected = new GameObject("UnconnectedService").AddComponent<PlayerPersistenceService>();
+
+            bool saved = await unconnected.FlushAsync("u-1", requireConnected: true);
+
+            Assert.IsFalse(saved, "A reserved wallet must not be treated as durable without a connected repository.");
+            Object.DestroyImmediate(unconnected.gameObject);
+        }
+
+        [Test]
+        public async Task FlushAsync_ForOnePlayer_RequireConnected_FailsWithoutLiveSnapshot()
+        {
+            bool saved = await _service.FlushAsync("u-1", requireConnected: true);
+
+            Assert.IsFalse(saved, "A missing live capture cannot prove the reserved wallet was saved.");
+        }
+
+        [Test]
+        public async Task AddWalletReservationAsync_PersistsReservationWithCurrentWallet()
+        {
+            const long reservedGold = 375;
+            _service.RegisterLivePlayer("u-1", () => new PlayerSaveRecord { UserId = "u-1", Gold = reservedGold });
+
+            bool saved = await _service.AddWalletReservationAsync("u-1", new WalletReservationRecord
+            {
+                ReservationId = "attempt-1",
+                TargetId = "listing-1",
+                Kind = WalletReservationKind.AuctionPurchase,
+                Amount = 125,
+            });
+
+            Assert.IsTrue(saved);
+            Assert.AreEqual(reservedGold, _repo.Records["u-1"].Gold);
+            Assert.AreEqual(1, _repo.Records["u-1"].PendingWalletReservations.Count);
+            Assert.AreEqual("attempt-1", _repo.Records["u-1"].PendingWalletReservations[0].ReservationId);
+        }
+
+        [Test]
+        public async Task CompleteWalletReservationAsync_PersistsClearedReservation()
+        {
+            _service.RegisterLivePlayer("u-1", () => new PlayerSaveRecord { UserId = "u-1", Gold = 375 });
+            await _service.AddWalletReservationAsync("u-1", new WalletReservationRecord
+            {
+                ReservationId = "attempt-1",
+                TargetId = "listing-1",
+                Kind = WalletReservationKind.AuctionPurchase,
+                Amount = 125,
+            });
+
+            bool saved = await _service.CompleteWalletReservationAsync("u-1", "attempt-1");
+
+            Assert.IsTrue(saved);
+            Assert.AreEqual(0, _repo.Records["u-1"].PendingWalletReservations.Count);
+        }
+
+        [Test]
         public async Task FlushAsync_ForOnePlayer_FailedWrite_ReturnsFalseAndStaysDirty()
         {
             _repo.ThrowOnSave = true;
             _service.RegisterLivePlayer("u-1", Capture("u-1", 4));
 
             LogAssert.Expect(LogType.Error, "[Persistence] Failed to save 'u-1': injected save failure");
-            bool saved = await _service.FlushAsync("u-1");
-            Assert.IsFalse(saved, "A handoff must know the save did not land.");
+            bool saved = await _service.FlushAsync("u-1", requireConnected: true);
+            Assert.IsFalse(saved, "A durable reserve must know the save did not land.");
             LogAssert.Expect(LogType.Error, "[Persistence] Failed to save 'u-1': injected save failure");
             Assert.AreEqual(0, await _service.FlushAsync(), "Still dirty, still failing.");
             Assert.IsFalse(_repo.Records.ContainsKey("u-1"));
