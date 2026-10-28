@@ -26,7 +26,7 @@ namespace MMO.UI
         private InventoryGridView _inventoryGrid;
         private ActionBarView _actionBar;
         private ChatFeed _chatFeed;
-        private GuildBankFrameView _guildBankFrame;
+        private BankFrameView _bankFrame;
         private TradeFrameView _tradeFrame;
         private CraftingPanelView _craftingPanel;
         private CollapsiblePanelView _inventoryWindow;
@@ -50,8 +50,8 @@ namespace MMO.UI
         /// <summary>The chat box and friend list, or null when the factory was told to omit it.</summary>
         public ChatFeed ChatFeed => _chatFeed;
 
-        /// <summary>The guild bank window, or null when the factory was told to omit it.</summary>
-        public GuildBankFrameView GuildBankFrame => _guildBankFrame;
+        /// <summary>The generic bank window, or null when the factory was told to omit it.</summary>
+        public BankFrameView BankFrame => _bankFrame;
 
         /// <summary>The direct-trade window, or null when the factory was told to omit it.</summary>
         public TradeFrameView TradeFrame => _tradeFrame;
@@ -99,11 +99,11 @@ namespace MMO.UI
             _mountCastBar = mountCastBar;
         }
 
-        /// <summary>Gives the HUD the guild bank window the factory built; starts concealed.</summary>
-        public void SetGuildBankFrame(GuildBankFrameView guildBankFrame)
+        /// <summary>Gives the HUD the generic bank window the factory built; starts concealed.</summary>
+        public void SetBankFrame(BankFrameView bankFrame)
         {
-            _guildBankFrame = guildBankFrame;
-            _guildBankFrame?.Conceal();
+            _bankFrame = bankFrame;
+            _bankFrame?.Conceal();
         }
 
         /// <summary>Gives the HUD the direct-trade window the factory built; starts concealed.</summary>
@@ -183,15 +183,14 @@ namespace MMO.UI
         }
 
         /// <summary>
-        /// Binds the guild bank window to the local player's guild and bag, reopening it. Either
-        /// may be null — a null guild simply conceals the window.
+        /// Opens the generic bank window on whichever source the teller selected. A guild teller
+        /// also passes its <see cref="Social.PlayerGuild"/> so the rank editor appears.
         /// </summary>
-        public void BindGuildBank(Social.PlayerGuild guild, PlayerInventory bag)
-            => _guildBankFrame?.Reveal(guild, bag);
+        public void OpenBank(IBankSource source, PlayerInventory bag, Social.PlayerGuild guild = null)
+            => _bankFrame?.Reveal(source, bag, guild);
 
-        /// <summary>Opens or closes the guild bank window without touching its bindings.</summary>
-        public void SetGuildBankVisible(bool visible)
-            => _guildBankFrame?.SetVisible(visible);
+        /// <summary>Closes the bank window without touching its bindings.</summary>
+        public void CloseBank() => _bankFrame?.Conceal();
 
         /// <summary>Binds the trade window to the local player's trade and bag.</summary>
         public void BindTrade(Social.PlayerTrade trade, PlayerInventory bag)
@@ -230,8 +229,8 @@ namespace MMO.UI
                 _dialogueView.Hide();
             }
 
-            if (_guildBankFrame != null)
-                _guildBankFrame.Conceal();
+            if (_bankFrame != null)
+                _bankFrame.Conceal();
 
             if (_tradeFrame != null)
                 _tradeFrame.Conceal();

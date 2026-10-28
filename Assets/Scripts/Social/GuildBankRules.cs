@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MMO.Economy;
 using MMO.Inventory;
 
 namespace MMO.Social
@@ -13,6 +14,8 @@ namespace MMO.Social
         NoBank,
         InvalidTab,
         InvalidItem,
+        InvalidAmount,
+        InsufficientFunds,
         InvalidPermission,
         NotPermitted,
         TabFull,
@@ -75,6 +78,7 @@ namespace MMO.Social
                 return;
 
             bank.Tabs ??= new List<GuildBankTab>();
+            bank.Vault ??= new List<CurrencyBalance>();
             bank.Permissions ??= new List<GuildBankPermission>();
 
             for (int i = 0; i < DefaultTabCount; i++)
@@ -264,6 +268,114 @@ namespace MMO.Social
             }
 
             return GuildBankRule.Ok;
+        }
+
+        /// <summary>
+        /// Whether the requester may deposit currency into the guild vault. Order: guild/member,
+        /// bank, amount, rank permission, deposit-value quota. The caller checks the member's
+        /// wallet for the funds; this rule only gates the guild side.
+        /// </summary>
+        public static GuildBankRule CanDepositCurrency(
+            GuildRecord guild, GuildBankRecord bank, string accountId, string currencyId, long amount, DateTimeOffset now)
+        {
+            if (guild == null)
+                return GuildBankRule.NoGuild;
+
+            GuildMemberRecord member = GuildRules.FindMember(guild, accountId);
+            if (member.AccountId == null)
+                return GuildBankRule.NotInGuild;
+
+            if (bank == null)
+                return GuildBankRule.NoBank;
+
+            if (string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return GuildBankRule.InvalidAmount;
+
+            GuildRank rank = GuildRules.RankOf(member);
+            GuildBankPermission permission = PermissionFor(bank, rank);
+            if (!permission.AllowDeposit)
+                return GuildBankRule.NotPermitted;
+
+            if (permission.DepositValueLimit >= 0 &&
+                EffectiveDepositedValue(permission, now) + amount > permission.DepositValueLimit)
+                return GuildBankRule.NotPermitted;
+
+            return GuildBankRule.Ok;
+        }
+
+        /// <summary>
+        /// Whether the requester may withdraw currency from the guild vault. Order: guild/member,
+        /// bank, amount, rank permission, withdrawal quota, vault balance.
+        /// </summary>
+        public static GuildBankRule CanWithdrawCurrency(
+            GuildRecord guild, GuildBankRecord bank, string accountId, string currencyId, long amount, DateTimeOffset now)
+        {
+            if (guild == null)
+                return GuildBankRule.NoGuild;
+
+            GuildMemberRecord member = GuildRules.FindMember(guild, accountId);
+            if (member.AccountId == null)
+                return GuildBankRule.NotInGuild;
+
+            if (bank == null)
+                return GuildBankRule.NoBank;
+
+            if (string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return GuildBankRule.InvalidAmount;
+
+            GuildRank rank = GuildRules.RankOf(member);
+            GuildBankPermission permission = PermissionFor(bank, rank);
+            if (!permission.AllowWithdraw)
+                return GuildBankRule.NotPermitted;
+
+            if (permission.WithdrawLimit >= 0 &&
+                EffectiveWithdrawn(permission, now) >= permission.WithdrawLimit)
+                return GuildBankRule.WithdrawLimitReached;
+
+            if (permission.WithdrawValueLimit >= 0 &&
+                EffectiveWithdrawnValue(permission, now) + amount > permission.WithdrawValueLimit)
+                return GuildBankRule.WithdrawLimitReached;
+
+            if (WalletRules.BalanceOf(bank.Vault, currencyId) < amount)
+                return GuildBankRule.InsufficientFunds;
+
+            return GuildBankRule.Ok;
+        }
+
+        /// <summary>
+        /// Applies a currency deposit: credits the vault and spends the rank's deposit quota.
+        /// Assumes <see cref="CanDepositCurrency"/> passed.
+        /// </summary>
+        public static bool DepositCurrency(GuildBankRecord bank, string currencyId, long amount, GuildRank rank, DateTimeOffset now)
+        {
+            if (bank == null)
+                return false;
+
+            bank.Vault ??= new List<CurrencyBalance>();
+            if (WalletRules.Credit(bank.Vault, currencyId, amount) != WalletError.Ok)
+                return false;
+
+            if (rank != GuildRank.None)
+                SpendDepositQuota(bank, rank, now, amount);
+            return true;
+        }
+
+        /// <summary>
+        /// Applies a currency withdrawal: debits the vault and spends the rank's quota. Assumes
+        /// <see cref="CanWithdrawCurrency"/> passed with the same <paramref name="now"/>.
+        /// </summary>
+        public static bool WithdrawCurrency(GuildBankRecord bank, string currencyId, long amount, GuildRank rank, DateTimeOffset now)
+        {
+            if (bank == null)
+                return false;
+
+            bank.Vault ??= new List<CurrencyBalance>();
+            if (WalletRules.Debit(bank.Vault, currencyId, amount) != WalletError.Ok)
+                return false;
+
+            if (rank != GuildRank.None)
+                SpendQuota(bank, rank, now, amount);
+            return true;
         }
 
         /// <summary>Whether the requester may edit rank permissions: only the guild leader.</summary>

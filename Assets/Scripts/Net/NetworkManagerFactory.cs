@@ -59,8 +59,9 @@ namespace MMO.Net
             NetworkObject builtPlayerPrefab = null;
             NetworkObject builtTargetDummyPrefab = null;
             NetworkObject builtCraftingStationPrefab = null;
-            NetworkObject builtLootBagPrefab = null;
-            NetworkObject builtResourceNodePrefab = null;
+        NetworkObject builtLootBagPrefab = null;
+        NetworkObject builtResourceNodePrefab = null;
+        NetworkObject builtBankTellerPrefab = null;
 
             try
             {
@@ -113,6 +114,12 @@ namespace MMO.Net
                     resourceNodePrefab.gameObject.SetActive(false);
                 }
 
+                // The generic bank teller. The server spawns one per authored marker; the prefab
+                // only has to be registered so both ends agree on its id.
+                builtBankTellerPrefab = BankTellerPrefabFactory.Create();
+                NetworkObject bankTellerPrefab = builtBankTellerPrefab;
+                bankTellerPrefab.gameObject.SetActive(false);
+
                 // Before activation, so the prefabs are in the collection when Awake hands out
                 // prefab ids from the list order. Both ends build through this same factory, so
                 // the player is always id 0, the target dummy id 1, the crafting station id 2 and
@@ -122,6 +129,7 @@ namespace MMO.Net
                 CraftingStationPrefabFactory.Register(prefabs, craftingStationPrefab);
                 LootBagPrefabFactory.Register(prefabs, lootBagPrefab);
                 ResourceNodePrefabFactory.Register(prefabs, resourceNodePrefab);
+                BankTellerPrefabFactory.Register(prefabs, bankTellerPrefab);
 
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
@@ -198,6 +206,9 @@ namespace MMO.Net
 
                 if (builtResourceNodePrefab != null)
                     Object.DestroyImmediate(builtResourceNodePrefab.gameObject);
+
+                if (builtBankTellerPrefab != null)
+                    Object.DestroyImmediate(builtBankTellerPrefab.gameObject);
 
                 Object.DestroyImmediate(go);
                 throw;

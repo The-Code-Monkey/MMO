@@ -122,6 +122,7 @@ windows. The useful methods are:
 | `ActionBarView` | `Assets/Scripts/UI/ActionBarView.cs` | `IAbilityBarSource` | Up to 6 ability slots. |
 | `CraftingPanelView` | `Assets/Scripts/UI/CraftingPanelView.cs` | `ICraftingSource` | A scrollable list of the server's recipe offers for the open station. |
 | `DialogueView` | `Assets/Scripts/UI/DialogueView.cs` | `PlayerDialogue` | Speaker, text and one button per server-sent dialogue choice. |
+| `BankFrameView` | `Assets/Scripts/UI/BankFrameView.cs` | `IBankSource` | The generic bank window: bank grid + currency strip left, backpack right; optional guild tabs and rank editor. |
 
 How the views work:
 
@@ -159,6 +160,10 @@ How the views work:
   server's payload, which is the point (see [07](07-crafting-and-gathering.md)).
 - Like every view here, `CraftingPanelView` owns **no `Update`**: it repaints on bind and on the two
   source events, and is otherwise inert.
+- `BankFrameView` binds both grids to one `IBankSource`: the left grid is the bank (a right-click
+  withdraws), the right grid wraps the backpack so a right-click deposits. It shows tabs and the
+  guild rank editor only when the source is a guild bank. The currency strip under the bank grid is
+  `CurrencyDisplay.Format(source.Currency)` and is display-only (see [16](16-trading-and-territory.md)).
 
 ### The HUD factory
 

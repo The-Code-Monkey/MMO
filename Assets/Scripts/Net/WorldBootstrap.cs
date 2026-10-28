@@ -5,6 +5,7 @@ using FishNet.Managing.Object;
 using FishNet.Managing.Scened;
 using FishNet.Object;
 using FishNet.Transporting;
+using MMO.Banking;
 using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
@@ -266,6 +267,10 @@ namespace MMO.Net
                 FindObjectsByType<CraftingStationMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
                 SpawnCraftingStation);
 
+            SpawnFromMarkers(
+                FindObjectsByType<BankTellerMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
+                SpawnBankTeller);
+
             ConfigureSpawnControllers(
                 FindObjectsByType<EnemyMarker>(FindObjectsInactive.Exclude, FindObjectsSortMode.None));
         }
@@ -338,6 +343,25 @@ namespace MMO.Net
                     boxCollider.isTrigger = false;
                 }
             }
+
+            return spawned;
+        }
+
+        private NetworkObject SpawnBankTeller(BankTellerMarker marker)
+        {
+            NetworkObject prefab = marker.TellerPrefab != null
+                ? EnsureTellerRegistered(marker.TellerPrefab)
+                : ResolveRegisteredPrefab(BankTellerPrefabFactory.PrefabName);
+
+            if (prefab == null)
+            {
+                Debug.LogError($"{nameof(WorldBootstrap)}: no BankTeller prefab for marker '{marker.name}'; skipping.", marker);
+                return null;
+            }
+
+            NetworkObject spawned = SpawnAt(prefab, marker.transform);
+            if (spawned != null && spawned.TryGetComponent(out BankTeller teller))
+                teller.Configure(marker.Kind);
 
             return spawned;
         }
@@ -429,6 +453,15 @@ namespace MMO.Net
                 return prefab;
 
             CraftingStationPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
+            return prefab;
+        }
+
+        private NetworkObject EnsureTellerRegistered(NetworkObject prefab)
+        {
+            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
+                return prefab;
+
+            BankTellerPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
             return prefab;
         }
 

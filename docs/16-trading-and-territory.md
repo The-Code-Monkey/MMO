@@ -84,6 +84,63 @@ load the territory, run `TerritoryRules.CanCapture`, write the owner and raise
 On server spawn the shell broadcasts every flag's owner so late joiners are current; a capture
 broadcasts the changed flag to every client, and each local `ClaimFlag` updates its cached owner.
 
+## 3. Wallet and bank vaults
+
+Currency is a first-class wallet, not a stat on the player. `WalletAccount`
+(`Assets/Scripts/Economy/WalletAccount.cs`) holds a list of `CurrencyBalance` entries keyed by
+currency id (`gold`, `silver`, `faction_marks` — `CurrencyIds`). The list, not a dictionary,
+because `JsonUtility` cannot serialize a map and the wallet is replicated and saved as JSON.
+
+`WalletRules` (`Assets/Scripts/Economy/WalletRules.cs`) is the pure heart: `Debit`, `Credit`,
+`Transfer` (with a compensating rollback), `Set` and `Sanitize`. A balance is never negative and a
+credit never wraps. `PlayerWallet` (`Assets/Scripts/Auction/PlayerWallet.cs`) is the server-only
+shell; it publishes the wallet and the personal bank vault as JSON `SyncVar`s and keeps the legacy
+gold accessors (`Gold`, `AddGold`, `RemoveGold`, `TrySpend`) writing `CurrencyIds.Gold`, so the
+auction house and death penalties are unchanged.
+
+**Currency items.** A `CurrencyData` asset (`Assets/Scripts/Economy/CurrencyData.cs`) names a
+currency id, a display name, the `ItemDefinition` that converts into it, and the units granted per
+item. `CurrencyRegistry` resolves it by id or by item name. `PlayerWallet.ConvertItem` is the
+server flow: verify the carried item and the trusted `CurrencyData`, remove the item, then credit
+the wallet, restoring the item if the credit is refused. The client only sends an instance id.
+
+**Guild vault.** `GuildBankRecord.Vault` is a `List<CurrencyBalance>` on the existing bank record.
+Deposits and withdrawals reuse the item bank's rank permissions and value quota
+(`GuildBankRules.CanDepositCurrency` / `CanWithdrawCurrency`, `DepositCurrency` / `WithdrawCurrency`).
+`SocialHubService.DepositCurrencyAsync` / `WithdrawCurrencyAsync` write the vault first under the
+bank CAS loop, then move the wallet; a lost wallet step is compensated so currency is never created
+or destroyed. The ledger records the move with `ItemName` set to the currency id.
+
+**Personal bank vault.** `PlayerSaveRecord.BankVault` is a separate balance list. `PlayerWallet`
+moves currency between the carried wallet and the vault (`BankDeposit` / `BankWithdraw`,
+`RequestBankDeposit` / `RequestBankWithdraw`). Banked currency is not carried and is not lost on
+death.
+
+Inter-player loans and credit are **not** part of the game; only deposits, withdrawals and vaults
+exist.
+
+### Bank tellers
+
+A `BankTeller` (`Assets/Scripts/Banking/BankTeller.cs`) is a capsule ("pill") placeholder standing
+in any zone. Clicking one walks the local player to its `StandOffPosition` and opens the bank window
+on arrival — the same click-to-path flow a crafting station uses (`PlayerClickToMove`). The prefab
+is generic: `BankTeller.Kind` decides whether the server opens the personal or the guild bank.
+
+`PlayerBank` (`Assets/Scripts/Banking/PlayerBank.cs`) owns the personal item grid and the open
+flow. It checks the player is within `BankTeller.InteractRange` of the teller on open **and** on
+every deposit/withdraw, so a forged RPC cannot move items from across the map. Items are stored in
+`PlayerSaveRecord.BankItems` and replicated to the owner as JSON.
+
+The window is one `BankFrameView` (`Assets/Scripts/UI/BankFrameView.cs`) bound to an
+`IBankSource`: `PersonalBankSource` (personal items + `PlayerWallet.BankVault`) or
+`GuildBankSource` (guild tabs + `GuildBankRecord.Vault`, with the rank editor). Left = the bank's
+8x6 item grid and its currency strip (`"100 Gold - 10 Silver - 2 Copper"`, display-only); right =
+the backpack. Right-click a bank cell to withdraw, a backpack cell to deposit. A guild bank's
+"more storage" is its tabs, and its permissions/quotas are unchanged.
+
+Tellers are scene `BankTellerMarker`s spawned by `WorldBootstrap`; `ZoneSceneBaker` places one
+personal and one guild teller in SafeZone.
+
 ## Common tasks
 
 - **Tune trade range.** Edit `PlayerTrade.Range`. The client picker uses the same constant, but the

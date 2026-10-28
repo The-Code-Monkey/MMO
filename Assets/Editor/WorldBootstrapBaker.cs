@@ -166,6 +166,18 @@ namespace MMO.Editor
                     registered++;
             }
 
+            // Bank tellers are spawned from markers, so the shared teller prefab must be in the
+            // collection or the server has nothing to instantiate.
+            NetworkObject tellerPrefab = BankTellerBaker.EnsureBankTellerPrefab();
+            if (tellerPrefab != null && BankTellerPrefabFactory.Register(manager.SpawnablePrefabs, tellerPrefab))
+                registered++;
+
+            foreach (BankTellerMarker marker in Object.FindObjectsByType<BankTellerMarker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (marker.TellerPrefab != null && BankTellerPrefabFactory.Register(manager.SpawnablePrefabs, marker.TellerPrefab))
+                    registered++;
+            }
+
             return registered;
         }
 

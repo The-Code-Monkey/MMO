@@ -213,6 +213,75 @@ namespace MMO.Persistence
             }
         }
 
+        /// <summary>
+        /// Captures a personal bank's items. Bank items are stored exactly like bag items except
+        /// that they are never worn, so every entry carries slot -1.
+        /// </summary>
+        public static List<ItemSaveData> CaptureBank(IReadOnlyList<ItemInstance> bank)
+        {
+            var saved = new List<ItemSaveData>();
+            if (bank == null)
+                return saved;
+
+            for (int i = 0; i < bank.Count; i++)
+            {
+                ItemInstance item = bank[i];
+                if (!item.IsEmpty)
+                    saved.Add(ToSaveData(item, -1));
+            }
+
+            return saved;
+        }
+
+        /// <summary>
+        /// Rebuilds a personal bank's items. Entries with no name, or whose definition no longer
+        /// resolves, are skipped and counted rather than resurrected as ghost items.
+        /// </summary>
+        public static void ApplyBank(
+            IReadOnlyList<ItemSaveData> saved,
+            out List<ItemInstance> items,
+            out int skippedItems)
+        {
+            items = new List<ItemInstance>();
+            skippedItems = 0;
+
+            if (saved == null)
+                return;
+
+            for (int i = 0; i < saved.Count; i++)
+            {
+                ItemSaveData entry = saved[i];
+                if (string.IsNullOrEmpty(entry.ItemName))
+                {
+                    skippedItems++;
+                    continue;
+                }
+
+                ItemDefinition definition = ItemDefinitionRegistry.Resolve(entry.ItemName);
+                if (definition == null)
+                {
+                    skippedItems++;
+                    continue;
+                }
+
+                int maxDurability = definition.MaxDurability;
+                int durability = entry.Durability <= 0
+                    ? maxDurability
+                    : Mathf.Min(entry.Durability, maxDurability);
+
+                items.Add(new ItemInstance
+                {
+                    ItemName = entry.ItemName,
+                    InstanceId = string.IsNullOrEmpty(entry.InstanceId) ? ItemInstance.NewInstanceId() : entry.InstanceId,
+                    GridX = entry.GridX,
+                    GridY = entry.GridY,
+                    Width = entry.Width,
+                    Height = entry.Height,
+                    Durability = durability,
+                });
+            }
+        }
+
         private static ItemSaveData ToSaveData(ItemInstance item, int equipmentSlot)
         {
             return new ItemSaveData

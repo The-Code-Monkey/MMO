@@ -4,6 +4,7 @@ using System.IO;
 using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Transporting.Tugboat;
+using MMO.Banking;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Net;
@@ -584,12 +585,17 @@ namespace MMO.Editor
             float nodeY = ResourceNodePrefabFactory.DefaultHeight / 2f;
             float stationY = CraftingStationPrefabFactory.DefaultHeight / 2f;
             float enemyY = TargetDummyPrefabFactory.DefaultHeight / 2f;
+            float tellerY = BankTellerPrefabFactory.DefaultHeight / 2f;
 
             if (layout == ZoneLayout.SafeZone)
             {
                 // The smithy: a furnace and an anvil beside the town square.
                 AddStationMarker(markers, 1, new Vector3(-6f, stationY, -6f), CraftingStationType.Furnace);
                 AddStationMarker(markers, 2, new Vector3(-4f, stationY, -7f), CraftingStationType.Anvil);
+
+                // The bank: one personal teller and one guild teller in the town square.
+                AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, -4f), BankKind.Personal);
+                AddBankTellerMarker(markers, 2, new Vector3(4f, tellerY, -4f), BankKind.Guild);
 
                 // A few veins at the city edge to gather from.
                 AddNodeMarker(markers, 1, new Vector3(-15f, nodeY, 5f));
@@ -621,6 +627,10 @@ namespace MMO.Editor
             AddNodeMarker(markers, 1, new Vector3(-3f, nodeY, 3f));
             AddEnemyMarker(markers, 1, new Vector3(0f, enemyY, 4f));
             AddStationMarker(markers, 1, new Vector3(4f, stationY, 4f), CraftingStationType.Furnace);
+
+            // A personal teller beside the furnace, so a new character can bank their first ore
+            // and coins without leaving the tutorial zone.
+            AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, 4f), BankKind.Personal);
         }
 
         private static void AddNodeMarker(Transform parent, int index, Vector3 position)
@@ -643,6 +653,14 @@ namespace MMO.Editor
             var go = CreateChild($"EnemyMarker_{index}", parent);
             go.transform.localPosition = position;
             go.AddComponent<EnemyMarker>();
+        }
+
+        private static void AddBankTellerMarker(Transform parent, int index, Vector3 position, BankKind kind)
+        {
+            var go = CreateChild($"BankTellerMarker_{index}", parent);
+            go.transform.localPosition = position;
+            var marker = go.AddComponent<BankTellerMarker>();
+            marker.SetKind(kind);
         }
 
         private static void CreateRiskConfig(Transform zoneRoot, ZoneRiskTier tier)

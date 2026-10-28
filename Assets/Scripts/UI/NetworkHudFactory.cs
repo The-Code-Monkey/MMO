@@ -61,7 +61,7 @@ namespace MMO.UI
         /// True to ensure a clickable event router exists (one is created only when the scene
         /// has none). Tests that never dispatch a pointer pass false.
         /// </param>
-        /// <param name="createGuildBankFrame">True to also build the guild bank window.</param>
+        /// <param name="createBankFrame">True to also build the generic bank window.</param>
         /// <param name="createTradeFrame">True to also build the direct-trade window.</param>
         /// <param name="crafting">
         /// The player's crafting, e.g. a spawned <c>PlayerCrafting</c>. The panel is built
@@ -81,7 +81,7 @@ namespace MMO.UI
             IAbilityBarSource abilities = null,
             ITargetSource target = null,
             bool createEventSystem = true,
-            bool createGuildBankFrame = false,
+            bool createBankFrame = false,
             ICraftingSource crafting = null,
             IMountSource mount = null,
             PlayerDialogue dialogue = null,
@@ -117,8 +117,8 @@ namespace MMO.UI
             hud.SetCraftingPanel(CraftingPanelFactory.Create(root.transform));
             hud.SetDialogueView(DialogueView.Create(root.transform));
 
-            if (createGuildBankFrame)
-                hud.SetGuildBankFrame(GuildBankFrameFactory.Create(root.transform));
+            if (createBankFrame)
+                hud.SetBankFrame(BankFrameFactory.Create(root.transform));
 
             if (createTradeFrame)
                 hud.SetTradeFrame(TradeFrameFactory.Create(root.transform));

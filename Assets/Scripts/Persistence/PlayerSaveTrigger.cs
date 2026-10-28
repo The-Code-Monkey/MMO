@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using FishNet.Object;
 using MMO.Auction;
+using MMO.Banking;
 using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -32,6 +33,7 @@ namespace MMO.Persistence
         private PlayerInventory _inventory;
         private PlayerQuestLog _quests;
         private PlayerWallet _wallet;
+        private PlayerBank _bank;
         private string _accountId;
         private bool _subscribed;
 
@@ -61,6 +63,7 @@ namespace MMO.Persistence
             _inventory = GetComponent<PlayerInventory>();
             _quests = GetComponent<PlayerQuestLog>();
             _wallet = GetComponent<PlayerWallet>();
+            _bank = GetComponent<PlayerBank>();
             if (_stats == null || _inventory == null)
             {
                 Debug.LogError($"{nameof(PlayerSaveTrigger)}: the player prefab is missing PlayerStats or PlayerInventory.", this);
@@ -98,6 +101,7 @@ namespace MMO.Persistence
             _inventory.Restore(bag, equipment);
             _quests?.Restore(completedQuestIds, questProgress);
             _wallet?.InitializeFromSave(record);
+            _bank?.InitializeFromSave(record);
 
             service.RegisterLivePlayer(_accountId, Capture);
             _stats.LevelChanged += OnLevelChanged;
@@ -106,7 +110,12 @@ namespace MMO.Persistence
             if (_quests != null)
                 _quests.ProgressChanged += OnQuestProgressChanged;
             if (_wallet != null)
-                _wallet.OnGoldChanged += OnGoldChanged;
+            {
+                _wallet.BalancesChanged += OnWalletChanged;
+                _wallet.BankChanged += OnWalletChanged;
+            }
+            if (_bank != null)
+                _bank.BankChanged += OnWalletChanged;
             _subscribed = true;
         }
 
@@ -123,25 +132,31 @@ namespace MMO.Persistence
                     if (_quests != null)
                         _quests.ProgressChanged -= OnQuestProgressChanged;
                     if (_wallet != null)
-                        _wallet.OnGoldChanged -= OnGoldChanged;
+                    {
+                        _wallet.BalancesChanged -= OnWalletChanged;
+                        _wallet.BankChanged -= OnWalletChanged;
+                    }
+                    if (_bank != null)
+                        _bank.BankChanged -= OnWalletChanged;
                     _subscribed = false;
 
                     // The state is still live during this callback, so snapshot it now: the async
                     // flush that follows may run after the object is gone.
-                    service.QueueFinalSave(
+                    PlayerSaveRecord finalRecord = PlayerSaveMapper.Capture(
                         _accountId,
-                        PlayerSaveMapper.Capture(
-                            _accountId,
-                            _stats.Level,
-                            _stats.Health,
-                            _stats.Mana,
-                            _wallet != null ? _wallet.Gold : 0,
-                            transform.position,
-                            _inventory.Items,
-                            _inventory.Equipment,
-                            _stats.Experience,
-                            _quests != null ? _quests.CompletedQuestIds : null,
-                            _quests != null ? _quests.Progress : null));
+                        _stats.Level,
+                        _stats.Health,
+                        _stats.Mana,
+                        _wallet != null ? _wallet.Gold : 0,
+                        transform.position,
+                        _inventory.Items,
+                        _inventory.Equipment,
+                        _stats.Experience,
+                        _quests != null ? _quests.CompletedQuestIds : null,
+                        _quests != null ? _quests.Progress : null);
+                    _wallet?.CaptureToSave(finalRecord);
+                    _bank?.CaptureToSave(finalRecord);
+                    service.QueueFinalSave(_accountId, finalRecord);
 
                     service.UnregisterLivePlayer(_accountId);
                     service.ForgetClient(Owner != null ? Owner.ClientId : -1);
@@ -175,7 +190,8 @@ namespace MMO.Persistence
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
         }
 
-        private void OnGoldChanged(long newGold)
+        /// <summary>Any wallet or bank-vault change marks the player dirty; the next flush captures it.</summary>
+        private void OnWalletChanged()
         {
             if (_subscribed && !string.IsNullOrEmpty(_accountId))
                 PlayerPersistenceService.Instance?.MarkDirty(_accountId, immediate: false);
@@ -183,7 +199,7 @@ namespace MMO.Persistence
 
         private PlayerSaveRecord Capture()
         {
-            return PlayerSaveMapper.Capture(
+            PlayerSaveRecord record = PlayerSaveMapper.Capture(
                 _accountId,
                 _stats.Level,
                 _stats.Health,
@@ -195,6 +211,9 @@ namespace MMO.Persistence
                 _stats.Experience,
                 _quests != null ? _quests.CompletedQuestIds : null,
                 _quests != null ? _quests.Progress : null);
+            _wallet?.CaptureToSave(record);
+            _bank?.CaptureToSave(record);
+            return record;
         }
     }
 }
