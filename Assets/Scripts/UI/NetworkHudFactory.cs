@@ -36,18 +36,6 @@ namespace MMO.UI
         /// <summary>Name of the input router the HUD needs to receive clicks.</summary>
         public const string EventSystemName = "EventSystem";
 
-        /// <summary>Panel background shared by every screen.</summary>
-        public static readonly Color PanelColor = new(0f, 0f, 0f, 0.45f);
-
-        /// <summary>Bar trough behind the health and mana fills.</summary>
-        public static readonly Color TroughColor = new(0f, 0f, 0f, 0.6f);
-
-        /// <summary>Health fill colour.</summary>
-        public static readonly Color HealthColor = new(0.75f, 0.15f, 0.15f, 0.95f);
-
-        /// <summary>Mana fill colour.</summary>
-        public static readonly Color ManaColor = new(0.2f, 0.4f, 0.9f, 0.95f);
-
         /// <summary>
         /// Builds the HUD and binds it. Every source is optional: an argument left null binds
         /// nothing and its screen stays quiet until gameplay code calls
@@ -140,37 +128,21 @@ namespace MMO.UI
         /// without it uGUI dispatches no clicks, and every input path in this namespace goes
         /// dead. Reuses an existing router rather than fighting it for focus.
         /// </summary>
-        public static EventSystem EnsureEventSystem()
-        {
-            EventSystem existing = UnityEngine.Object.FindFirstObjectByType<EventSystem>();
-            if (existing != null)
-                return existing;
-
-            GameObject eventSystemObject = new GameObject(EventSystemName);
-            EventSystem eventSystem = eventSystemObject.AddComponent<EventSystem>();
-
-            // This assembly references neither input backend by name, so the choice is made at
-            // runtime: the Input System package's module when the project has it (it does), the
-            // legacy module otherwise.
-            Type moduleType = FindInputSystemModule() ?? typeof(StandaloneInputModule);
-            eventSystemObject.AddComponent(moduleType);
-
-            return eventSystem;
-        }
+        public static EventSystem EnsureEventSystem() => HudEventSystem.Ensure();
 
         private static PlayerHudView CreatePlayerHud(Transform parent)
         {
-            GameObject panel = CreateRect(
+            GameObject panel = UIBuilder.Rect(
                 parent, "PlayerHud", new Vector2(0f, 1f), new Vector2(0f, 1f),
                 new Vector2(12f, -12f), new Vector2(300f, 84f));
-            panel.AddComponent<Image>().color = PanelColor;
+            panel.AddComponent<Image>().color = HudTheme.PanelColor;
 
             PlayerHudView hud = panel.AddComponent<PlayerHudView>();
             hud.SetBars(
                 CreateVitalBar(panel.transform, "HealthBar", VitalKind.Health,
-                    new Vector2(10f, -10f), HealthColor),
+                    new Vector2(10f, -10f), HudTheme.HealthColor),
                 CreateVitalBar(panel.transform, "ManaBar", VitalKind.Mana,
-                    new Vector2(10f, -46f), ManaColor));
+                    new Vector2(10f, -46f), HudTheme.ManaColor));
 
             return hud;
         }
@@ -178,20 +150,20 @@ namespace MMO.UI
         private static VitalBarView CreateVitalBar(
             Transform parent, string name, VitalKind kind, Vector2 position, Color fillColor)
         {
-            GameObject barObject = CreateRect(
+            GameObject barObject = UIBuilder.Rect(
                 parent, name, new Vector2(0f, 1f), new Vector2(0f, 1f),
                 position, new Vector2(280f, 28f));
-            barObject.AddComponent<Image>().color = TroughColor;
+            barObject.AddComponent<Image>().color = HudTheme.TroughColor;
 
-            GameObject fillObject = CreateStretch(barObject.transform, "Fill");
+            GameObject fillObject = UIBuilder.Stretch(barObject.transform, "Fill");
             Image fill = fillObject.AddComponent<Image>();
             fill.color = fillColor;
             fill.type = Image.Type.Filled;
             fill.fillMethod = Image.FillMethod.Horizontal;
 
-            GameObject valueObject = CreateStretch(barObject.transform, "Value");
+            GameObject valueObject = UIBuilder.Stretch(barObject.transform, "Value");
             Text value = valueObject.AddComponent<Text>();
-            ApplyLabel(value, 13, TextAnchor.MiddleCenter);
+            UIBuilder.ApplyLabel(value, 13, TextAnchor.MiddleCenter);
 
             VitalBarView bar = barObject.AddComponent<VitalBarView>();
             bar.SetKind(kind);
@@ -201,30 +173,30 @@ namespace MMO.UI
 
         private static TargetFrameView CreateTargetFrame(Transform parent)
         {
-            GameObject frame = CreateRect(
+            GameObject frame = UIBuilder.Rect(
                 parent, "TargetFrame", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(0f, -12f), new Vector2(260f, 64f));
-            frame.AddComponent<Image>().color = PanelColor;
+            frame.AddComponent<Image>().color = HudTheme.PanelColor;
 
-            GameObject nameRow = CreateRow(
+            GameObject nameRow = UIBuilder.Row(
                 frame.transform, "Name", 1f, new Vector2(0.5f, 1f),
                 new Vector2(0f, -4f), new Vector2(-20f, 26f));
-            Text nameText = CreateLabel(nameRow.transform);
-            ApplyLabel(nameText, 14, TextAnchor.MiddleCenter);
+            Text nameText = UIBuilder.Label(nameRow.transform);
+            UIBuilder.ApplyLabel(nameText, 14, TextAnchor.MiddleCenter);
 
-            GameObject fillRow = CreateRow(
+            GameObject fillRow = UIBuilder.Row(
                 frame.transform, "HealthFill", 0f, new Vector2(0.5f, 0f),
                 new Vector2(0f, 6f), new Vector2(-20f, 26f));
             Image healthFill = fillRow.GetComponent<Image>();
-            healthFill.color = HealthColor;
+            healthFill.color = HudTheme.HealthColor;
             healthFill.type = Image.Type.Filled;
             healthFill.fillMethod = Image.FillMethod.Horizontal;
 
-            GameObject valueRow = CreateRow(
+            GameObject valueRow = UIBuilder.Row(
                 frame.transform, "HealthValue", 0f, new Vector2(0.5f, 0f),
                 new Vector2(0f, 6f), new Vector2(-20f, 26f));
-            Text healthText = CreateLabel(valueRow.transform);
-            ApplyLabel(healthText, 13, TextAnchor.MiddleCenter);
+            Text healthText = UIBuilder.Label(valueRow.transform);
+            UIBuilder.ApplyLabel(healthText, 13, TextAnchor.MiddleCenter);
 
             TargetFrameView view = frame.AddComponent<TargetFrameView>();
             view.SetVisuals(frame, nameText, healthFill, healthText);
@@ -233,16 +205,16 @@ namespace MMO.UI
 
         private static InventoryGridView CreateInventoryGrid(Transform parent, out CollapsiblePanelView window)
         {
-            GameObject panel = CreateRect(
+            GameObject panel = UIBuilder.Rect(
                 parent, "InventoryWindow", new Vector2(1f, 0f), new Vector2(1f, 0f),
                 new Vector2(-12f, IconRowHeight + 24f),
                 new Vector2(
                     PlayerInventory.GridWidth * InventoryGridView.CellSize,
                     PlayerInventory.VisibleGridHeight * InventoryGridView.CellSize));
-            panel.AddComponent<Image>().color = PanelColor;
+            panel.AddComponent<Image>().color = HudTheme.PanelColor;
 
             InventoryGridView grid = panel.AddComponent<InventoryGridView>();
-            grid.SetContainer(CreateStretch(panel.transform, "Cells").GetComponent<RectTransform>());
+            grid.SetContainer(UIBuilder.Stretch(panel.transform, "Cells").GetComponent<RectTransform>());
 
             Button icon = CreateIconButton(parent, "InventoryIcon", "Bag", new Vector2(-12f, 12f));
             window = icon.gameObject.AddComponent<CollapsiblePanelView>();
@@ -259,20 +231,20 @@ namespace MMO.UI
             const float width = 260f;
             float bagWidth = PlayerInventory.GridWidth * InventoryGridView.CellSize;
 
-            GameObject panel = CreateRect(
+            GameObject panel = UIBuilder.Rect(
                 parent, "EquipmentWindow", new Vector2(1f, 0f), new Vector2(1f, 0f),
                 new Vector2(-12f - bagWidth - 12f, IconRowHeight + 24f),
                 new Vector2(width, 240f));
-            panel.AddComponent<Image>().color = PanelColor;
+            panel.AddComponent<Image>().color = HudTheme.PanelColor;
 
-            GameObject titleObject = CreateRect(
+            GameObject titleObject = UIBuilder.Rect(
                 panel.transform, "Title", new Vector2(0f, 1f), new Vector2(0f, 1f),
                 new Vector2(10f, -6f), new Vector2(width - 20f, 24f));
             Text title = titleObject.AddComponent<Text>();
-            ApplyLabel(title, 14, TextAnchor.MiddleLeft);
+            UIBuilder.ApplyLabel(title, 14, TextAnchor.MiddleLeft);
             title.text = "Equipment";
 
-            GameObject rows = CreateStretch(panel.transform, "Rows");
+            GameObject rows = UIBuilder.Stretch(panel.transform, "Rows");
             RectTransform rowsRect = (RectTransform)rows.transform;
             rowsRect.offsetMin = new Vector2(8f, 8f);
             rowsRect.offsetMax = new Vector2(-8f, -34f);
@@ -289,20 +261,20 @@ namespace MMO.UI
         /// <summary>The centre-screen bar that fills while the player mounts or dismounts.</summary>
         private static MountCastBarView CreateMountCastBar(Transform parent)
         {
-            GameObject panel = CreateRect(
+            GameObject panel = UIBuilder.Rect(
                 parent, "MountCastBar", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 Vector2.zero, new Vector2(360f, 44f));
-            panel.AddComponent<Image>().color = TroughColor;
+            panel.AddComponent<Image>().color = HudTheme.TroughColor;
 
-            GameObject fillObject = CreateStretch(panel.transform, "Fill");
+            GameObject fillObject = UIBuilder.Stretch(panel.transform, "Fill");
             Image fill = fillObject.AddComponent<Image>();
             fill.color = new Color(0.85f, 0.65f, 0.15f, 0.95f);
             fill.type = Image.Type.Filled;
             fill.fillMethod = Image.FillMethod.Horizontal;
 
-            GameObject labelObject = CreateStretch(panel.transform, "Label");
+            GameObject labelObject = UIBuilder.Stretch(panel.transform, "Label");
             Text label = labelObject.AddComponent<Text>();
-            ApplyLabel(label, 16, TextAnchor.MiddleCenter);
+            UIBuilder.ApplyLabel(label, 16, TextAnchor.MiddleCenter);
 
             MountCastBarView view = panel.AddComponent<MountCastBarView>();
             view.SetVisuals(fill, label);
@@ -319,7 +291,7 @@ namespace MMO.UI
         /// </summary>
         private static Button CreateIconButton(Transform parent, string name, string label, Vector2 position)
         {
-            GameObject iconObject = CreateRect(
+            GameObject iconObject = UIBuilder.Rect(
                 parent, name, new Vector2(1f, 0f), new Vector2(1f, 0f),
                 position, new Vector2(IconRowHeight, IconRowHeight));
 
@@ -329,9 +301,9 @@ namespace MMO.UI
             Button button = iconObject.AddComponent<Button>();
             button.targetGraphic = background;
 
-            GameObject labelObject = CreateStretch(iconObject.transform, "Label");
+            GameObject labelObject = UIBuilder.Stretch(iconObject.transform, "Label");
             Text text = labelObject.AddComponent<Text>();
-            ApplyLabel(text, 12, TextAnchor.MiddleCenter);
+            UIBuilder.ApplyLabel(text, 12, TextAnchor.MiddleCenter);
             text.text = label;
 
             return button;
@@ -339,122 +311,16 @@ namespace MMO.UI
 
         private static ActionBarView CreateActionBar(Transform parent)
         {
-            GameObject panel = CreateRect(
+            GameObject panel = UIBuilder.Rect(
                 parent, "ActionBar", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(0f, 16f),
                 new Vector2(AbilityLoadout.MaxSlots * ActionBarView.SlotSize, ActionBarView.SlotSize));
-            panel.AddComponent<Image>().color = PanelColor;
+            panel.AddComponent<Image>().color = HudTheme.PanelColor;
 
             ActionBarView bar = panel.AddComponent<ActionBarView>();
-            bar.SetContainer(CreateStretch(panel.transform, "Slots").GetComponent<RectTransform>());
+            bar.SetContainer(UIBuilder.Stretch(panel.transform, "Slots").GetComponent<RectTransform>());
             return bar;
         }
 
-        private static GameObject CreateRect(
-            Transform parent,
-            string name,
-            Vector2 anchor,
-            Vector2 pivot,
-            Vector2 anchoredPosition,
-            Vector2 sizeDelta)
-        {
-            var rectObject = new GameObject(name, typeof(RectTransform));
-            RectTransform rect = (RectTransform)rectObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = anchor;
-            rect.anchorMax = anchor;
-            rect.pivot = pivot;
-            rect.anchoredPosition = anchoredPosition;
-            rect.sizeDelta = sizeDelta;
-            return rectObject;
-        }
-
-        private static GameObject CreateStretch(Transform parent, string name)
-        {
-            var rectObject = new GameObject(name, typeof(RectTransform));
-            RectTransform rect = (RectTransform)rectObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            return rectObject;
-        }
-
-        /// <summary>
-        /// A horizontally stretched, vertically fixed row inset by half of its sizeDelta.x —
-        /// the shape the target frame's name and health strips use. The background is present
-        /// but clear, so callers that only need a layout anchor (the name) show nothing behind
-        /// the text and callers that need a bar (the health fill) just assign a colour.
-        /// </summary>
-        private static GameObject CreateRow(
-            Transform parent,
-            string name,
-            float anchorY,
-            Vector2 pivot,
-            Vector2 anchoredPosition,
-            Vector2 sizeDelta)
-        {
-            var rowObject = new GameObject(name, typeof(RectTransform), typeof(Image));
-            RectTransform rect = (RectTransform)rowObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = new Vector2(0f, anchorY);
-            rect.anchorMax = new Vector2(1f, anchorY);
-            rect.pivot = pivot;
-            rect.anchoredPosition = anchoredPosition;
-            rect.sizeDelta = sizeDelta;
-
-            Image background = rowObject.GetComponent<Image>();
-            background.color = Color.clear;
-            background.raycastTarget = false;
-
-            return rowObject;
-        }
-
-        /// <summary>
-        /// A stretched text child of a row. A GameObject can carry only one Graphic, so a row
-        /// that already holds its background Image cannot hold the label as well — the label
-        /// needs a child of its own, which draws on top of that background.
-        /// </summary>
-        private static Text CreateLabel(Transform parent)
-        {
-            var labelObject = new GameObject("Label", typeof(RectTransform));
-            RectTransform rect = (RectTransform)labelObject.transform;
-            rect.SetParent(parent, false);
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            return labelObject.AddComponent<Text>();
-        }
-
-        private static void ApplyLabel(Text label, int fontSize, TextAnchor alignment)
-        {
-            if (label == null)
-                return;
-
-            label.font = UIFont.Default;
-            label.fontSize = fontSize;
-            label.alignment = alignment;
-            label.color = Color.white;
-            label.raycastTarget = false;
-            label.resizeTextForBestFit = true;
-            label.resizeTextMinSize = 7;
-            label.resizeTextMaxSize = fontSize;
-            label.text = string.Empty;
-        }
-
-        private static Type FindInputSystemModule()
-        {
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                if (assembly.GetName().Name != "Unity.InputSystem")
-                    continue;
-
-                return assembly.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule");
-            }
-
-            return null;
-        }
     }
 }
