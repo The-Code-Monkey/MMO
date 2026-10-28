@@ -86,6 +86,7 @@ namespace MMO.Social
         private RaidIntentsService _raidIntents;
         private SocialBackendConnection _connection;
         private SocialRealtimeRouter _realtime;
+        private SocialTickScheduler _ticker;
         /// <summary>Server-wide single-writer authority for item instance ownership.</summary>
         private ItemOwnershipRegistry _ownershipRegistry;
 
@@ -102,11 +103,6 @@ namespace MMO.Social
         private AuctionService _auctionService;
         private NetworkManager _manager;
         private bool _subscribed;
-        private float _nextSyncTime;
-        private float _nextPresenceTime;
-        private float _nextFriendRefreshTime;
-        private float _nextMailSweepTime;
-        private float _nextZoneHeartbeatTime;
 
         /// <summary>Raised on the main thread for every inbound bus envelope (chat or notify).</summary>
         public event Action<SocialBusEnvelope> EnvelopeReceived
@@ -459,13 +455,9 @@ namespace MMO.Social
         private void Start()
         {
             _manager = GetComponentInParent<NetworkManager>();
-            _nextSyncTime = Time.time + _syncInterval;
-            _nextPresenceTime = Time.time + _presenceInterval;
-            _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
-            _nextMailSweepTime = Time.time + _mailSweepInterval;
-            // Register with the zone registry on the first connected tick, not one interval later,
-            // so peers can select this zone as soon as it is up (#57).
-            _nextZoneHeartbeatTime = 0f;
+            _ticker = new SocialTickScheduler(
+                _syncInterval, _presenceInterval, _friendRefreshInterval, _mailSweepInterval);
+            _ticker.Start(Time.time);
         }
 
         /// <summary>
@@ -503,43 +495,15 @@ namespace MMO.Social
             if (_repository == null || _manager == null || !_manager.IsServerStarted || _connection == null || !_connection.IsConnected)
                 return;
 
-            // Advertise this zone to the registry even before any player joins, so a dedicated
-            // instance host with no residents can still be selected (#57).
-            if (_zoneRepository != null && Time.time >= _nextZoneHeartbeatTime)
-            {
-                _nextZoneHeartbeatTime = Time.time + _presenceInterval;
-                _ = _presence.HeartbeatZoneAsync();
-            }
-
-            if (_localPlayers.Count == 0)
-                return;
-
-            if (Time.time >= _nextPresenceTime)
-            {
-                _nextPresenceTime = Time.time + _presenceInterval;
-                _ = _presence.HeartbeatAsync();
-            }
-
-            if (Time.time >= _nextSyncTime)
-            {
-                _nextSyncTime = Time.time + _syncInterval;
-                _ = SyncAsync();
-            }
-
-            // Refresh friend-list online flags on a low cadence so join/transfer/login all see
-            // fresh states without hammering the database.
-            if (Time.time >= _nextFriendRefreshTime)
-            {
-                _nextFriendRefreshTime = Time.time + _friendRefreshInterval;
-                _ = _friends.RefreshLocalAsync();
-            }
-
-            // Grant claimable mail (auction deliveries, refunds) into local players' bags/wallets.
-            if (Time.time >= _nextMailSweepTime)
-            {
-                _nextMailSweepTime = Time.time + _mailSweepInterval;
-                _ = _mail.SweepAsync();
-            }
+            _ticker.Tick(
+                Time.time,
+                _localPlayers.Count > 0,
+                _zoneRepository != null,
+                () => _ = _presence.HeartbeatZoneAsync(),
+                () => _ = _presence.HeartbeatAsync(),
+                () => _ = SyncAsync(),
+                () => _ = _friends.RefreshLocalAsync(),
+                () => _ = _mail.SweepAsync());
         }
 
         private void OnServerConnectionState(FishNet.Transporting.ServerConnectionStateArgs args)
