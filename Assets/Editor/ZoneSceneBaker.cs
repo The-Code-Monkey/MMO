@@ -111,7 +111,7 @@ namespace MMO.Editor
             BuildSafeZone();
             BuildWilderness();
             BuildTutorial();
-            AddToBuildSettings(SafeZonePath, WildernessZonePath, TutorialZonePath);
+            ZoneBuildFiles.AddToBuildSettings(SafeZonePath, WildernessZonePath, TutorialZonePath);
         }
 
         /// <summary>Rebuilds <c>Assets/Scenes/SafeZone.unity</c>.</summary>
@@ -176,7 +176,7 @@ namespace MMO.Editor
             string portalName,
             ZoneLayout layout)
         {
-            EnsureSceneFolder();
+            ZoneBuildFiles.EnsureSceneFolder();
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -244,25 +244,11 @@ namespace MMO.Editor
             // station wherever it appears — a second copy baked into the scene would only
             // duplicate that hole.
 
-            // Create the NavMeshSurface object as a child of ZoneRoot
-            var navMeshGo = new GameObject("NavMeshSurface");
-            navMeshGo.transform.SetParent(zoneRoot.transform, false);
-            var surface = navMeshGo.AddComponent<Unity.AI.Navigation.NavMeshSurface>();
-
-            // Configure it to scan all generated geometry and bake the mesh
-            surface.collectObjects = Unity.AI.Navigation.CollectObjects.All;
-            surface.BuildNavMesh();
-
-            // BuildNavMesh() only creates in-memory NavMeshData. SaveScene cannot persist a
-            // reference to a non-asset object, so the scene would save with a null m_NavMeshData
-            // and the runtime NavMesh would never load (NavMesh.SamplePosition fails everywhere).
-            // Persist the data as an asset at a deterministic path — the same layout the AI
-            // Navigation editor uses — deleting any prior bake so re-baking does not accumulate
-            // orphans.
-            SaveNavMeshAsset(surface, scenePath);
+            var surface = ZoneNavMeshBaking.Bake(zoneRoot.transform);
+            ZoneNavMeshBaking.SaveAsset(surface, scenePath);
             // ----------------------------------
 
-            SaveScene(scene, scenePath);
+            ZoneBuildFiles.SaveScene(scene, scenePath);
         }
 
         private static int SpawnCountFor(ZoneLayout layout) => layout switch
@@ -567,62 +553,5 @@ namespace MMO.Editor
             return prefab;
         }
 
-        private static void EnsureSceneFolder()
-        {
-            if (!Directory.Exists("Assets/Scenes"))
-                Directory.CreateDirectory("Assets/Scenes");
-        }
-
-        private static void SaveScene(Scene scene, string path)
-        {
-            if (!EditorSceneManager.SaveScene(scene, path))
-                throw new InvalidOperationException($"Could not save zone scene to '{path}'.");
-        }
-
-        /// <summary>
-        /// Persists <paramref name="surface"/>'s baked <c>NavMeshData</c> as an asset next to the
-        /// zone scene, mirroring the AI Navigation editor's own layout
-        /// (<c>Assets/Scenes/&lt;Zone&gt;/NavMesh-&lt;SurfaceName&gt;.asset</c>). Without this the
-        /// scene saves with a null data reference and no NavMesh exists at runtime.
-        /// </summary>
-        private static void SaveNavMeshAsset(NavMeshSurface surface, string scenePath)
-        {
-            if (surface == null || surface.navMeshData == null)
-                throw new InvalidOperationException(
-                    $"NavMeshSurface on '{surface?.name}' has no baked data to save.");
-
-            // Same folder the AI Navigation editor uses: a directory named after the scene,
-            // beside the scene file.
-            string sceneDir = Path.GetDirectoryName(scenePath);
-            string sceneName = Path.GetFileNameWithoutExtension(scenePath);
-            string assetDir = Path.Combine(sceneDir ?? "Assets", sceneName);
-            if (!Directory.Exists(assetDir))
-                Directory.CreateDirectory(assetDir);
-
-            string assetPath = Path.Combine(assetDir, "NavMesh-" + surface.name + ".asset");
-
-            // Delete any prior bake so re-baking overwrites rather than accumulating orphans.
-            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) != null)
-                AssetDatabase.DeleteAsset(assetPath);
-
-            AssetDatabase.CreateAsset(surface.navMeshData, assetPath);
-            AssetDatabase.SaveAssets();
-        }
-
-        /// <summary>Adds the scenes to the build list (enabled) unless they are already there.</summary>
-        private static void AddToBuildSettings(params string[] paths)
-        {
-            var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-
-            foreach (string path in paths)
-            {
-                if (scenes.Exists(s => s.path == path))
-                    continue;
-
-                scenes.Add(new EditorBuildSettingsScene(path, true));
-            }
-
-            EditorBuildSettings.scenes = scenes.ToArray();
-        }
     }
 }
