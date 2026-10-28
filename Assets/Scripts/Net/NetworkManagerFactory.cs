@@ -56,12 +56,7 @@ namespace MMO.Net
             // Authenticator. Build inactive, wire everything, then activate last.
             go.SetActive(false);
 
-            NetworkObject builtPlayerPrefab = null;
-            NetworkObject builtTargetDummyPrefab = null;
-            NetworkObject builtCraftingStationPrefab = null;
-        NetworkObject builtLootBagPrefab = null;
-        NetworkObject builtResourceNodePrefab = null;
-        NetworkObject builtBankTellerPrefab = null;
+            NetworkPrefabSet prefabSet = null;
 
             try
             {
@@ -75,61 +70,9 @@ namespace MMO.Net
                 NetworkManager manager = go.AddComponent<NetworkManager>();
                 manager.SpawnablePrefabs = prefabs;
 
-                if (playerPrefab == null)
-                {
-                    builtPlayerPrefab = PlayerPrefabFactory.Create();
-                    playerPrefab = builtPlayerPrefab;
-
-                    // A prefab built at runtime is a real scene object. Keep it out of sight:
-                    // FishNet's pool activates the clone it spawns, so an inactive source is
-                    // still perfectly spawnable.
-                    playerPrefab.gameObject.SetActive(false);
-                }
-
-                if (targetDummyPrefab == null)
-                {
-                    builtTargetDummyPrefab = TargetDummyPrefabFactory.Create();
-                    targetDummyPrefab = builtTargetDummyPrefab;
-                    targetDummyPrefab.gameObject.SetActive(false);
-                }
-
-                if (craftingStationPrefab == null)
-                {
-                    builtCraftingStationPrefab = CraftingStationPrefabFactory.Create();
-                    craftingStationPrefab = builtCraftingStationPrefab;
-                    craftingStationPrefab.gameObject.SetActive(false);
-                }
-
-                if (lootBagPrefab == null)
-                {
-                    builtLootBagPrefab = LootBagPrefabFactory.Create();
-                    lootBagPrefab = builtLootBagPrefab;
-                    lootBagPrefab.gameObject.SetActive(false);
-                }
-
-                if (resourceNodePrefab == null)
-                {
-                    builtResourceNodePrefab = ResourceNodePrefabFactory.Create();
-                    resourceNodePrefab = builtResourceNodePrefab;
-                    resourceNodePrefab.gameObject.SetActive(false);
-                }
-
-                // The generic bank teller. The server spawns one per authored marker; the prefab
-                // only has to be registered so both ends agree on its id.
-                builtBankTellerPrefab = BankTellerPrefabFactory.Create();
-                NetworkObject bankTellerPrefab = builtBankTellerPrefab;
-                bankTellerPrefab.gameObject.SetActive(false);
-
-                // Before activation, so the prefabs are in the collection when Awake hands out
-                // prefab ids from the list order. Both ends build through this same factory, so
-                // the player is always id 0, the target dummy id 1, the crafting station id 2 and
-                // the loot bag id 3.
-                PlayerPrefabFactory.Register(prefabs, playerPrefab);
-                TargetDummyPrefabFactory.Register(prefabs, targetDummyPrefab);
-                CraftingStationPrefabFactory.Register(prefabs, craftingStationPrefab);
-                LootBagPrefabFactory.Register(prefabs, lootBagPrefab);
-                ResourceNodePrefabFactory.Register(prefabs, resourceNodePrefab);
-                BankTellerPrefabFactory.Register(prefabs, bankTellerPrefab);
+                prefabSet = NetworkPrefabSet.Resolve(
+                    playerPrefab, targetDummyPrefab, craftingStationPrefab, lootBagPrefab, resourceNodePrefab);
+                prefabSet.Register(prefabs);
 
                 gate = go.AddComponent<MMOConnectionGate>();
                 gate.SetSettings(settings);
@@ -175,8 +118,8 @@ namespace MMO.Net
                 // SceneManager.OnClientLoadedStartScenes from its own Awake, and SceneManager is
                 // only created by NetworkManager.Awake — so this must not race component Awake
                 // order on the same object.
-                PlayerPrefabFactory.Attach(manager, playerPrefab);
-                CraftingStationPrefabFactory.Attach(manager, craftingStationPrefab);
+                PlayerPrefabFactory.Attach(manager, prefabSet.Player);
+                CraftingStationPrefabFactory.Attach(manager, prefabSet.CraftingStation);
 
                 // Give the gate its async loader and let the service claim each loaded record. The
                 // gate's unauthenticated broadcast path is open from the moment the server starts,
@@ -192,24 +135,7 @@ namespace MMO.Net
             }
             catch
             {
-                if (builtPlayerPrefab != null)
-                    Object.DestroyImmediate(builtPlayerPrefab.gameObject);
-
-                if (builtTargetDummyPrefab != null)
-                    Object.DestroyImmediate(builtTargetDummyPrefab.gameObject);
-
-                if (builtCraftingStationPrefab != null)
-                    Object.DestroyImmediate(builtCraftingStationPrefab.gameObject);
-
-                if (builtLootBagPrefab != null)
-                    Object.DestroyImmediate(builtLootBagPrefab.gameObject);
-
-                if (builtResourceNodePrefab != null)
-                    Object.DestroyImmediate(builtResourceNodePrefab.gameObject);
-
-                if (builtBankTellerPrefab != null)
-                    Object.DestroyImmediate(builtBankTellerPrefab.gameObject);
-
+                prefabSet?.DestroyBuilt();
                 Object.DestroyImmediate(go);
                 throw;
             }
