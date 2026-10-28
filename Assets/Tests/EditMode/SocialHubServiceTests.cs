@@ -632,6 +632,7 @@ namespace MMO.Tests
             public readonly Dictionary<string, GuildBankRecord> GuildBanks = new Dictionary<string, GuildBankRecord>();
             public readonly Dictionary<string, GuildBankLedgerRecord> GuildBankLedgers = new Dictionary<string, GuildBankLedgerRecord>();
             public readonly Dictionary<string, TerritoryRecord> Territories = new Dictionary<string, TerritoryRecord>();
+            public readonly Dictionary<string, MailInbox> Inboxes = new Dictionary<string, MailInbox>();
             public readonly Dictionary<string, string> Names = new Dictionary<string, string>();
             public readonly List<SocialNotification> Notifications = new List<SocialNotification>();
 
@@ -776,6 +777,12 @@ namespace MMO.Tests
                 return Task.CompletedTask;
             }
 
+            public Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default)
+                => Task.FromResult(Clone(Get(Inboxes, accountId)));
+
+            public Task SaveInboxAsync(MailInbox record, CancellationToken ct = default)
+                => Save(record, Inboxes, record.AccountId, record.StorageVersion, () => record.StorageVersion = NextVersion());
+
             private static TValue Get<TValue>(Dictionary<string, TValue> store, string key)
                 => store.TryGetValue(key, out TValue value) ? value : default;
 
@@ -810,6 +817,7 @@ namespace MMO.Tests
                     FriendListRecord friends => friends.StorageVersion,
                     GuildBankRecord bank => bank.StorageVersion,
                     TerritoryRecord territory => territory.StorageVersion,
+                    MailInbox inbox => inbox.StorageVersion,
                     _ => null,
                 };
 

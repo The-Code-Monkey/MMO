@@ -108,6 +108,30 @@ namespace MMO.Auction
             return result.GetRange(start, count);
         }
 
+        public async Task<List<AuctionListingRecord>> ListActiveListingsAsync(CancellationToken ct = default)
+        {
+            List<StorageObjectData> objects = await _rest.ListObjectsAsync(AuctionListingRecord.Collection, ct);
+
+            var result = new List<AuctionListingRecord>();
+            long now = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+            foreach (StorageObjectData obj in objects)
+            {
+                AuctionListingRecord record = Deserialize<AuctionListingRecord>(obj);
+                if (record == null)
+                    continue;
+
+                if (record.Status != AuctionListingStatus.Active)
+                    continue;
+
+                if (record.ExpiresAtTicks > 0 && record.ExpiresAtTicks < now)
+                    continue;
+
+                result.Add(record);
+            }
+
+            return result;
+        }
+
         // Buy Orders
         public async Task<AuctionBuyOrderRecord> LoadBuyOrderAsync(string buyOrderId, CancellationToken ct = default)
         {

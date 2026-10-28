@@ -426,6 +426,9 @@ namespace MMO.Tests
             public Task<List<PresenceRecord>> LoadPresencesAsync(IReadOnlyList<string> accountIds, CancellationToken ct = default)
                 => Task.FromResult(new List<PresenceRecord>());
 
+                        public Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default) => Task.FromResult<MailInbox>(null);
+            public Task SaveInboxAsync(MailInbox record, CancellationToken ct = default) => Task.CompletedTask;
+
             public Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
             {
                 Notifications.Add(notification);

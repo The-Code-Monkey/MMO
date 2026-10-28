@@ -68,6 +68,12 @@ namespace MMO.Social
         Task<List<PresenceRecord>> LoadPresencesAsync(
             IReadOnlyList<string> accountIds, CancellationToken ct = default);
 
+        /// <summary>Null when the account has no inbox yet; <c>StorageVersion</c> is the if-match token.</summary>
+        Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default);
+
+        /// <summary>Creates when <c>record.StorageVersion</c> is empty, otherwise if-matches it.</summary>
+        Task SaveInboxAsync(MailInbox record, CancellationToken ct = default);
+
         /// <summary>
         /// Best-effort cross-zone push fired after a winning CAS so peer zones can react before the
         /// next reconcile tick. The body is ids-only; a receiving zone re-reads authoritative state

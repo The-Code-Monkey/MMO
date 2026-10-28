@@ -25,6 +25,7 @@ namespace MMO.Persistence
         public const string GuildBankCollection = "guild_banks";
         public const string GuildBankLedgerCollection = "guild_bank_ledgers";
         public const string TerritoryCollection = "territories";
+        public const string MailInboxCollection = "mail_inbox";
 
         private readonly NakamaRestClient _rest;
 
@@ -236,6 +237,25 @@ namespace MMO.Persistence
                 TerritoryCollection, record.TerritoryId, JsonUtility.ToJson(record), record.StorageVersion, ct);
         }
 
+        public async Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(MailInboxCollection, accountId, ct);
+            MailInbox inbox = Deserialize<MailInbox>(obj);
+            if (inbox != null && string.IsNullOrEmpty(inbox.AccountId))
+                inbox.AccountId = accountId;
+
+            return inbox;
+        }
+
+        public async Task SaveInboxAsync(MailInbox record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                MailInboxCollection, record.AccountId, JsonUtility.ToJson(record), record.StorageVersion, ct);
+        }
+
         public async Task NotifySocialAsync(SocialNotification notification, CancellationToken ct = default)
         {
             if (notification == null)
@@ -270,6 +290,8 @@ namespace MMO.Persistence
                 bankLedger.StorageVersion = obj.Version;
             else if (record is TerritoryRecord territory)
                 territory.StorageVersion = obj.Version;
+            else if (record is MailInbox inbox)
+                inbox.StorageVersion = obj.Version;
 
             return record;
         }
