@@ -23,19 +23,18 @@ namespace MMO.Auction
         public const int MaxActiveBuyOrdersPerPlayer = 20;
         public const long MinPricePerUnit = 1;
 
-        /// <summary>Post-commit mail deliveries retry a transient backend failure this many times.</summary>
-        private const int DeliveryMailAttempts = 3;
-
         private readonly IAuctionRepository _repository;
         private readonly NakamaRestClient _rest;
         private readonly int _casRetries;
         private readonly SocialHubService _socialHub;
+        private readonly AuctionDeliveryService _delivery;
 
         public AuctionService(IAuctionRepository repository, NakamaRestClient rest, SocialHubService socialHub, int casRetries = 5)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _rest = rest ?? throw new ArgumentNullException(nameof(rest));
             _socialHub = socialHub ?? throw new ArgumentNullException(nameof(socialHub));
+            _delivery = new AuctionDeliveryService(_socialHub, GetPlayerBag);
             _casRetries = casRetries;
         }
 
@@ -263,7 +262,7 @@ namespace MMO.Auction
                 {
                     await RefundBuyerAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
                     // Map error code to rule
-                    return AuctionResult.Fail(MapErrorToRule(buyResponse.errorCode));
+                    return AuctionResult.Fail(AuctionErrorRules.Map(buyResponse.errorCode));
                 }
 
                 await CompleteWalletReservationAsync(buyerAccountId, reservation.ReservationId);
@@ -294,7 +293,7 @@ namespace MMO.Auction
 
                 // Credit the seller. Same-zone sellers get it straight into their wallet;
                 // cross-zone (or offline) sellers get claimable mail their own zone grants.
-                await CreditSellerAsync(listing.SellerAccountId, totalPrice, ct);
+                await _delivery.CreditSellerAsync(listing.SellerAccountId, totalPrice, ct);
                 sellerCredited = true;
 
                 // The item is already durable in the buyer's mailbox, written atomically with the
@@ -310,7 +309,7 @@ namespace MMO.Auction
                 else
                 {
                     // Older backend without atomic delivery: fall back to the in-process path.
-                    await DeliverPurchaseAsync(buyerAccountId, updatedListing, ct);
+                    await _delivery.DeliverPurchaseAsync(buyerAccountId, updatedListing, ct);
                 }
 
                 return AuctionResult.Ok(listingId: listingId, listing: updatedListing);
@@ -352,7 +351,7 @@ namespace MMO.Auction
 
                 await _socialHub.ClaimMailAsync(buyerAccountId, mailId, CancellationToken.None);
                 if (!sellerCredited)
-                    await CreditSellerAsync(sold.SellerAccountId, totalPrice, CancellationToken.None);
+                    await _delivery.CreditSellerAsync(sold.SellerAccountId, totalPrice, CancellationToken.None);
 
                 return AuctionResult.Ok(listingId: listingId, listing: sold);
             }
@@ -771,7 +770,7 @@ namespace MMO.Auction
 
                 if (!fulfillResponse.success)
                 {
-                    return AuctionResult.Fail(MapErrorToRule(fulfillResponse.errorCode));
+                    return AuctionResult.Fail(AuctionErrorRules.Map(fulfillResponse.errorCode));
                 }
 
                 // The item is already durable in the buyer's mailbox, written atomically with the
@@ -787,10 +786,10 @@ namespace MMO.Auction
                 else
                 {
                     // Older backend without atomic delivery: fall back to the in-process path.
-                    await DeliverItemAsync(
+                    await _delivery.DeliverItemAsync(
                         buyOrder.BuyerAccountId,
                         soldItem,
-                        ResolveDeliveryTarget(buyOrder.BuyerAccountId, soldItem),
+                        _delivery.ResolveDeliveryTarget(buyOrder.BuyerAccountId, soldItem),
                         "Auction purchase",
                         $"Your buy order {buyOrderId} was filled.");
                 }
@@ -843,7 +842,7 @@ namespace MMO.Auction
                 _socialHub.NotifyAuctionPurchaseCompleted(buyOrder.BuyerAccountId, fulfillResponse.transaction);
 
                 // Credit the seller the buyer's reserved gold (reserved at CreateBuyOrderAsync).
-                await CreditSellerAsync(sellerAccountId, buyOrder.PricePerUnit * sellCount, ct);
+                await _delivery.CreditSellerAsync(sellerAccountId, buyOrder.PricePerUnit * sellCount, ct);
                 sellerCredited = true;
 
                 return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: fulfillResponse.buyOrder);
@@ -907,7 +906,7 @@ namespace MMO.Auction
                 }
 
                 if (!sellerCredited)
-                    await CreditSellerAsync(sellerAccountId, totalPrice, CancellationToken.None);
+                    await _delivery.CreditSellerAsync(sellerAccountId, totalPrice, CancellationToken.None);
                 return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: current);
             }
             catch (Exception e)
@@ -1130,178 +1129,6 @@ namespace MMO.Auction
                 return def.ToolKind.ToString();
 
             return "Other";
-        }
-
-        /// <summary>
-        /// Grants the won item to the buyer: same-zone, with bag space, straight into the bag;
-        /// otherwise into a claimable mail. An item is always exactly one holder — escrow, then bag
-        /// or mailbox, never both.
-        /// </summary>
-        private async Task DeliverPurchaseAsync(
-            string buyerAccountId, AuctionListingRecord listing, CancellationToken ct)
-        {
-            ItemDefinition def = ItemDefinitionRegistry.Resolve(listing.ItemName);
-            if (def == null)
-            {
-                Debug.LogError($"[Auction] Cannot deliver listing {listing.ListingId}: unknown item {listing.ItemName}.");
-                return;
-            }
-
-            ItemInstance item = ItemInstance.Create(def, 0, 0, listing.StackCount);
-            AuctionDeliveryTarget target = ResolveDeliveryTarget(buyerAccountId, item);
-
-            await DeliverItemAsync(
-                buyerAccountId,
-                item,
-                target,
-                "Auction purchase",
-                $"You won listing {listing.ListingId}.");
-        }
-
-        /// <summary>
-        /// Decides where the buyer can receive an item: their bag when they are on this zone and
-        /// have room, otherwise their mailbox. Auction mail bypasses the inbox cap, so this always
-        /// yields a target that can accept the item.
-        /// </summary>
-        private AuctionDeliveryTarget ResolveDeliveryTarget(string accountId, ItemInstance item)
-        {
-            PlayerInventory bag = GetPlayerBag(accountId);
-            bool buyerOnThisZone = bag != null;
-            bool hasBagSpace = buyerOnThisZone && HasBagSpace(bag, item);
-            return AuctionDeliveryRules.Choose(buyerOnThisZone, hasBagSpace);
-        }
-
-        /// <summary>
-        /// Hands the item to the buyer at the resolved target, falling back to system mail when a
-        /// bag grant loses a race. Mail retries a transient backend failure and ignores cancellation
-        /// because this runs after the gold has already moved; a false means the item is stranded
-        /// and the failure is logged loudly. Returns true when the item has a holder.
-        /// </summary>
-        private async Task<bool> DeliverItemAsync(
-            string accountId,
-            ItemInstance item,
-            AuctionDeliveryTarget target,
-            string subject,
-            string body)
-        {
-            if (target == AuctionDeliveryTarget.Bag && TryGrantToBag(accountId, item))
-                return true;
-
-            var attachments = new List<ItemSaveData> { ToSaveData(item) };
-
-            for (int attempt = 0; attempt < DeliveryMailAttempts; attempt++)
-            {
-                MailRule rule;
-                try
-                {
-                    rule = await _socialHub.SendMailAsync(
-                        accountId,
-                        "auction",
-                        subject,
-                        body,
-                        currency: 0,
-                        attachments: attachments,
-                        ignoreInboxCap: true,
-                        ct: CancellationToken.None);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[Auction] Auction mail delivery threw for {accountId}: {e.Message}");
-                    rule = MailRule.BackendUnavailable;
-                }
-
-                if (rule == MailRule.Ok)
-                    return true;
-
-                if (rule != MailRule.BackendUnavailable && rule != MailRule.Conflict)
-                {
-                    Debug.LogError($"[Auction] Could not deliver {item.ItemName} x{item.StackCount} to {accountId}: {rule}.");
-                    return false;
-                }
-
-                if (attempt + 1 < DeliveryMailAttempts)
-                    await Task.Delay(50 * (1 << attempt));
-            }
-
-            Debug.LogError($"[Auction] Auction mail delivery failed after {DeliveryMailAttempts} attempts for {accountId}: {item.ItemName} x{item.StackCount} is stranded.");
-            return false;
-        }
-
-        private static ItemSaveData ToSaveData(ItemInstance item)
-        {
-            return new ItemSaveData
-            {
-                ItemName = item.ItemName,
-                InstanceId = string.IsNullOrEmpty(item.InstanceId) ? ItemInstance.NewInstanceId() : item.InstanceId,
-                Width = item.Width,
-                Height = item.Height,
-                StackCount = item.StackCount,
-                Durability = item.Durability,
-                EquipmentSlot = -1,
-            };
-        }
-
-        private async Task CreditSellerAsync(string sellerAccountId, long gold, CancellationToken ct)
-        {
-            if (string.IsNullOrEmpty(sellerAccountId) || gold <= 0)
-                return;
-
-            if (_socialHub.TryGetWallet(sellerAccountId, out PlayerWallet sellerWallet))
-            {
-                sellerWallet.AddGold(gold);
-                return;
-            }
-
-            MailRule result = await _socialHub.SendMailAsync(
-                sellerAccountId,
-                "auction",
-                "Auction sale",
-                "Your auction sale was completed.",
-                currency: gold,
-                attachments: null,
-                ignoreInboxCap: true,
-                ct: ct);
-
-            if (result != MailRule.Ok)
-                Debug.LogError($"[Auction] Could not credit seller {sellerAccountId} with {gold} gold by mail: {result}.");
-        }
-
-        private bool HasBagSpace(PlayerInventory bag, ItemInstance item)
-        {
-            if (bag == null || item.IsEmpty)
-                return false;
-
-            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
-            return grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out _, out _);
-        }
-
-        private bool TryGrantToBag(string accountId, ItemInstance item)
-        {
-            PlayerInventory bag = GetPlayerBag(accountId);
-            if (bag == null || item.IsEmpty)
-                return false;
-
-            var grid = new InventoryGrid(PlayerInventory.GridWidth, PlayerInventory.GridHeight);
-            if (!grid.TryFindFreeSpace(bag.Items, item.Width, item.Height, out int x, out int y))
-                return false;
-
-            item.GridX = x;
-            item.GridY = y;
-            return bag.TryAddExistingItem(item, x, y);
-        }
-
-        private AuctionRule MapErrorToRule(string errorCode)
-        {
-            switch (errorCode)
-            {
-                case "INSUFFICIENT_FUNDS": return AuctionRule.InsufficientFunds;
-                case "ALREADY_SOLD": return AuctionRule.AlreadySold;
-                case "NOT_ACTIVE": return AuctionRule.ListingNotActive;
-                case "BUY_ORDER_NOT_ACTIVE": return AuctionRule.BuyOrderNotActive;
-                case "DELIVERY_FAILED": return AuctionRule.Conflict;
-                case "NOT_FOUND": return AuctionRule.NotFound;
-                default: return AuctionRule.BackendUnavailable;
-            }
         }
 
         private async Task<AuctionResult> RetryAsync(Func<Task<AuctionResult>> attempt, CancellationToken ct)
