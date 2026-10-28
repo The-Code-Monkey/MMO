@@ -40,18 +40,13 @@ namespace MMO.Persistence
         [SerializeField, Min(0f)] private float _autosaveInterval = 30f;
         [SerializeField, Min(0f)] private float _saveDebounce = 2f;
 
-        private readonly Dictionary<int, string> _accountByClientId = new();
-        private readonly Dictionary<string, PlayerSaveRecord> _spawnRecords = new();
         private readonly Dictionary<string, Func<PlayerSaveRecord>> _livePlayers = new();
-        private readonly Dictionary<string, PlayerSaveRecord> _finalRecords = new();
-        private readonly Dictionary<string, string> _storageVersions = new();
-        private readonly Dictionary<string, List<WalletReservationRecord>> _pendingWalletReservations = new();
-        private readonly HashSet<string> _dirty = new();
-        private readonly Dictionary<string, double> _debounceUntil = new();
 
+        private readonly WalletReservationStore _walletReservations = new WalletReservationStore();
+        private readonly PlayerSaveQueue _saveQueue = new PlayerSaveQueue();
+        private readonly PlayerJoinCache _joinCache = new PlayerJoinCache();
         private IPlayerRepository _repository;
         private bool _connected;
-        private bool _saving;
         private float _nextAutosaveTime;
         private NetworkManager _manager;
         private bool _subscribed;
@@ -110,7 +105,7 @@ namespace MMO.Persistence
                 _nextAutosaveTime = Time.time + _autosaveInterval;
             }
 
-            if (_connected && _dirty.Count > 0 && !_saving)
+            if (_connected && _saveQueue.DirtyCount > 0 && !_saveQueue.IsSaving)
                 _ = ProcessDueSavesAsync(Time.unscaledTimeAsDouble);
         }
 
@@ -222,18 +217,8 @@ namespace MMO.Persistence
 
         private void OnJoinLoaded(int clientId, string accountId, PlayerSaveRecord record)
         {
-            _accountByClientId[clientId] = accountId;
-            _spawnRecords[accountId] = record;
-
-            // The record's version is the optimistic-concurrency token every later save must
-            // carry. Captured snapshots are fresh objects, so the service remembers it here.
-            _storageVersions[accountId] = record != null ? record.StorageVersion : null;
-
-            List<WalletReservationRecord> reservations = CopyWalletReservations(record?.PendingWalletReservations);
-            if (reservations.Count > 0)
-                _pendingWalletReservations[accountId] = reservations;
-            else
-                _pendingWalletReservations.Remove(accountId);
+            _joinCache.Record(clientId, accountId, record);
+            _walletReservations.SetFromRecord(accountId, record);
         }
 
         /// <summary>
@@ -242,26 +227,11 @@ namespace MMO.Persistence
         /// record without caring which runs first.
         /// </summary>
         public bool TryGetJoin(int clientId, out string accountId, out PlayerSaveRecord record)
-        {
-            accountId = null;
-            record = null;
-
-            if (!_accountByClientId.TryGetValue(clientId, out accountId))
-                return false;
-
-            _spawnRecords.TryGetValue(accountId, out record);
-            return true;
-        }
+            => _joinCache.TryGetJoin(clientId, out accountId, out record);
 
         /// <summary>Forgets a disconnected client's join cache.</summary>
         public void ForgetClient(int clientId)
-        {
-            if (_accountByClientId.TryGetValue(clientId, out string accountId))
-            {
-                _accountByClientId.Remove(clientId);
-                _spawnRecords.Remove(accountId);
-            }
-        }
+            => _joinCache.ForgetClient(clientId);
 
         #endregion
 
@@ -287,19 +257,9 @@ namespace MMO.Persistence
                 return false;
             }
 
-            if (!_pendingWalletReservations.TryGetValue(accountId, out List<WalletReservationRecord> reservations))
-            {
-                reservations = new List<WalletReservationRecord>();
-                _pendingWalletReservations.Add(accountId, reservations);
-            }
+            if (!_walletReservations.Add(accountId, reservation))
+                return false;
 
-            for (int i = 0; i < reservations.Count; i++)
-            {
-                if (reservations[i].ReservationId == reservation.ReservationId)
-                    return false;
-            }
-
-            reservations.Add(CopyWalletReservation(reservation));
             return await FlushAsync(accountId, requireConnected: true);
         }
 
@@ -309,23 +269,13 @@ namespace MMO.Persistence
             if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(reservationId))
                 return false;
 
-            if (_pendingWalletReservations.TryGetValue(accountId, out List<WalletReservationRecord> reservations))
-            {
-                reservations.RemoveAll(reservation => reservation.ReservationId == reservationId);
-                if (reservations.Count == 0)
-                    _pendingWalletReservations.Remove(accountId);
-            }
-
+            _walletReservations.Remove(accountId, reservationId);
             return await FlushAsync(accountId, requireConnected: true);
         }
 
         /// <summary>Returns a detached copy of this player's unresolved wallet reservations.</summary>
         public List<WalletReservationRecord> GetPendingWalletReservations(string accountId)
-        {
-            return _pendingWalletReservations.TryGetValue(accountId ?? string.Empty, out List<WalletReservationRecord> reservations)
-                ? CopyWalletReservations(reservations)
-                : new List<WalletReservationRecord>();
-        }
+            => _walletReservations.Get(accountId);
 
         /// <summary>
         /// Marks a player dirty. <paramref name="immediate"/> skips the debounce window (used for
@@ -333,15 +283,7 @@ namespace MMO.Persistence
         /// burst of inventory changes flushes once.
         /// </summary>
         public void MarkDirty(string accountId, bool immediate)
-        {
-            if (string.IsNullOrEmpty(accountId))
-                return;
-
-            _dirty.Add(accountId);
-            _debounceUntil[accountId] = immediate
-                ? Time.unscaledTimeAsDouble
-                : Time.unscaledTimeAsDouble + _saveDebounce;
-        }
+            => _saveQueue.MarkDirty(accountId, immediate, _saveDebounce);
 
         /// <summary>
         /// Queues the final state of a player that is about to leave (disconnect / despawn). The
@@ -349,13 +291,7 @@ namespace MMO.Persistence
         /// registered live capture for the one save that follows.
         /// </summary>
         public void QueueFinalSave(string accountId, PlayerSaveRecord record)
-        {
-            if (string.IsNullOrEmpty(accountId) || record == null)
-                return;
-
-            _finalRecords[accountId] = record;
-            MarkDirty(accountId, immediate: true);
-        }
+            => _saveQueue.QueueFinalSave(accountId, record, _saveDebounce);
 
         /// <summary>
         /// Saves every dirty player whose debounce window has passed. Public so tests can drive the
@@ -363,44 +299,35 @@ namespace MMO.Persistence
         /// </summary>
         public async Task<int> ProcessDueSavesAsync(double now)
         {
-            if (_saving || !_connected || _dirty.Count == 0)
+            if (_saveQueue.IsSaving || !_connected || _saveQueue.DirtyCount == 0)
                 return 0;
 
-            List<string> due = null;
-            foreach (string accountId in _dirty)
-            {
-                if (_debounceUntil.TryGetValue(accountId, out double deadline) && now >= deadline)
-                    (due ??= new List<string>()).Add(accountId);
-            }
-
+            List<string> due = _saveQueue.Due(now);
             if (due == null)
                 return 0;
 
             int flushed = 0;
-            _saving = true;
+            _saveQueue.BeginSave();
             try
             {
                 foreach (string accountId in due)
                 {
-                    bool ok = await SaveOneAsync(accountId);
-                    if (ok)
+                    if (await SaveOneAsync(accountId))
                     {
-                        _dirty.Remove(accountId);
-                        _debounceUntil.Remove(accountId);
+                        _saveQueue.MarkSaved(accountId);
                         flushed++;
                     }
                     else
                     {
                         // Keep dirty for a later retry; re-debounce so a dead backend cannot
                         // hot-loop the save loop.
-                        _dirty.Add(accountId);
-                        _debounceUntil[accountId] = Time.unscaledTimeAsDouble + _saveDebounce;
+                        _saveQueue.RequireRetry(accountId, _saveDebounce);
                     }
                 }
             }
             finally
             {
-                _saving = false;
+                _saveQueue.EndSave();
             }
 
             return flushed;
@@ -415,17 +342,16 @@ namespace MMO.Persistence
                 return 0;
 
             int flushed = 0;
-            foreach (string accountId in new List<string>(_dirty))
+            foreach (string accountId in _saveQueue.SnapshotDirty())
             {
                 if (await SaveOneAsync(accountId))
                 {
-                    _dirty.Remove(accountId);
-                    _debounceUntil.Remove(accountId);
+                    _saveQueue.MarkSaved(accountId);
                     flushed++;
                 }
                 else
                 {
-                    _dirty.Add(accountId);
+                    _saveQueue.RequireRetry(accountId, _saveDebounce);
                 }
             }
 
@@ -449,20 +375,15 @@ namespace MMO.Persistence
             if (!_connected)
                 return !requireConnected;
 
-            if (requireConnected && !_livePlayers.ContainsKey(accountId) && !_finalRecords.ContainsKey(accountId))
+            if (requireConnected && !_livePlayers.ContainsKey(accountId) && !_saveQueue.HasFinalRecord(accountId))
                 return false;
 
             MarkDirty(accountId, immediate: true);
             bool saved = await SaveOneAsync(accountId, requireRecord: requireConnected);
             if (saved)
-            {
-                _dirty.Remove(accountId);
-                _debounceUntil.Remove(accountId);
-            }
+                _saveQueue.MarkSaved(accountId);
             else
-            {
-                _dirty.Add(accountId);
-            }
+                _saveQueue.RequireRetry(accountId, _saveDebounce);
 
             return saved;
         }
@@ -473,9 +394,8 @@ namespace MMO.Persistence
                 return !requireRecord;
 
             PlayerSaveRecord record;
-            if (_finalRecords.TryGetValue(accountId, out record))
+            if (_saveQueue.TryTakeFinalRecord(accountId, out record))
             {
-                _finalRecords.Remove(accountId);
             }
             else
             {
@@ -501,13 +421,13 @@ namespace MMO.Persistence
 
             // A captured snapshot never carries the version it was loaded under; without this the
             // first successful create would make every later save a doomed "*" create-again.
-            if (_storageVersions.TryGetValue(accountId, out string version))
+            if (_joinCache.TryGetVersion(accountId, out string version))
                 record.StorageVersion = version;
 
             try
             {
                 await _repository.SaveAsync(record, CancellationToken.None);
-                _storageVersions[accountId] = record.StorageVersion;
+                _joinCache.SetVersion(accountId, record.StorageVersion);
                 return true;
             }
             catch (Exception e)
@@ -517,41 +437,6 @@ namespace MMO.Persistence
             }
         }
 
-        private static List<WalletReservationRecord> CopyWalletReservations(
-            IReadOnlyList<WalletReservationRecord> reservations)
-        {
-            var copy = new List<WalletReservationRecord>();
-            if (reservations == null)
-                return copy;
-
-            for (int i = 0; i < reservations.Count; i++)
-            {
-                if (reservations[i] != null)
-                    copy.Add(CopyWalletReservation(reservations[i]));
-            }
-
-            return copy;
-        }
-
-        private static WalletReservationRecord CopyWalletReservation(WalletReservationRecord reservation)
-        {
-            return reservation == null ? null : new WalletReservationRecord
-            {
-                ReservationId = reservation.ReservationId,
-                TargetId = reservation.TargetId,
-                Kind = reservation.Kind,
-                Amount = reservation.Amount,
-            };
-        }
-
         #endregion
-
-        private async void OnApplicationQuit()
-        {
-            // Best-effort final flush; ConnectionButtons already triggers one before the transport
-            // stops, so this is only a safety net for hard quits.
-            if (_connected)
-                await StopAsync();
-        }
     }
 }

@@ -356,24 +356,14 @@ namespace MMO.Inventory
                 return false;
             }
 
-            ItemInstance displaced = _equipment[(int)slot];
-
-            // Space gate for a swap: stage the bag without the moving item, so its own cell
-            // counts as free, and ask whether the displaced item has anywhere to land.
-            _scratch.Clear();
-            for (int i = 0; i < _items.Count; i++)
-            {
-                if (i != index)
-                    _scratch.Add(_items[i]);
-            }
-
-            int freeX = 0;
-            int freeY = 0;
-            if (!displaced.IsEmpty &&
-                !_grid.TryFindFreeSpace(_scratch, displaced.Width, displaced.Height, out freeX, out freeY, CellLimit))
+            if (!InventoryOperations.TryPlanEquip(
+                    _items, _equipment, _grid, CellLimit, index, definition, _scratch,
+                    out slot, out int freeX, out int freeY))
             {
                 return false;
             }
+
+            ItemInstance displaced = _equipment[(int)slot];
 
             // Every gate passed — now, and only now, mutate.
             _items.RemoveAt(index);
@@ -407,7 +397,7 @@ namespace MMO.Inventory
             if (worn.IsEmpty)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, worn.Width, worn.Height, out int x, out int y, CellLimit))
+            if (!InventoryOperations.TryPlanUnequip(_items, _grid, CellLimit, worn, out int x, out int y))
                 return false;
 
             _equipment.Set((int)slot, ItemInstance.Empty);
@@ -508,7 +498,7 @@ namespace MMO.Inventory
             if (item.IsEmpty)
                 return false;
 
-            if (!_grid.TryFindFreeSpace(_items, Math.Max(1, item.Width), Math.Max(1, item.Height), out int x, out int y, CellLimit))
+            if (!InventoryOperations.TryPlanFreeSpace(_items, _grid, CellLimit, item, out int x, out int y))
                 return false;
 
             item.GridX = x;
@@ -604,29 +594,7 @@ namespace MMO.Inventory
         public static List<ItemInstance> CollectLootable(
             IReadOnlyList<ItemInstance> bag,
             IReadOnlyList<ItemInstance> equipment)
-        {
-            var loot = new List<ItemInstance>();
-
-            if (bag != null)
-            {
-                for (int i = 0; i < bag.Count; i++)
-                {
-                    if (!bag[i].IsEmpty)
-                        loot.Add(bag[i]);
-                }
-            }
-
-            if (equipment != null)
-            {
-                for (int i = 0; i < equipment.Count; i++)
-                {
-                    if (!equipment[i].IsEmpty)
-                        loot.Add(equipment[i]);
-                }
-            }
-
-            return loot;
-        }
+            => ItemContainerRules.CollectNonEmpty(bag, equipment);
 
         /// <summary>
         /// Server: rebuild the equipped-item picture from the equipment list and push the sums
@@ -644,58 +612,19 @@ namespace MMO.Inventory
                 return;
             }
 
-            _equippedDefinitions.Clear();
-            for (int i = 0; i < _equipment.Count; i++)
-            {
-                ItemInstance worn = _equipment[i];
-                if (worn.IsEmpty)
-                    continue;
-
-                ItemDefinition definition = ItemDefinitionRegistry.Resolve(worn.ItemName);
-                if (definition != null)
-                    _equippedDefinitions.Add(definition);
-            }
-
+            EquipmentBonusCalculator.Collect(_equipment, _equippedDefinitions);
             stats.ApplyEquipmentBonuses(
-                ComputeMaxHealthBonus(_equippedDefinitions),
-                ComputeMaxManaBonus(_equippedDefinitions));
+                EquipmentBonusCalculator.MaxHealthBonus(_equippedDefinitions),
+                EquipmentBonusCalculator.MaxManaBonus(_equippedDefinitions));
         }
 
-        /// <summary>
-        /// Total <see cref="ItemDefinition.MaxHealthBonus"/> over a set of definitions —
-        /// the pure half of recalculation, callable from an EditMode test with a handful of
-        /// definitions and no server anywhere.
-        /// </summary>
+        /// <summary>Total <see cref="ItemDefinition.MaxHealthBonus"/> over a set of definitions.</summary>
         public static int ComputeMaxHealthBonus(IReadOnlyList<ItemDefinition> definitions)
-        {
-            if (definitions == null)
-                return 0;
-
-            int total = 0;
-            for (int i = 0; i < definitions.Count; i++)
-            {
-                if (definitions[i] != null)
-                    total += definitions[i].MaxHealthBonus;
-            }
-
-            return total;
-        }
+            => EquipmentBonusCalculator.MaxHealthBonus(definitions);
 
         /// <summary>Total <see cref="ItemDefinition.MaxManaBonus"/> over a set of definitions.</summary>
         public static int ComputeMaxManaBonus(IReadOnlyList<ItemDefinition> definitions)
-        {
-            if (definitions == null)
-                return 0;
-
-            int total = 0;
-            for (int i = 0; i < definitions.Count; i++)
-            {
-                if (definitions[i] != null)
-                    total += definitions[i].MaxManaBonus;
-            }
-
-            return total;
-        }
+            => EquipmentBonusCalculator.MaxManaBonus(definitions);
 
         /// <summary>
         /// Server: rebuild both containers from a loaded save in one shot, then re-derive the
@@ -826,22 +755,7 @@ namespace MMO.Inventory
         /// Used by world click handlers that need to send an owner-checked intent.
         /// </summary>
         public static PlayerInventory FindLocal(NetworkManager networkManager)
-        {
-            if (networkManager == null || networkManager.ServerManager == null || networkManager.ClientManager == null)
-                return null;
-
-            IReadOnlyDictionary<int, NetworkObject> spawned = networkManager.IsHostStarted
-                ? networkManager.ServerManager.Objects.Spawned
-                : networkManager.ClientManager.Objects.Spawned;
-
-            foreach (NetworkObject nob in spawned.Values)
-            {
-                if (nob != null && nob.IsSpawned && nob.IsOwner && nob.TryGetComponent(out PlayerInventory inventory))
-                    return inventory;
-            }
-
-            return null;
-        }
+            => PlayerInventoryLocator.FindLocal(networkManager);
 
         // Idempotent, and tolerant of running before or after the list first syncs: an equipment
         // list shorter than the slot count would index past its end, and a host runs OnStartNetwork

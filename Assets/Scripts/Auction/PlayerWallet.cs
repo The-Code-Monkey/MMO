@@ -99,12 +99,7 @@ namespace MMO.Auction
         {
             long before = Gold;
 
-            _account = WalletAccount.Empty(GetAccountId());
-            if (record != null)
-            {
-                _account.Balances = WalletSaveMigration.WalletBalances(record);
-                _bankVault = WalletSaveMigration.BankBalances(record);
-            }
+            WalletSaveAdapter.Load(record, GetAccountId(), out _account, out _bankVault);
 
             Publish(before);
             PublishBank();
@@ -113,14 +108,7 @@ namespace MMO.Auction
         /// <summary>Server: captures the balances into the save record, keeping legacy gold in sync.</summary>
         [Server]
         public void CaptureToSave(PlayerSaveRecord record)
-        {
-            if (record == null)
-                return;
-
-            record.Currencies = WalletRules.Sanitize(_account.Balances);
-            record.BankVault = WalletRules.Sanitize(_bankVault);
-            record.Gold = Gold;
-        }
+            => WalletSaveAdapter.Capture(record, _account, _bankVault, Gold);
 
         /// <summary>Server: sets a currency to an exact amount (creating it when absent).</summary>
         [Server]
@@ -306,20 +294,14 @@ namespace MMO.Auction
             if (!TryFindBagItem(itemInstanceId, out ItemInstance item))
                 return false;
 
-            CurrencyData currency = CurrencyRegistry.ResolveByItem(item.ItemName);
-            if (currency == null || string.IsNullOrEmpty(currency.CurrencyId))
-                return false;
-
-            int count = item.StackCount < 1 ? 1 : item.StackCount;
-            long credit = (long)currency.ItemValue * count;
-            if (credit <= 0)
+            if (!CurrencyItemConverter.TryPlan(item, out string currencyId, out long credit))
                 return false;
 
             if (!_inventory.TryRemoveItem(itemInstanceId, out ItemInstance removed))
                 return false;
 
             long before = Gold;
-            if (WalletRules.Credit(_account.Balances, currency.CurrencyId, credit) != WalletError.Ok)
+            if (WalletRules.Credit(_account.Balances, currencyId, credit) != WalletError.Ok)
             {
                 // The credit was refused (for example, overflow). Put the item back rather than
                 // destroying it for nothing.
@@ -360,7 +342,7 @@ namespace MMO.Auction
         /// </summary>
         private void Publish(long previousGold)
         {
-            _accountJson.Value = JsonUtility.ToJson(_account);
+            _accountJson.Value = WalletSnapshotCodec.EncodeAccount(_account);
 
             BalancesChanged?.Invoke();
             long now = Gold;
@@ -378,7 +360,7 @@ namespace MMO.Auction
             long before = Gold;
             if (!string.IsNullOrEmpty(current))
             {
-                WalletAccount parsed = JsonUtility.FromJson<WalletAccount>(current);
+                WalletAccount parsed = WalletSnapshotCodec.DecodeAccount(current);
                 if (parsed != null)
                     _account = parsed;
             }
@@ -392,7 +374,7 @@ namespace MMO.Auction
         /// <summary>Server: publishes the personal bank vault and raises the change event.</summary>
         private void PublishBank()
         {
-            _bankJson.Value = JsonUtility.ToJson(new WalletAccount { Balances = _bankVault });
+            _bankJson.Value = WalletSnapshotCodec.EncodeBank(_bankVault);
             BankChanged?.Invoke();
         }
 
@@ -403,9 +385,9 @@ namespace MMO.Auction
 
             if (!string.IsNullOrEmpty(current))
             {
-                WalletAccount parsed = JsonUtility.FromJson<WalletAccount>(current);
+                List<CurrencyBalance> parsed = WalletSnapshotCodec.DecodeBank(current);
                 if (parsed != null)
-                    _bankVault = parsed.Balances ?? new List<CurrencyBalance>();
+                    _bankVault = parsed;
             }
 
             BankChanged?.Invoke();

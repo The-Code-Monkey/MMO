@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using FishNet.Component.Spawning;
 using FishNet.Component.Transforming;
 using FishNet.Managing;
@@ -196,123 +194,20 @@ namespace MMO.Net
         /// <summary>
         /// True when <paramref name="playerPrefab"/> is already one of the spawnables.
         /// </summary>
-        /// <remarks>
-        /// Only <see cref="SinglePrefabObjects"/> is searched: this project uses it exclusively,
-        /// and the base <see cref="PrefabObjects"/> exposes no way to enumerate its contents.
-        /// </remarks>
         public static bool Contains(PrefabObjects prefabs, NetworkObject playerPrefab)
-        {
-            if (prefabs is not SinglePrefabObjects single || playerPrefab == null)
-                return false;
-
-            return single.Prefabs.Contains(playerPrefab);
-        }
+            => SpawnablePrefabCollection.Contains(prefabs, playerPrefab);
 
         /// <summary>
-        /// Adds <paramref name="playerPrefab"/> to the spawnable collection so the server and the
-        /// client agree on a prefab id for it. FishNet derives prefab ids from list order, so
-        /// both ends must register the prefabs in the same order.
+        /// Adds <paramref name="playerPrefab"/> to the spawnable collection in canonical order.
         /// </summary>
-        /// <remarks>
-        /// A collection serialized by an earlier bake can hold null or destroyed entries, or can
-        /// have the player somewhere other than index 0. Either desyncs the ids the two ends hand
-        /// out (and FishNet logs "Prefab on id N is null"), so <see cref="SinglePrefabObjects"/>
-        /// is rebuilt in place: <c>Clear()</c> then the player first, then the surviving prefabs
-        /// in their original relative order. There is no surgical removal — the class exposes
-        /// only <c>Clear()</c> — and re-adding is what keeps both ends canonical.
-        /// </remarks>
-        /// <returns>
-        /// True when this call added or re-ordered the prefab, false when it was a no-op.
-        /// </returns>
         public static bool Register(PrefabObjects prefabs, NetworkObject playerPrefab)
-        {
-            if (prefabs == null)
-                throw new ArgumentNullException(nameof(prefabs));
-
-            if (playerPrefab == null)
-                return false;
-
-            if (prefabs is SinglePrefabObjects single && NeedsRewire(single, playerPrefab))
-            {
-                Rewire(single, playerPrefab);
-                return true;
-            }
-
-            if (Contains(prefabs, playerPrefab))
-                return false;
-
-            // initializeAdded: false leaves prefab id assignment to NetworkManager.Awake, which is
-            // the only place that knows the final list order and whether the game is playing.
-            prefabs.AddObject(playerPrefab, checkForDuplicates: true, initializeAdded: false);
-            return true;
-        }
+            => SpawnablePrefabCollection.Register(prefabs, playerPrefab);
 
         /// <summary>
-        /// True when the collection is not already canonical: it holds a null (or destroyed)
-        /// entry, or does not have <paramref name="playerPrefab"/> at index 0.
+        /// Installs FishNet's <see cref="PlayerSpawner"/> on the manager and points it at
+        /// <paramref name="playerPrefab"/>.
         /// </summary>
-        private static bool NeedsRewire(SinglePrefabObjects prefabs, NetworkObject playerPrefab)
-        {
-            IReadOnlyList<NetworkObject> list = prefabs.Prefabs;
-
-            if (list.Count == 0)
-                return false;
-
-            for (int i = 0; i < list.Count; i++)
-            {
-                if (list[i] == null)
-                    return true;
-            }
-
-            return list[0] != playerPrefab;
-        }
-
-        /// <summary>
-        /// Rebuilds the collection: <c>Clear()</c>, the player, then every surviving prefab in
-        /// its original relative order.
-        /// </summary>
-        private static void Rewire(SinglePrefabObjects prefabs, NetworkObject playerPrefab)
-        {
-            var survivors = new List<NetworkObject>();
-            foreach (NetworkObject existing in prefabs.Prefabs)
-            {
-                if (existing != null && existing != playerPrefab)
-                    survivors.Add(existing);
-            }
-
-            prefabs.Clear();
-
-            // checkForDuplicates: false — the list was just cleared, so nothing can collide.
-            prefabs.AddObject(playerPrefab, checkForDuplicates: false, initializeAdded: false);
-            if (survivors.Count > 0)
-                prefabs.AddObjects(survivors, checkForDuplicates: false, initializeAdded: false);
-        }
-
-        /// <summary>
-        /// Puts FishNet's <see cref="PlayerSpawner"/> on the NetworkManager's own GameObject and
-        /// points it at <paramref name="playerPrefab"/>, which is how FishNet 4.x is told to spawn
-        /// a prefab whenever a player connects.
-        /// </summary>
-        /// <remarks>
-        /// The spawner must be on the NetworkManager object or a child of it — it resolves the
-        /// manager with <c>GetComponentInParent&lt;NetworkManager&gt;()</c>. It is also added only
-        /// after <c>NetworkManager.Awake</c> has run, because it subscribes to
-        /// <c>SceneManager.OnClientLoadedStartScenes</c> during its own Awake and that manager
-        /// sub-object only exists once the NetworkManager has initialised.
-        /// </remarks>
         public static PlayerSpawner Attach(NetworkManager manager, NetworkObject playerPrefab)
-        {
-            if (manager == null)
-                throw new ArgumentNullException(nameof(manager));
-
-            PlayerSpawner spawner = manager.GetComponent<PlayerSpawner>();
-            if (spawner == null)
-                spawner = manager.gameObject.AddComponent<PlayerSpawner>();
-
-            if (playerPrefab != null)
-                spawner.SetPlayerPrefab(playerPrefab);
-
-            return spawner;
-        }
+            => PlayerSpawnerInstaller.Attach(manager, playerPrefab);
     }
 }

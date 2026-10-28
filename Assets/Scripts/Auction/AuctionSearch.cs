@@ -4,41 +4,6 @@ using MMO.Persistence;
 
 namespace MMO.Auction
 {
-    /// <summary>How the market browse orders its results.</summary>
-    public enum AuctionSort
-    {
-        /// <summary>Newest listing first.</summary>
-        Relevance,
-
-        PriceAsc,
-        PriceDesc,
-
-        /// <summary>Newest listing first (alias kept for wire stability).</summary>
-        Recent,
-
-        /// <summary>Highest tier first.</summary>
-        Tier,
-    }
-
-    /// <summary>
-    /// A player-authored market query: filters, a sort mode, and a page window. Serializable so a
-    /// saved search can be persisted and replayed to reproduce a result set.
-    /// </summary>
-    [Serializable]
-    public sealed class AuctionQuery
-    {
-        public string Text = string.Empty;
-        public string Category = string.Empty;
-        public int MinTier;
-        public int MaxTier = int.MaxValue;
-        public string SellerId = string.Empty;
-        public long MinPrice;
-        public long MaxPrice = long.MaxValue;
-        public AuctionSort SortBy = AuctionSort.Relevance;
-        public int Page;
-        public int PageSize = 20;
-    }
-
     /// <summary>
     /// The single pure kernel behind both the shared-realm search (#82) and the richer filters/sort
     /// (#102). It filters and paginates <see cref="SearchRow"/>s; expiry is re-checked against the
