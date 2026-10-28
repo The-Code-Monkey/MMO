@@ -55,10 +55,7 @@ namespace MMO.Net
         // One spawned network object per authored marker, keyed by the marker component. Cleared
         // when the server stops, because FishNet despawns and destroys everything it spawned.
         private readonly Dictionary<Component, NetworkObject> _spawnedFromMarkers = new();
-
-        // Built-in fallback, created at most once per server run and kept out of sight like every
-        // other runtime source prefab.
-        private NetworkObject _fallbackNodePrefab;
+        private MarkerPrefabResolver _prefabs;
 
         /// <summary>How many world objects this bootstrap has spawned from markers.</summary>
         public int SpawnedWorldObjectCount => _spawnedFromMarkers.Count;
@@ -69,6 +66,7 @@ namespace MMO.Net
             if (_manager == null)
                 _manager = FindFirstObjectByType<NetworkManager>();
 
+            _prefabs = new MarkerPrefabResolver(() => _manager);
             Subscribe();
         }
 
@@ -167,7 +165,7 @@ namespace MMO.Net
                 // FishNet destroyed every spawned object with the server; drop the bookkeeping so a
                 // later restart spawns a fresh world instead of reusing dead references.
                 _spawnedFromMarkers.Clear();
-                _fallbackNodePrefab = null;
+                _prefabs?.Reset();
                 _globalSceneRegistered = false;
             }
         }
@@ -290,9 +288,7 @@ namespace MMO.Net
 
         private NetworkObject SpawnResourceNode(ResourceNodeMarker marker)
         {
-            NetworkObject prefab = marker.NodePrefab != null
-                ? EnsureNodeRegistered(marker.NodePrefab)
-                : ResolveDefaultNodePrefab();
+            NetworkObject prefab = _prefabs.Node(marker.NodePrefab);
 
             if (prefab == null)
             {
@@ -305,9 +301,7 @@ namespace MMO.Net
 
         private NetworkObject SpawnCraftingStation(CraftingStationMarker marker)
         {
-            NetworkObject prefab = marker.StationPrefab != null
-                ? EnsureStationRegistered(marker.StationPrefab)
-                : ResolveRegisteredPrefab(CraftingStationPrefabFactory.PrefabName);
+            NetworkObject prefab = _prefabs.Station(marker.StationPrefab);
 
             if (prefab == null)
             {
@@ -335,9 +329,7 @@ namespace MMO.Net
 
         private NetworkObject SpawnBankTeller(BankTellerMarker marker)
         {
-            NetworkObject prefab = marker.TellerPrefab != null
-                ? EnsureTellerRegistered(marker.TellerPrefab)
-                : ResolveRegisteredPrefab(BankTellerPrefabFactory.PrefabName);
+            NetworkObject prefab = _prefabs.Teller(marker.TellerPrefab);
 
             if (prefab == null)
             {
@@ -366,9 +358,7 @@ namespace MMO.Net
 
                 try
                 {
-                    NetworkObject prefab = marker.EnemyPrefab != null
-                        ? EnsureEnemyRegistered(marker.EnemyPrefab)
-                        : ResolveRegisteredPrefab(TargetDummyPrefabFactory.PrefabName);
+                    NetworkObject prefab = _prefabs.Enemy(marker.EnemyPrefab);
 
                     if (prefab == null)
                     {
@@ -409,71 +399,6 @@ namespace MMO.Net
             return spawned != null && spawned.IsSpawned ? spawned : null;
         }
 
-        private NetworkObject ResolveDefaultNodePrefab()
-        {
-            NetworkObject registered = ResolveRegisteredPrefab(ResourceNodePrefabFactory.PrefabName);
-            if (registered != null)
-                return registered;
-
-            if (_fallbackNodePrefab == null)
-            {
-                _fallbackNodePrefab = ResourceNodePrefabFactory.Create();
-                _fallbackNodePrefab.gameObject.SetActive(false);
-            }
-
-            return EnsureNodeRegistered(_fallbackNodePrefab);
-        }
-
-        private NetworkObject EnsureNodeRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            ResourceNodePrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject EnsureStationRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            CraftingStationPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject EnsureTellerRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            BankTellerPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject EnsureEnemyRegistered(NetworkObject prefab)
-        {
-            if (prefab == null || _manager == null || _manager.SpawnablePrefabs == null)
-                return prefab;
-
-            TargetDummyPrefabFactory.Register(_manager.SpawnablePrefabs, prefab, initializeAdded: true);
-            return prefab;
-        }
-
-        private NetworkObject ResolveRegisteredPrefab(string prefabName)
-        {
-            if (_manager == null || _manager.SpawnablePrefabs is not SinglePrefabObjects single)
-                return null;
-
-            foreach (NetworkObject prefab in single.Prefabs)
-            {
-                if (prefab != null && prefab.name == prefabName)
-                    return prefab;
-            }
-
-            return null;
-        }
-
         /// <summary>
         /// Server-only: hands the zone's authored spawn points to FishNet's
         /// <see cref="PlayerSpawner"/> so the initial server-side spawn lands on one of them. The
@@ -489,14 +414,7 @@ namespace MMO.Net
                 return;
 
             PlayerSpawnPoint[] points = FindObjectsByType<PlayerSpawnPoint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            if (points.Length == 0)
-                return;
-
-            var transforms = new Transform[points.Length];
-            for (int i = 0; i < points.Length; i++)
-                transforms[i] = points[i].transform;
-
-            _playerSpawner.Spawns = transforms;
+            PlayerSpawnPointWiring.Wire(_playerSpawner, points);
         }
 
         private void OnPlayerSpawned(NetworkObject player)
