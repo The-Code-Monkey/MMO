@@ -292,22 +292,7 @@ namespace MMO.Persistence
         }
 
         private PlayerSaveRecord Capture()
-        {
-            PlayerSaveRecord record = PlayerSaveMapper.Capture(
-                _accountId,
-                _stats.Level,
-                _stats.Health,
-                _stats.Mana,
-                _wallet != null ? _wallet.Gold : 0,
-                transform.position,
-                _inventory.Items,
-                _inventory.Equipment,
-                _stats.Experience,
-                _quests != null ? _quests.CompletedQuestIds : null,
-                _quests != null ? _quests.Progress : null);
-            _wallet?.CaptureToSave(record);
-            _bank?.CaptureToSave(record);
-            return record;
-        }
+            => PlayerSnapshotFactory.Capture(
+                _accountId, _stats, _inventory, _quests, _wallet, _bank, transform.position);
     }
 }
