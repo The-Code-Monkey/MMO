@@ -44,6 +44,7 @@ namespace MMO.Persistence
         private readonly Dictionary<string, PlayerSaveRecord> _spawnRecords = new();
         private readonly Dictionary<string, Func<PlayerSaveRecord>> _livePlayers = new();
         private readonly Dictionary<string, PlayerSaveRecord> _finalRecords = new();
+        private readonly Dictionary<string, List<WalletReservationRecord>> _pendingWalletReservations = new();
         private readonly HashSet<string> _dirty = new();
         private readonly Dictionary<string, double> _debounceUntil = new();
 
@@ -213,6 +214,12 @@ namespace MMO.Persistence
         {
             _accountByClientId[clientId] = accountId;
             _spawnRecords[accountId] = record;
+
+            List<WalletReservationRecord> reservations = CopyWalletReservations(record?.PendingWalletReservations);
+            if (reservations.Count > 0)
+                _pendingWalletReservations[accountId] = reservations;
+            else
+                _pendingWalletReservations.Remove(accountId);
         }
 
         /// <summary>
@@ -255,6 +262,56 @@ namespace MMO.Persistence
 
         public void UnregisterLivePlayer(string accountId)
             => _livePlayers.Remove(accountId);
+
+        /// <summary>Persists a wallet reservation alongside the current player snapshot.</summary>
+        public async Task<bool> AddWalletReservationAsync(string accountId, WalletReservationRecord reservation)
+        {
+            if (string.IsNullOrEmpty(accountId) || reservation == null ||
+                string.IsNullOrEmpty(reservation.ReservationId) || string.IsNullOrEmpty(reservation.TargetId) ||
+                reservation.Amount <= 0 || !_connected || !_livePlayers.ContainsKey(accountId))
+            {
+                return false;
+            }
+
+            if (!_pendingWalletReservations.TryGetValue(accountId, out List<WalletReservationRecord> reservations))
+            {
+                reservations = new List<WalletReservationRecord>();
+                _pendingWalletReservations.Add(accountId, reservations);
+            }
+
+            for (int i = 0; i < reservations.Count; i++)
+            {
+                if (reservations[i].ReservationId == reservation.ReservationId)
+                    return false;
+            }
+
+            reservations.Add(CopyWalletReservation(reservation));
+            return await FlushAsync(accountId, requireConnected: true);
+        }
+
+        /// <summary>Removes a resolved reservation and immediately persists the player snapshot.</summary>
+        public async Task<bool> CompleteWalletReservationAsync(string accountId, string reservationId)
+        {
+            if (string.IsNullOrEmpty(accountId) || string.IsNullOrEmpty(reservationId))
+                return false;
+
+            if (_pendingWalletReservations.TryGetValue(accountId, out List<WalletReservationRecord> reservations))
+            {
+                reservations.RemoveAll(reservation => reservation.ReservationId == reservationId);
+                if (reservations.Count == 0)
+                    _pendingWalletReservations.Remove(accountId);
+            }
+
+            return await FlushAsync(accountId, requireConnected: true);
+        }
+
+        /// <summary>Returns a detached copy of this player's unresolved wallet reservations.</summary>
+        public List<WalletReservationRecord> GetPendingWalletReservations(string accountId)
+        {
+            return _pendingWalletReservations.TryGetValue(accountId ?? string.Empty, out List<WalletReservationRecord> reservations)
+                ? CopyWalletReservations(reservations)
+                : new List<WalletReservationRecord>();
+        }
 
         /// <summary>
         /// Marks a player dirty. <paramref name="immediate"/> skips the debounce window (used for
@@ -363,22 +420,26 @@ namespace MMO.Persistence
 
         /// <summary>
         /// Force-saves one player right now, ignoring the debounce window and every other dirty
-        /// player — the zone-transfer handoff path, which must not hand a player to the next zone
-        /// before their state is durable. <see langword="false"/> means the write failed, and the
-        /// handoff is aborted rather than let the player arrive at the destination as a fresh
-        /// character. Matches <see cref="LoadAsync"/>'s fail-open shape: with a backend this queue
-        /// cannot reach, the save counts as done and the target loads the same fresh record.
+        /// player. <paramref name="requireConnected"/> makes the operation fail when no connected,
+        /// live player snapshot exists; auction reserves use this so a debit cannot proceed without
+        /// a durable save. The default preserves fail-open behavior for zone-transfer handoffs.
         /// </summary>
-        public async Task<bool> FlushAsync(string accountId)
+        public Task<bool> FlushAsync(string accountId)
+            => FlushAsync(accountId, requireConnected: false);
+
+        public async Task<bool> FlushAsync(string accountId, bool requireConnected)
         {
             if (string.IsNullOrEmpty(accountId))
-                return true;
+                return !requireConnected;
 
             if (!_connected)
-                return true;
+                return !requireConnected;
+
+            if (requireConnected && !_livePlayers.ContainsKey(accountId) && !_finalRecords.ContainsKey(accountId))
+                return false;
 
             MarkDirty(accountId, immediate: true);
-            bool saved = await SaveOneAsync(accountId);
+            bool saved = await SaveOneAsync(accountId, requireRecord: requireConnected);
             if (saved)
             {
                 _dirty.Remove(accountId);
@@ -392,10 +453,10 @@ namespace MMO.Persistence
             return saved;
         }
 
-        private async Task<bool> SaveOneAsync(string accountId)
+        private async Task<bool> SaveOneAsync(string accountId, bool requireRecord = false)
         {
             if (!_connected || string.IsNullOrEmpty(accountId))
-                return true;
+                return !requireRecord;
 
             PlayerSaveRecord record;
             if (_finalRecords.TryGetValue(accountId, out record))
@@ -420,7 +481,9 @@ namespace MMO.Persistence
             }
 
             if (record == null)
-                return true;
+                return !requireRecord;
+
+            record.PendingWalletReservations = GetPendingWalletReservations(accountId);
 
             try
             {
@@ -432,6 +495,33 @@ namespace MMO.Persistence
                 Debug.LogError($"[Persistence] Failed to save '{accountId}': {e.Message}");
                 return false;
             }
+        }
+
+        private static List<WalletReservationRecord> CopyWalletReservations(
+            IReadOnlyList<WalletReservationRecord> reservations)
+        {
+            var copy = new List<WalletReservationRecord>();
+            if (reservations == null)
+                return copy;
+
+            for (int i = 0; i < reservations.Count; i++)
+            {
+                if (reservations[i] != null)
+                    copy.Add(CopyWalletReservation(reservations[i]));
+            }
+
+            return copy;
+        }
+
+        private static WalletReservationRecord CopyWalletReservation(WalletReservationRecord reservation)
+        {
+            return reservation == null ? null : new WalletReservationRecord
+            {
+                ReservationId = reservation.ReservationId,
+                TargetId = reservation.TargetId,
+                Kind = reservation.Kind,
+                Amount = reservation.Amount,
+            };
         }
 
         #endregion

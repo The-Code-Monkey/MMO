@@ -188,16 +188,6 @@ namespace MMO.Auction
             // Reserve the buyer's gold up front so the live wallet and its save stay consistent
             // (the buy-order path reserves the same way). Refunded on any failure below.
             long totalPrice = listing.PricePerUnit * listing.StackCount;
-            PlayerWallet buyerWallet = GetPlayerWallet(buyerAccountId);
-            if (buyerWallet == null)
-                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
-
-            if (!buyerWallet.TrySpend(totalPrice))
-                return AuctionResult.Fail(AuctionRule.InsufficientFunds);
-
-            // Call the Lua RPC. It claims the listing and writes the buyer's delivery mail in the
-            // same transaction, so the item is durable before the call returns. The attempt id
-            // makes that mail findable if the response itself is lost.
             string attemptId = Guid.NewGuid().ToString("N");
             string deliveryBody = $"You won listing {listingId}. ({attemptId})";
             string payload = JsonUtility.ToJson(new BuyListingPayload
@@ -211,7 +201,30 @@ namespace MMO.Auction
                 itemDurability = 0,
                 attemptId = attemptId,
             });
+            var reservation = new WalletReservationRecord
+            {
+                ReservationId = attemptId,
+                TargetId = listingId,
+                Kind = WalletReservationKind.AuctionPurchase,
+                Amount = totalPrice,
+            };
 
+            PlayerWallet buyerWallet = GetPlayerWallet(buyerAccountId);
+            if (buyerWallet == null)
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            if (!buyerWallet.TrySpend(totalPrice))
+                return AuctionResult.Fail(AuctionRule.InsufficientFunds);
+
+            if (!await PersistWalletAsync(buyerAccountId, reservation))
+            {
+                await RefundBuyerAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+            }
+
+            // Call the Lua RPC. It claims the listing and writes the buyer's delivery mail in the
+            // same transaction, so the item is durable before the call returns. The attempt id
+            // makes that mail findable if the response itself is lost.
             bool sellerCredited = false;
 
             try
@@ -222,9 +235,12 @@ namespace MMO.Auction
                     AuctionResult? recovered = await RecoverLostPurchaseAsync(
                         buyerAccountId, listingId, totalPrice, deliveryBody, sellerCredited);
                     if (recovered.HasValue)
+                    {
+                        await CompleteWalletReservationAsync(buyerAccountId, reservation.ReservationId);
                         return recovered.Value;
+                    }
 
-                    buyerWallet.AddGold(totalPrice);
+                    await RefundBuyerAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
                     return AuctionResult.Fail(AuctionRule.BackendUnavailable);
                 }
 
@@ -234,18 +250,23 @@ namespace MMO.Auction
                     AuctionResult? recovered = await RecoverLostPurchaseAsync(
                         buyerAccountId, listingId, totalPrice, deliveryBody, sellerCredited);
                     if (recovered.HasValue)
+                    {
+                        await CompleteWalletReservationAsync(buyerAccountId, reservation.ReservationId);
                         return recovered.Value;
+                    }
 
-                    buyerWallet.AddGold(totalPrice);
+                    await RefundBuyerAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
                     return AuctionResult.Fail(AuctionRule.BackendUnavailable);
                 }
 
                 if (!buyResponse.success)
                 {
-                    buyerWallet.AddGold(totalPrice);
+                    await RefundBuyerAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
                     // Map error code to rule
                     return AuctionResult.Fail(MapErrorToRule(buyResponse.errorCode));
                 }
+
+                await CompleteWalletReservationAsync(buyerAccountId, reservation.ReservationId);
 
                 // Purchase successful - notify both parties
                 AuctionListingRecord updatedListing = buyResponse.listing;
@@ -301,9 +322,12 @@ namespace MMO.Auction
                 AuctionResult? recovered = await RecoverLostPurchaseAsync(
                     buyerAccountId, listingId, totalPrice, deliveryBody, sellerCredited);
                 if (recovered.HasValue)
+                {
+                    await CompleteWalletReservationAsync(buyerAccountId, reservation.ReservationId);
                     return recovered.Value;
+                }
 
-                buyerWallet.AddGold(totalPrice);
+                await RefundBuyerAsync(buyerAccountId, buyerWallet, totalPrice, reservation.ReservationId);
                 return AuctionResult.Fail(AuctionRule.BackendUnavailable);
             }
         }
@@ -512,61 +536,124 @@ namespace MMO.Auction
             if (index.ActiveBuyOrderIds != null && index.ActiveBuyOrderIds.Count >= MaxActiveBuyOrdersPerPlayer)
                 return AuctionResult.Fail(AuctionRule.MaxBuyOrdersReached);
 
+            string buyOrderId = Guid.NewGuid().ToString("N");
+            string reservationId = Guid.NewGuid().ToString("N");
+            var reservation = new WalletReservationRecord
+            {
+                ReservationId = reservationId,
+                TargetId = buyOrderId,
+                Kind = WalletReservationKind.BuyOrder,
+                Amount = totalCost,
+            };
+
             // Reserve gold from buyer's wallet
             PlayerWallet wallet = GetPlayerWallet(buyerAccountId);
             if (wallet == null || !wallet.TrySpend(totalCost))
                 return AuctionResult.Fail(AuctionRule.InsufficientFunds);
 
-            AuctionResult result = await RetryAsync(async () =>
+            if (!await PersistWalletAsync(buyerAccountId, reservation))
             {
-                // Re-read index inside CAS loop
-                index = await _repository.LoadIndexAsync(buyerAccountId, ct)
-                    ?? new AuctionIndexRecord { AccountId = buyerAccountId };
+                await RefundBuyerAsync(buyerAccountId, wallet, totalCost, reservationId);
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+            }
 
-                if (index.ActiveBuyOrderIds != null && index.ActiveBuyOrderIds.Count >= MaxActiveBuyOrdersPerPlayer)
-                    return AuctionResult.Fail(AuctionRule.MaxBuyOrdersReached);
-
-                // Create the buy order
-                string buyOrderId = Guid.NewGuid().ToString("N");
-                long nowTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
-                long expiresTicks = nowTicks + TimeSpan.FromHours(durationHours).Ticks;
-
-                var buyOrder = new AuctionBuyOrderRecord
+            AuctionResult result;
+            try
+            {
+                result = await RetryAsync(async () =>
                 {
-                    BuyOrderId = buyOrderId,
-                    BuyerAccountId = buyerAccountId,
-                    BuyerPlayerName = _socialHub.GetPlayerName(buyerAccountId),
-                    ItemName = itemName,
-                    ItemWidth = def.GridWidth,
-                    ItemHeight = def.GridHeight,
-                    QuantityRemaining = quantity,
-                    QuantityTotal = quantity,
-                    PricePerUnit = pricePerUnit,
-                    ListedAtTicks = nowTicks,
-                    ExpiresAtTicks = expiresTicks,
-                    Status = AuctionBuyOrderStatus.Active,
-                };
+                    // Re-read index inside CAS loop
+                    index = await _repository.LoadIndexAsync(buyerAccountId, ct)
+                        ?? new AuctionIndexRecord { AccountId = buyerAccountId };
 
-                await _repository.SaveBuyOrderAsync(buyOrder, ct);
+                    if (index.ActiveBuyOrderIds != null && index.ActiveBuyOrderIds.Count >= MaxActiveBuyOrdersPerPlayer)
+                        return AuctionResult.Fail(AuctionRule.MaxBuyOrdersReached);
 
-                // Update buyer's index
-                if (index.ActiveBuyOrderIds == null)
-                    index.ActiveBuyOrderIds = new List<string>();
-                index.ActiveBuyOrderIds.Add(buyOrderId);
-                await _repository.SaveIndexAsync(index, ct);
+                    // Create the buy order
+                    long nowTicks = DateTimeOffset.UtcNow.UtcDateTime.Ticks;
+                    long expiresTicks = nowTicks + TimeSpan.FromHours(durationHours).Ticks;
 
-                return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: buyOrder);
-            }, ct);
+                    var buyOrder = new AuctionBuyOrderRecord
+                    {
+                        BuyOrderId = buyOrderId,
+                        BuyerAccountId = buyerAccountId,
+                        BuyerPlayerName = _socialHub.GetPlayerName(buyerAccountId),
+                        ItemName = itemName,
+                        ItemWidth = def.GridWidth,
+                        ItemHeight = def.GridHeight,
+                        QuantityRemaining = quantity,
+                        QuantityTotal = quantity,
+                        PricePerUnit = pricePerUnit,
+                        ListedAtTicks = nowTicks,
+                        ExpiresAtTicks = expiresTicks,
+                        Status = AuctionBuyOrderStatus.Active,
+                    };
+
+                    await _repository.SaveBuyOrderAsync(buyOrder, ct);
+
+                    // Update buyer's index
+                    if (index.ActiveBuyOrderIds == null)
+                        index.ActiveBuyOrderIds = new List<string>();
+                    index.ActiveBuyOrderIds.Add(buyOrderId);
+                    await _repository.SaveIndexAsync(index, ct);
+
+                    return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: buyOrder);
+                }, ct);
+                }
+                catch
+                {
+                    AuctionBuyOrderRecord persistedOrder = null;
+                    bool resolved = false;
+                    try
+                    {
+                        persistedOrder = await _repository.LoadBuyOrderAsync(buyOrderId, CancellationToken.None);
+                        resolved = true;
+                    }
+                    catch
+                    {
+                        // Leave the durable reservation for join-time reconciliation.
+                    }
+
+                    if (resolved && persistedOrder != null && persistedOrder.BuyerAccountId == buyerAccountId)
+                    {
+                        result = AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: persistedOrder);
+                    }
+                    else if (resolved)
+                    {
+                        await RefundBuyerAsync(buyerAccountId, wallet, totalCost, reservationId);
+                        throw;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+
+            if (result.Rule != AuctionRule.Ok)
+            {
+                AuctionBuyOrderRecord persistedOrder = null;
+                bool resolved = false;
+                try
+                {
+                    persistedOrder = await _repository.LoadBuyOrderAsync(buyOrderId, ct);
+                    resolved = true;
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Auction] Could not verify buy order {buyOrderId} after reserve: {e.Message}");
+                }
+
+                if (resolved && persistedOrder != null && persistedOrder.BuyerAccountId == buyerAccountId)
+                    result = AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: persistedOrder);
+                else if (resolved)
+                    await RefundBuyerAsync(buyerAccountId, wallet, totalCost, reservationId);
+            }
 
             if (result.Rule == AuctionRule.Ok)
             {
+                await CompleteWalletReservationAsync(buyerAccountId, reservationId);
                 // Notify buyer's client
                 _socialHub.NotifyAuctionBuyOrderCreated(buyerAccountId, result.BuyOrder);
-            }
-            else
-            {
-                // Refund gold if buy order creation failed
-                wallet?.AddGold(totalCost);
             }
 
             return result;
@@ -922,6 +1009,87 @@ namespace MMO.Auction
             if (!_socialHub.TryGetWallet(accountId, out PlayerWallet wallet))
                 return null;
             return wallet;
+        }
+
+        /// <summary>Refunds an uncommitted reservation after restart, or clears a committed one.</summary>
+        public async Task<bool> ReconcileWalletReservationAsync(
+            string accountId, PlayerWallet wallet, WalletReservationRecord reservation)
+        {
+            if (string.IsNullOrEmpty(accountId) || wallet == null || reservation == null ||
+                reservation.Amount <= 0 || !_rest.IsConnected)
+                return false;
+
+            AuctionListingRecord listing = null;
+            AuctionBuyOrderRecord buyOrder = null;
+            try
+            {
+                switch (reservation.Kind)
+                {
+                    case WalletReservationKind.AuctionPurchase:
+                        listing = await _repository.LoadListingAsync(reservation.TargetId, CancellationToken.None);
+                        break;
+                    case WalletReservationKind.BuyOrder:
+                        buyOrder = await _repository.LoadBuyOrderAsync(reservation.TargetId, CancellationToken.None);
+                        break;
+                    default:
+                        return false;
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Auction] Could not reconcile wallet reservation {reservation.ReservationId}: {e.Message}");
+                return false;
+            }
+
+            if (!AuctionWalletReservationRules.TryGetRefundAmount(
+                    reservation, accountId, listing, buyOrder, out long refundAmount))
+            {
+                return false;
+            }
+
+            if (refundAmount > 0)
+            {
+                wallet.AddGold(refundAmount);
+            }
+
+            return await CompleteWalletReservationAsync(accountId, reservation.ReservationId);
+        }
+
+        private static async Task<bool> PersistWalletAsync(
+            string accountId, WalletReservationRecord reservation)
+        {
+            PlayerPersistenceService persistence = PlayerPersistenceService.Instance;
+            return persistence != null && await persistence.AddWalletReservationAsync(accountId, reservation);
+        }
+
+        private static async Task<bool> CompleteWalletReservationAsync(string accountId, string reservationId)
+        {
+            PlayerPersistenceService persistence = PlayerPersistenceService.Instance;
+            bool saved = persistence != null &&
+                await persistence.CompleteWalletReservationAsync(accountId, reservationId);
+            if (!saved)
+                Debug.LogError($"[Auction] Wallet reservation {reservationId} for {accountId} remains queued for recovery.");
+
+            return saved;
+        }
+
+        private static async Task RefundBuyerAsync(
+            string accountId, PlayerWallet wallet, long amount, string reservationId)
+        {
+            wallet.AddGold(amount);
+
+            try
+            {
+                if (await CompleteWalletReservationAsync(accountId, reservationId))
+                    return;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Auction] Could not persist refund of {amount} gold for {accountId}: {e.Message}");
+                return;
+            }
+
+            Debug.LogError($"[Auction] Could not persist refund of {amount} gold for {accountId}.");
         }
 
         private PlayerInventory GetPlayerBag(string accountId)
