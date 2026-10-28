@@ -644,58 +644,19 @@ namespace MMO.Inventory
                 return;
             }
 
-            _equippedDefinitions.Clear();
-            for (int i = 0; i < _equipment.Count; i++)
-            {
-                ItemInstance worn = _equipment[i];
-                if (worn.IsEmpty)
-                    continue;
-
-                ItemDefinition definition = ItemDefinitionRegistry.Resolve(worn.ItemName);
-                if (definition != null)
-                    _equippedDefinitions.Add(definition);
-            }
-
+            EquipmentBonusCalculator.Collect(_equipment, _equippedDefinitions);
             stats.ApplyEquipmentBonuses(
-                ComputeMaxHealthBonus(_equippedDefinitions),
-                ComputeMaxManaBonus(_equippedDefinitions));
+                EquipmentBonusCalculator.MaxHealthBonus(_equippedDefinitions),
+                EquipmentBonusCalculator.MaxManaBonus(_equippedDefinitions));
         }
 
-        /// <summary>
-        /// Total <see cref="ItemDefinition.MaxHealthBonus"/> over a set of definitions —
-        /// the pure half of recalculation, callable from an EditMode test with a handful of
-        /// definitions and no server anywhere.
-        /// </summary>
+        /// <summary>Total <see cref="ItemDefinition.MaxHealthBonus"/> over a set of definitions.</summary>
         public static int ComputeMaxHealthBonus(IReadOnlyList<ItemDefinition> definitions)
-        {
-            if (definitions == null)
-                return 0;
-
-            int total = 0;
-            for (int i = 0; i < definitions.Count; i++)
-            {
-                if (definitions[i] != null)
-                    total += definitions[i].MaxHealthBonus;
-            }
-
-            return total;
-        }
+            => EquipmentBonusCalculator.MaxHealthBonus(definitions);
 
         /// <summary>Total <see cref="ItemDefinition.MaxManaBonus"/> over a set of definitions.</summary>
         public static int ComputeMaxManaBonus(IReadOnlyList<ItemDefinition> definitions)
-        {
-            if (definitions == null)
-                return 0;
-
-            int total = 0;
-            for (int i = 0; i < definitions.Count; i++)
-            {
-                if (definitions[i] != null)
-                    total += definitions[i].MaxManaBonus;
-            }
-
-            return total;
-        }
+            => EquipmentBonusCalculator.MaxManaBonus(definitions);
 
         /// <summary>
         /// Server: rebuild both containers from a loaded save in one shot, then re-derive the
