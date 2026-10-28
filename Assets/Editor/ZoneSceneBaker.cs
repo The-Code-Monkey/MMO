@@ -98,7 +98,7 @@ namespace MMO.Editor
         // ---- Wilderness scatter ------------------------------------------
 
 
-        private enum ZoneLayout
+        internal enum ZoneLayout
         {
             SafeZone,
             Wilderness,
@@ -227,8 +227,8 @@ namespace MMO.Editor
             }
             // The tutorial zone is deliberately bare: flat ground and boundary only.
 
-            WireSpawnPoints(manager, CreateSpawnPoints(zoneRoot.transform, SpawnCountFor(layout)));
-            AddMarkers(zoneRoot.transform, layout);
+            ZoneSpawnAuthor.Wire(manager, ZoneSpawnAuthor.CreateSpawnPoints(zoneRoot.transform, SpawnCountFor(layout)));
+            ZoneMarkerAuthor.AddMarkers(zoneRoot.transform, layout);
 
             // Connects the scene to the server: spawn points, marker-driven world objects and
             // player placement. Added after the geometry so the bootstrap sees the finished scene.
@@ -314,53 +314,6 @@ namespace MMO.Editor
 
         // ---- Spawns, risk and portal ---------------------------------------
 
-        private static GameObject[] CreateSpawnPoints(Transform zoneRoot, int count)
-        {
-            Transform parent = CreateChild(SpawnPointsName, zoneRoot).transform;
-
-            // Y is set to 1.0f so a 2-unit tall capsule with a center pivot rests on top of the floor (Y = 0)
-            Vector3[] positions =
-            {
-                new Vector3(0f, 1.0f, 0f),
-                new Vector3(3f, 1.0f, 0f),
-                new Vector3(-3f, 1.0f, 0f),
-                new Vector3(0f, 1.0f, 3f),
-            };
-
-            count = Mathf.Clamp(count, 1, positions.Length);
-
-            var spawns = new GameObject[count];
-            for (int i = 0; i < count; i++)
-            {
-                var spawn = new GameObject($"PlayerSpawn_{i + 1}");
-                spawn.transform.SetParent(parent, false);
-                spawn.transform.localPosition = positions[i];
-
-                // The marker the server reads to place a joining player; the first one is the
-                // zone's default (where a fresh character with no saved position appears).
-                var point = spawn.AddComponent<PlayerSpawnPoint>();
-                point.SetDefault(i == 0);
-                spawns[i] = spawn;
-            }
-
-            return spawns;
-        }
-
-        private static void WireSpawnPoints(NetworkManager manager, GameObject[] spawns)
-        {
-            // FishNet's PlayerSpawner is what actually places a connecting client's player object;
-            // without the Spawns array the player would appear at the origin.
-            var spawner = manager.GetComponent<PlayerSpawner>();
-            if (spawner == null)
-                return;
-
-            var transforms = new Transform[spawns.Length];
-            for (int i = 0; i < spawns.Length; i++)
-                transforms[i] = spawns[i].transform;
-
-            spawner.Spawns = transforms;
-        }
-
         // ---- Server-spawned world objects ----------------------------------
 
         /// <summary>
@@ -369,91 +322,6 @@ namespace MMO.Editor
         /// publishes, never a loose object in the scene. Heights sit each object on the ground
         /// (a cube's mesh is centred on its origin).
         /// </summary>
-        private static void AddMarkers(Transform zoneRoot, ZoneLayout layout)
-        {
-            Transform markers = CreateChild(MarkersName, zoneRoot).transform;
-
-            float nodeY = ResourceNodePrefabFactory.DefaultHeight / 2f;
-            float stationY = CraftingStationPrefabFactory.DefaultHeight / 2f;
-            float enemyY = TargetDummyPrefabFactory.DefaultHeight / 2f;
-            float tellerY = BankTellerPrefabFactory.DefaultHeight / 2f;
-
-            if (layout == ZoneLayout.SafeZone)
-            {
-                // The smithy: a furnace and an anvil beside the town square.
-                AddStationMarker(markers, 1, new Vector3(-6f, stationY, -6f), CraftingStationType.Furnace);
-                AddStationMarker(markers, 2, new Vector3(-4f, stationY, -7f), CraftingStationType.Anvil);
-
-                // The bank: one personal teller and one guild teller in the town square.
-                AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, -4f), BankKind.Personal);
-                AddBankTellerMarker(markers, 2, new Vector3(4f, tellerY, -4f), BankKind.Guild);
-
-                // A few veins at the city edge to gather from.
-                AddNodeMarker(markers, 1, new Vector3(-15f, nodeY, 5f));
-                AddNodeMarker(markers, 2, new Vector3(-15f, nodeY, -4f));
-                AddNodeMarker(markers, 3, new Vector3(15f, nodeY, 8f));
-                return;
-            }
-
-            if (layout == ZoneLayout.Wilderness)
-            {
-                // Resources worth the risk, clear of the spawn clearing, portal and hazards.
-                AddNodeMarker(markers, 1, new Vector3(-8f, nodeY, -12f));
-                AddNodeMarker(markers, 2, new Vector3(8f, nodeY, 12f));
-                AddNodeMarker(markers, 3, new Vector3(-14f, nodeY, -6f));
-                AddNodeMarker(markers, 4, new Vector3(6f, nodeY, -16f));
-
-                // Enemies. The AI is #60's job; for now a target dummy is the enemy placed here.
-                AddEnemyMarker(markers, 1, new Vector3(5f, enemyY, -8f));
-                AddEnemyMarker(markers, 2, new Vector3(-8f, enemyY, 8f));
-                AddEnemyMarker(markers, 3, new Vector3(10f, enemyY, 2f));
-                return;
-            }
-
-            // Tutorial: the one dummy a new player learns to hit, a few metres in front of spawn,
-            // plus the furnace they refine their first gathered ore at — the furnace is what makes
-            // the iron ore -> iron ingot recipe reachable from a fresh character. The vein is
-            // bare-handed (the shipped definition asks for no tool), so the first ore needs no
-            // gear the player has not been given yet.
-            AddNodeMarker(markers, 1, new Vector3(-3f, nodeY, 3f));
-            AddEnemyMarker(markers, 1, new Vector3(0f, enemyY, 4f));
-            AddStationMarker(markers, 1, new Vector3(4f, stationY, 4f), CraftingStationType.Furnace);
-
-            // A personal teller beside the furnace, so a new character can bank their first ore
-            // and coins without leaving the tutorial zone.
-            AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, 4f), BankKind.Personal);
-        }
-
-        private static void AddNodeMarker(Transform parent, int index, Vector3 position)
-        {
-            var go = CreateChild($"ResourceNodeMarker_{index}", parent);
-            go.transform.localPosition = position;
-            go.AddComponent<ResourceNodeMarker>();
-        }
-
-        private static void AddStationMarker(Transform parent, int index, Vector3 position, CraftingStationType type)
-        {
-            var go = CreateChild($"CraftingStationMarker_{index}", parent);
-            go.transform.localPosition = position;
-            var marker = go.AddComponent<CraftingStationMarker>();
-            marker.SetStationType(type);
-        }
-
-        private static void AddEnemyMarker(Transform parent, int index, Vector3 position)
-        {
-            var go = CreateChild($"EnemyMarker_{index}", parent);
-            go.transform.localPosition = position;
-            go.AddComponent<EnemyMarker>();
-        }
-
-        private static void AddBankTellerMarker(Transform parent, int index, Vector3 position, BankKind kind)
-        {
-            var go = CreateChild($"BankTellerMarker_{index}", parent);
-            go.transform.localPosition = position;
-            var marker = go.AddComponent<BankTellerMarker>();
-            marker.SetKind(kind);
-        }
-
         private static void CreateRiskConfig(Transform zoneRoot, ZoneRiskTier tier)
         {
             var go = CreateChild(RiskConfigName, zoneRoot);
