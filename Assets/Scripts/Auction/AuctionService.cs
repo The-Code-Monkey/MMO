@@ -182,7 +182,17 @@ namespace MMO.Auction
             if (listing.SellerAccountId == buyerAccountId)
                 return AuctionResult.Fail(AuctionRule.NotOwner); // can't buy own listing
 
-            // Call atomic Lua RPC to transfer gold and mark listing sold
+            // Reserve the buyer's gold up front so the live wallet and its save stay consistent
+            // (the buy-order path reserves the same way). Refunded on any failure below.
+            long totalPrice = listing.PricePerUnit * listing.StackCount;
+            PlayerWallet buyerWallet = GetPlayerWallet(buyerAccountId);
+            if (buyerWallet == null)
+                return AuctionResult.Fail(AuctionRule.BackendUnavailable);
+
+            if (!buyerWallet.TrySpend(totalPrice))
+                return AuctionResult.Fail(AuctionRule.InsufficientFunds);
+
+            // Call the Lua RPC to mark the listing sold (claim-only; no gold moves here).
             // The RPC returns the transaction record on success
             string payload = JsonUtility.ToJson(new BuyListingPayload
             {
@@ -199,6 +209,7 @@ namespace MMO.Auction
                 BuyListingResponse buyResponse = JsonUtility.FromJson<BuyListingResponse>(response);
                 if (buyResponse == null || !buyResponse.success)
                 {
+                    buyerWallet.AddGold(totalPrice);
                     // Map error code to rule
                     return AuctionResult.Fail(MapErrorToRule(buyResponse?.errorCode));
                 }
@@ -227,6 +238,10 @@ namespace MMO.Auction
                 _socialHub.NotifyAuctionListingSold(buyerAccountId, listing.SellerAccountId, updatedListing, transaction);
                 _socialHub.NotifyAuctionPurchaseCompleted(buyerAccountId, transaction);
 
+                // Credit the seller. Same-zone sellers get it straight into their wallet;
+                // cross-zone (or offline) sellers get claimable mail their own zone grants.
+                await CreditSellerAsync(listing.SellerAccountId, totalPrice, ct);
+
                 // Deliver the escrowed item to the buyer. Same-zone buyers get it in their bag;
                 // cross-zone (or full-bag) buyers get a mail they claim on their own zone, so the
                 // item is never stranded on the seller's cluster.
@@ -237,6 +252,7 @@ namespace MMO.Auction
             catch (Exception e)
             {
                 Debug.LogError($"[Auction] Buy RPC failed: {e.Message}");
+                buyerWallet.AddGold(totalPrice);
                 return AuctionResult.Fail(AuctionRule.BackendUnavailable);
             }
         }
@@ -596,6 +612,9 @@ namespace MMO.Auction
                 _socialHub.NotifyAuctionPurchaseCompleted(sellerAccountId, fulfillResponse.transaction);
                 _socialHub.NotifyAuctionPurchaseCompleted(buyOrder.BuyerAccountId, fulfillResponse.transaction);
 
+                // Credit the seller the buyer's reserved gold (reserved at CreateBuyOrderAsync).
+                await CreditSellerAsync(sellerAccountId, buyOrder.PricePerUnit * sellCount, ct);
+
                 return AuctionResult.Ok(buyOrderId: buyOrderId, buyOrder: fulfillResponse.buyOrder);
             }
             catch (Exception e)
@@ -774,6 +793,27 @@ namespace MMO.Auction
                 $"You won listing {listing.ListingId}.",
                 currency: 0,
                 attachments: attachments,
+                ct: ct);
+        }
+
+        private async Task CreditSellerAsync(string sellerAccountId, long gold, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(sellerAccountId) || gold <= 0)
+                return;
+
+            if (_socialHub.TryGetWallet(sellerAccountId, out PlayerWallet sellerWallet))
+            {
+                sellerWallet.AddGold(gold);
+                return;
+            }
+
+            await _socialHub.SendMailAsync(
+                sellerAccountId,
+                "auction",
+                "Auction sale",
+                "Your auction sale was completed.",
+                currency: gold,
+                attachments: null,
                 ct: ct);
         }
 
