@@ -155,8 +155,5 @@ namespace MMO.Auction
         InvalidStackCount = 11,
         BuyOrderNotActive = 12,
         MaxBuyOrdersReached = 13,
-
-        /// <summary>The buyer can take delivery neither in their bag nor in a full inbox.</summary>
-        DeliveryBlocked = 14,
     }
 }

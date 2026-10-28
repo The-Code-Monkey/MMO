@@ -23,6 +23,9 @@ namespace MMO.Auction
         public const int MaxActiveBuyOrdersPerPlayer = 20;
         public const long MinPricePerUnit = 1;
 
+        /// <summary>Post-commit mail deliveries retry a transient backend failure this many times.</summary>
+        private const int DeliveryMailAttempts = 3;
+
         private readonly IAuctionRepository _repository;
         private readonly NakamaRestClient _rest;
         private readonly int _casRetries;
@@ -547,12 +550,9 @@ namespace MMO.Auction
             if (sellCount < 1)
                 return AuctionResult.Fail(AuctionRule.InvalidStackCount);
 
-            // The buyer must be able to take delivery before the item leaves the seller. A buyer
-            // whose bag and inbox are both full would otherwise lose the item after paying.
-            ItemInstance deliveryItem = ItemInstance.Create(def, 0, 0, sellCount);
-            AuctionDeliveryTarget deliveryTarget = await ResolveDeliveryTargetAsync(buyOrder.BuyerAccountId, deliveryItem, ct);
-            if (deliveryTarget == AuctionDeliveryTarget.Reject)
-                return AuctionResult.Fail(AuctionRule.DeliveryBlocked);
+            // Auction mail bypasses the inbox cap, so the buyer can always take delivery; only a
+            // local buyer with room gets the item straight into the bag.
+            AuctionDeliveryTarget deliveryTarget = ResolveDeliveryTarget(buyOrder.BuyerAccountId, item);
 
             // Call atomic Lua RPC to transfer item and gold
             string payload = JsonUtility.ToJson(new FulfillBuyOrderPayload
@@ -586,8 +586,7 @@ namespace MMO.Auction
                     soldItem,
                     deliveryTarget,
                     "Auction purchase",
-                    $"Your buy order {buyOrderId} was filled.",
-                    ct);
+                    $"Your buy order {buyOrderId} was filled.");
 
                 // Update seller's bag
                 if (sellCount >= availableCount)
@@ -796,69 +795,82 @@ namespace MMO.Auction
             }
 
             ItemInstance item = ItemInstance.Create(def, 0, 0, listing.StackCount);
-            AuctionDeliveryTarget target = await ResolveDeliveryTargetAsync(buyerAccountId, item, ct);
-            if (target == AuctionDeliveryTarget.Reject)
-            {
-                Debug.LogError($"[Auction] Cannot deliver listing {listing.ListingId} to {buyerAccountId}: bag and inbox full.");
-                return;
-            }
+            AuctionDeliveryTarget target = ResolveDeliveryTarget(buyerAccountId, item);
 
             await DeliverItemAsync(
                 buyerAccountId,
                 item,
                 target,
                 "Auction purchase",
-                $"You won listing {listing.ListingId}.",
-                ct);
+                $"You won listing {listing.ListingId}.");
         }
 
         /// <summary>
         /// Decides where the buyer can receive an item: their bag when they are on this zone and
-        /// have room, otherwise their mailbox. <see cref="AuctionDeliveryTarget.Reject"/> means
-        /// neither can take it, so the caller must not move the item.
+        /// have room, otherwise their mailbox. Auction mail bypasses the inbox cap, so this always
+        /// yields a target that can accept the item.
         /// </summary>
-        private async Task<AuctionDeliveryTarget> ResolveDeliveryTargetAsync(
-            string accountId, ItemInstance item, CancellationToken ct)
+        private AuctionDeliveryTarget ResolveDeliveryTarget(string accountId, ItemInstance item)
         {
             PlayerInventory bag = GetPlayerBag(accountId);
             bool buyerOnThisZone = bag != null;
             bool hasBagSpace = buyerOnThisZone && HasBagSpace(bag, item);
-            int inboxCount = buyerOnThisZone && hasBagSpace
-                ? 0
-                : await _socialHub.GetInboxCountAsync(accountId, ct);
-            return AuctionDeliveryRules.Choose(buyerOnThisZone, hasBagSpace, inboxCount);
+            return AuctionDeliveryRules.Choose(buyerOnThisZone, hasBagSpace);
         }
 
         /// <summary>
-        /// Hands the item to the buyer at the resolved target, falling back to mail when a bag
-        /// grant loses a race. Returns false when neither accepted it; the caller logs, because a
-        /// false here means the item has nowhere to go.
+        /// Hands the item to the buyer at the resolved target, falling back to system mail when a
+        /// bag grant loses a race. Mail retries a transient backend failure and ignores cancellation
+        /// because this runs after the gold has already moved; a false means the item is stranded
+        /// and the failure is logged loudly. Returns true when the item has a holder.
         /// </summary>
         private async Task<bool> DeliverItemAsync(
             string accountId,
             ItemInstance item,
             AuctionDeliveryTarget target,
             string subject,
-            string body,
-            CancellationToken ct)
+            string body)
         {
             if (target == AuctionDeliveryTarget.Bag && TryGrantToBag(accountId, item))
                 return true;
 
             var attachments = new List<ItemSaveData> { ToSaveData(item) };
-            MailRule rule = await _socialHub.SendMailAsync(
-                accountId,
-                "auction",
-                subject,
-                body,
-                currency: 0,
-                attachments: attachments,
-                ct: ct);
 
-            if (rule == MailRule.Ok)
-                return true;
+            for (int attempt = 0; attempt < DeliveryMailAttempts; attempt++)
+            {
+                MailRule rule;
+                try
+                {
+                    rule = await _socialHub.SendMailAsync(
+                        accountId,
+                        "auction",
+                        subject,
+                        body,
+                        currency: 0,
+                        attachments: attachments,
+                        ignoreInboxCap: true,
+                        ct: CancellationToken.None);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Auction] Auction mail delivery threw for {accountId}: {e.Message}");
+                    rule = MailRule.BackendUnavailable;
+                }
 
-            Debug.LogError($"[Auction] Could not deliver {item.ItemName} x{item.StackCount} to {accountId}: {rule}. The item is stranded.");
+                if (rule == MailRule.Ok)
+                    return true;
+
+                if (rule != MailRule.BackendUnavailable && rule != MailRule.Conflict)
+                {
+                    Debug.LogError($"[Auction] Could not deliver {item.ItemName} x{item.StackCount} to {accountId}: {rule}.");
+                    return false;
+                }
+
+                if (attempt + 1 < DeliveryMailAttempts)
+                    await Task.Delay(50 * (1 << attempt));
+            }
+
+            Debug.LogError($"[Auction] Auction mail delivery failed after {DeliveryMailAttempts} attempts for {accountId}: {item.ItemName} x{item.StackCount} is stranded.");
             return false;
         }
 

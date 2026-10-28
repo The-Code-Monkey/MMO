@@ -148,13 +148,13 @@ Both auction paths hand the item to its buyer through the same rule
 buyer is on this zone with room, otherwise a claimable mail. The rule is pure, so the EditMode
 suite covers every branch.
 
-Buy-order fulfillment resolves the target *before* the Lua transfer. If the buyer has no bag room
-and the inbox is at `MailRules.MaxInbox`, the fulfillment is refused with
-`AuctionRule.DeliveryBlocked`; the item stays with the seller and the buyer keeps the reserved gold.
-After the transfer the item is delivered first and removed from the seller's bag second, so a
-successful sale can never leave the item stranded in the buy-order record. A delivery that fails
-after the transfer (a lost race) is logged by `DeliverItemAsync` because the item then has no
-holder.
+Auction mail is a system delivery: `SendMailAsync(..., ignoreInboxCap: true)` lets it land in a full
+inbox, so the buyer can always take an item they have paid for. Buy-order fulfillment resolves the
+target before the Lua transfer, delivers the item after the transfer, and removes it from the
+seller's bag last, so a successful sale can never strand it in the buy-order record. Post-commit
+mail delivery retries a transient backend failure and ignores the caller's cancellation (the gold
+has already moved); a delivery that still fails is logged by `DeliverItemAsync` because the item
+then has no holder.
 
 ## Common tasks
 
