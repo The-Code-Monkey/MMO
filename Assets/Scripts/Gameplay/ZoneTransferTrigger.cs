@@ -66,6 +66,12 @@ namespace MMO.Gameplay
         public string TargetZoneName =>
             string.IsNullOrWhiteSpace(_targetZoneName) ? _targetServerId : _targetZoneName;
 
+        /// <summary>Server this gate sends the player to. The destination uses it to find the back gate.</summary>
+        public string TargetServerId => _targetServerId;
+
+        /// <summary>Server that owns this gate; carried in the transfer token.</summary>
+        public string SourceServerId => _sourceServerId;
+
         /// <summary>True while a handoff for this client is being prepared.</summary>
         public bool IsTransferring(int clientId) => _transferringClientIds.Contains(clientId);
 

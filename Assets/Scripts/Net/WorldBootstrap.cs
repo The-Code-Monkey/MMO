@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using FishNet.Component.Spawning;
 using FishNet.Managing;
@@ -263,9 +264,12 @@ namespace MMO.Net
             if (player == null || _manager == null || !_manager.IsServerStarted)
                 return;
 
+            int clientId = player.Owner != null ? player.Owner.ClientId : -1;
+            if (TryPlaceAfterTransfer(player, clientId))
+                return;
+
             Vector3? savedPosition = null;
             PlayerPersistenceService persistence = PlayerPersistenceService.Instance;
-            int clientId = player.Owner != null ? player.Owner.ClientId : -1;
 
             if (persistence != null && clientId >= 0 &&
                 persistence.TryGetJoin(clientId, out _, out PlayerSaveRecord record) && record != null)
@@ -274,6 +278,47 @@ namespace MMO.Net
             }
 
             PlacePlayerAt(player, savedPosition);
+        }
+
+        /// <summary>
+        /// Server-only: a transfer ignores the saved position and lands beside the back gate. The
+        /// tutorial's one-way road into the safe zone is the exception: it lands on the zone's
+        /// default spawn in the town centre.
+        /// </summary>
+        private bool TryPlaceAfterTransfer(NetworkObject player, int clientId)
+        {
+            if (clientId < 0 || _manager == null)
+                return false;
+
+            MMOConnectionGate gate = _manager.GetComponentInChildren<MMOConnectionGate>(true);
+            if (gate == null || !gate.TryGetTransferSource(clientId, out string sourceServerId) ||
+                string.IsNullOrEmpty(sourceServerId))
+            {
+                return false;
+            }
+
+            PlayerSpawnPoint[] points =
+                FindObjectsByType<PlayerSpawnPoint>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+
+            if (string.Equals(sourceServerId, ZoneServerIds.Tutorial, StringComparison.Ordinal))
+            {
+                PlayerJoinPlacement.Place(player, null, points);
+                return true;
+            }
+
+            ZoneTransferTrigger[] gates =
+                FindObjectsByType<ZoneTransferTrigger>(FindObjectsSortMode.None);
+            ZoneTransferTrigger backGate = ZoneArrivalPlacement.FindGateBackTo(sourceServerId, gates);
+            if (backGate == null)
+            {
+                Debug.LogWarning($"[WorldBootstrap] No back gate to '{sourceServerId}'; using the default spawn.");
+                PlayerJoinPlacement.Place(player, null, points);
+                return true;
+            }
+
+            Vector3 arrival = ZoneArrivalPlacement.NearGate(backGate.transform.position, Vector3.zero);
+            PlayerJoinPlacement.Place(player, arrival, points);
+            return true;
         }
 
         /// <summary>

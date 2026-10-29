@@ -219,18 +219,34 @@ namespace MMO.Tests
         // ---- Geometry is the prefab kit, not ProBuilder --------------------
 
         [Test]
-        public void Ground_IsCoveredByGrayboxFloorPrefabs()
+        public void SafeZoneGround_UsesTheCobblestonePrefab()
         {
             InScene(ZoneSceneBaker.SafeZonePath, scene =>
             {
                 Transform ground = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.GroundName);
                 Assert.IsNotNull(ground);
 
-                int tilesPerSide = Mathf.RoundToInt(ZoneSceneBaker.GroundExtent / ZoneSceneBaker.GroundTile);
+                int tilesPerSide = Mathf.RoundToInt(ZoneSceneBaker.SafeZoneGroundExtent / ZoneSceneBaker.GroundTile);
                 Assert.AreEqual(tilesPerSide * tilesPerSide, ground.childCount);
 
                 foreach (Transform tile in ground)
-                    AssertIsGrayboxPrefabInstance(tile);
+                    AssertIsGroundPrefabInstance(tile, GrayboxZoneGeometry.CobblestoneTilePrefab);
+            });
+        }
+
+        [Test]
+        public void WildernessGround_UsesTheGrassPrefab()
+        {
+            InScene(ZoneSceneBaker.WildernessZonePath, scene =>
+            {
+                Transform ground = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.GroundName);
+                Assert.IsNotNull(ground);
+
+                int tilesPerSide = Mathf.RoundToInt(ZoneSceneBaker.WildernessGroundExtent / ZoneSceneBaker.GroundTile);
+                Assert.AreEqual(tilesPerSide * tilesPerSide, ground.childCount);
+
+                foreach (Transform tile in ground)
+                    AssertIsGroundPrefabInstance(tile, GrayboxZoneGeometry.GrassTilePrefab);
             });
         }
 
@@ -242,7 +258,7 @@ namespace MMO.Tests
                 Transform walls = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.BoundaryWallsName);
                 Assert.IsNotNull(walls);
 
-                int segments = Mathf.RoundToInt(ZoneSceneBaker.GroundExtent / ZoneSceneBaker.GroundTile);
+                int segments = Mathf.RoundToInt(ZoneSceneBaker.SafeZoneGroundExtent / ZoneSceneBaker.GroundTile);
                 Assert.AreEqual(segments * 4 - 2, walls.childCount,
                     "Four full edges minus the two segments that make the portal gap.");
 
@@ -251,7 +267,7 @@ namespace MMO.Tests
                     AssertIsGrayboxPrefabInstance(wall);
 
                     Vector3 p = wall.localPosition;
-                    bool onExitEdge = Mathf.Abs(p.z - ZoneSceneBaker.GroundExtent / 2f) < 0.01f;
+                    bool onExitEdge = Mathf.Abs(p.z - ZoneSceneBaker.SafeZoneGroundExtent / 2f) < 0.01f;
                     bool inGap = Mathf.Abs(Mathf.Abs(p.x) - ZoneSceneBaker.GroundTile / 2f) < 0.01f;
                     Assert.IsFalse(onExitEdge && inGap, "The portal gap must stay clear of walls.");
                 }
@@ -265,7 +281,7 @@ namespace MMO.Tests
             {
                 Transform buildings = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.BuildingsName);
                 Assert.IsNotNull(buildings);
-                Assert.Greater(buildings.childCount, 0);
+                Assert.AreEqual(12, buildings.childCount);
 
                 foreach (Transform building in buildings)
                 {
@@ -273,6 +289,20 @@ namespace MMO.Tests
                     foreach (Transform piece in building)
                         AssertIsGrayboxPrefabInstance(piece);
                 }
+            });
+        }
+
+        [Test]
+        public void SafeZone_HasAGridOfWornCobblestoneStreets()
+        {
+            InScene(ZoneSceneBaker.SafeZonePath, scene =>
+            {
+                Transform streets = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.StreetsName);
+                Assert.IsNotNull(streets);
+                Assert.Greater(streets.childCount, 0);
+
+                foreach (Transform tile in streets)
+                    AssertIsGroundPrefabInstance(tile, GrayboxZoneGeometry.WornCobblestonePathPrefab);
             });
         }
 
@@ -471,6 +501,15 @@ namespace MMO.Tests
             string assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(piece.gameObject);
             StringAssert.StartsWith("Assets/Prefabs/Graybox/", assetPath,
                 "Every zone piece must come from the primitive prefab kit (no ProBuilder meshes).");
+        }
+
+        private static void AssertIsGroundPrefabInstance(Transform piece, string expectedPath)
+        {
+            Assert.IsTrue(PrefabUtility.IsPartOfPrefabInstance(piece.gameObject),
+                $"'{piece.name}' is a loose object, not a ground prefab instance.");
+
+            string assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(piece.gameObject);
+            Assert.AreEqual(expectedPath, assetPath);
         }
 
         private static string[] Describe(string path)

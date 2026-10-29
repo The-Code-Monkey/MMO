@@ -80,9 +80,15 @@ namespace MMO.Tests
                 Object.DestroyImmediate(_go);
         }
 
-        private async Task<string> IssueToken(string account = Account)
+        private async Task<string> IssueToken(string account = Account, string sourceServerId = null)
             => await _store.IssueAsync(
-                new ZoneTransferToken { AccountId = account, TargetHost = "127.0.0.1", TargetPort = 7770 },
+                new ZoneTransferToken
+                {
+                    AccountId = account,
+                    SourceServerId = sourceServerId ?? string.Empty,
+                    TargetHost = "127.0.0.1",
+                    TargetPort = 7770
+                },
                 CancellationToken.None);
 
         [Test]
@@ -103,6 +109,22 @@ namespace MMO.Tests
                 "The destination loads the account the source saved, not one the client claims.");
             Assert.AreEqual(Account, loadedAccount);
             Assert.AreEqual(0, _gate.PendingHandshakes);
+        }
+
+        [Test]
+        public async Task HandleJoinRequest_WithAValidTransferToken_RemembersTheSourceServer()
+        {
+            string token = await IssueToken(sourceServerId: ZoneServerIds.SafeZone);
+            var capture = new VerdictCapture(_gate);
+
+            _gate.OnRemoteConnection(Connection);
+            _gate.HandleJoinRequest(Connection, "Bob", null, null, token);
+            _loader.Complete(new PlayerSaveRecord { UserId = Account });
+            await Task.Delay(50);
+
+            Assert.AreEqual(true, capture.Approved);
+            Assert.IsTrue(_gate.TryGetTransferSource(Connection.ClientId, out string source));
+            Assert.AreEqual(ZoneServerIds.SafeZone, source);
         }
 
         [Test]

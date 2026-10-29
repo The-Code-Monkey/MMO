@@ -57,6 +57,7 @@ namespace MMO.Net
         [SerializeField] private MMOConnectionSettings _settings = new();
 
         private readonly JoinHandshakeTracker _tracker = new();
+        private readonly Dictionary<int, string> _transferSources = new();
         private JoinGateReaper _reaper;
         private JoinGateVerdicts _verdicts;
 
@@ -134,7 +135,15 @@ namespace MMO.Net
                 return;
 
             _tracker.End(connection.ClientId);
+            _transferSources.Remove(connection.ClientId);
         }
+
+        /// <summary>
+        /// True when this client arrived through a zone-transfer token; returns the source server
+        /// id so the destination can place it beside the matching back gate.
+        /// </summary>
+        public bool TryGetTransferSource(int clientId, out string sourceServerId)
+            => _transferSources.TryGetValue(clientId, out sourceServerId);
 
         private void OnJoinRequestBroadcast(NetworkConnection connection, JoinRequestBroadcast msg, Channel channel)
             => HandleJoinRequest(connection, msg.PlayerName, msg.AccountId, msg.AuthToken, msg.TransferToken);
@@ -364,6 +373,8 @@ namespace MMO.Net
                 Apply(connection, JoinDecision.Reject(ReasonInvalidTransferToken));
                 return;
             }
+
+            _transferSources[clientId] = token.SourceServerId ?? string.Empty;
 
             if (TokenValidator != null)
             {
