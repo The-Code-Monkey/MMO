@@ -62,9 +62,9 @@ namespace MMO.Tests
 
                 CraftingStation component = station.GetComponent<CraftingStation>();
 
-                Assert.Less(component.StandOffPosition.z, station.transform.position.z,
-                    "The player must stand in front of the station, not inside it.");
-                Assert.GreaterOrEqual(CraftingStation.StandOffDistance, CraftingStationPrefabFactory.DefaultDepth / 2f,
+                Assert.Greater(component.StandOffPosition.z, station.transform.position.z,
+                    "The player must stand on the station's working side, not inside it.");
+                Assert.GreaterOrEqual(component.StandOffDistance, CraftingStationPrefabFactory.DefaultDepth / 2f,
                     "The stand-off must clear the station's own body.");
             }
             finally
@@ -74,20 +74,21 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void AThreeMetreStandOff_WouldLeaveThePlayerOutsideTheReach()
+        public void AStandOffBeyondTheReach_IsRefused()
         {
             NetworkObject station = CraftingStationPrefabFactory.Create();
             try
             {
                 station.transform.position = new Vector3(4f, CraftingStationPrefabFactory.DefaultHeight / 2f, 4f);
 
-                Vector3 oldStandOff = station.transform.position - station.transform.forward * 3f;
-                Vector3 playerPosition = oldStandOff + Vector3.up * PivotHeight;
+                Vector3 farStandOff = station.transform.position
+                    - station.transform.forward * (PlayerCrafting.MaxCraftDistance + 1f);
+                Vector3 playerPosition = farStandOff + Vector3.up * PivotHeight;
 
                 Assert.Greater(
                     Vector3.Distance(playerPosition, station.transform.position),
                     PlayerCrafting.MaxCraftDistance,
-                    "Three metres is not close enough once the pivots differ in height — this is why the stand-off is shorter.");
+                    "A stand-off beyond the reach is not one the player can use.");
             }
             finally
             {

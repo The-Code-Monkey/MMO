@@ -27,6 +27,7 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Create Player Prefab And Wire Scene` | `PlayerPrefabBaker` | The above, then wires a `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Target Dummy Prefab` | `TargetDummyBaker` | Builds the training-dummy prefab and wires its spawner. |
 | `Tools > MMO > Create Crafting Station Prefab` | `CraftingStationBaker` | Builds the crafting-station prefab and wires its spawner. |
+| `Tools > MMO > Rebuild Crafting Station Assets` | `CraftingStationAssetBaker` | Imports the anvil/furnace maps, builds their materials, and refreshes the station prefab's models. |
 | `Tools > MMO > Create Resource Node Prefab` | `ResourceNodeBaker` | Builds the resource-node prefab a zone's markers spawn. |
 | `Tools > MMO > Create Loot Bag Prefab` | `LootBagBaker` | Builds the loot-bag prefab a black-zone death drops. |
 | `Tools > MMO > Create Camera Rig` | `LocalCameraBaker` | Drops the scene's `PersistentCameraController` camera rig into the active scene. |
@@ -68,6 +69,17 @@ server-side on startup.
 `Assets/Editor/CraftingStationBaker.cs:11`. Builds via `CraftingStationPrefabFactory.Create()`.
 `WireCraftingStation` (`:67`) registers the prefab and attaches `CraftingStationSpawner`.
 
+The prefab is one networked station with two visual anchors under `Visuals/`: the imported
+`Assets/Models/Crafting/Forge/Forge.fbx` under `Furnace`, and a procedural `Anvil` on a wood stump.
+`CraftingStation.ApplyVisuals` shows the variant matching the replicated
+`StationType`; `None` and `Alchemy` fall back to the furnace until an alchemy model exists.
+`CraftingStationAssetBaker` (`Tools > MMO > Rebuild Crafting Station Assets`) imports
+`Assets/Textures/Crafting/{Anvil,Furnace}_{Albedo,Normal,Mask}.png` and the forge's
+`Forge_{Diffuse,Normal,Mask,Emissive}.png`, builds
+`Assets/Materials/Crafting/{Anvil_Metal,Furnace_Stone,Wood_Stump,Forge}.mat`, drops the forge FBX
+under the `Furnace` anchor (rotated to face the player, scaled to the footprint), and refreshes the
+prefab in place so its GUID and scene references survive.
+
 ### GroundAssetBaker
 
 `Assets/Editor/GroundAssetBaker.cs`. `RebuildGrass`, `RebuildCobblestone` and
@@ -86,6 +98,8 @@ python3 tools/generate_ground_textures.py --kind cobblestone
 python3 tools/generate_ground_textures.py --kind cobblestone-worn
 python3 tools/generate_ground_textures.py --kind wall --out Assets/Textures/Building
 python3 tools/generate_ground_textures.py --kind roof --out Assets/Textures/Building
+python3 tools/generate_ground_textures.py --kind anvil
+python3 tools/generate_ground_textures.py --kind furnace
 ```
 
 The script is deterministic for a given seed, so regenerating does not churn the PNGs.

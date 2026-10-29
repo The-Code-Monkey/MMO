@@ -107,7 +107,7 @@ namespace MMO.Editor
             Debug.Log($"Rebuilt {surfaceName} ground assets: {materialPath}, {prefabPath}");
         }
 
-        internal static void ConfigureTexture(string path, bool normalMap, bool srgb, bool alpha)
+        internal static void ConfigureTexture(string path, bool normalMap, bool srgb, bool alpha, int maxSize = 1024)
         {
             var importer = AssetImporter.GetAtPath(path) as TextureImporter;
             if (importer == null)
@@ -127,7 +127,7 @@ namespace MMO.Editor
             importer.wrapMode = TextureWrapMode.Repeat;
             importer.filterMode = FilterMode.Bilinear;
             importer.anisoLevel = 4;
-            importer.maxTextureSize = 1024;
+            importer.maxTextureSize = maxSize;
             importer.textureCompression = TextureImporterCompression.CompressedHQ;
             importer.isReadable = false;
             importer.SaveAndReimport();
@@ -164,7 +164,7 @@ namespace MMO.Editor
 
             material.SetFloat("_Metallic", 1f);
             material.SetFloat("_Smoothness", 0.35f);
-            material.SetFloat("_SmoothnessTextureChannel", 1f);
+            material.SetFloat("_SmoothnessTextureChannel", 0f);
             material.SetFloat("_OcclusionStrength", 1f);
             material.SetFloat("_BumpScale", 1f);
             material.SetFloat("_AlphaClip", 0f);
@@ -182,6 +182,7 @@ namespace MMO.Editor
             material.EnableKeyword("_NORMALMAP");
             material.EnableKeyword("_METALLICSPECGLOSSMAP");
             material.EnableKeyword("_OCCLUSIONMAP");
+            material.DisableKeyword("_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A");
 
             EditorUtility.SetDirty(material);
             return material;

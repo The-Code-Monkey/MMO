@@ -24,41 +24,93 @@ namespace MMO.Net
         public static Vector3 DefaultScale => new(DefaultWidth, DefaultHeight, DefaultDepth);
 
         /// <summary>
-        /// The carving obstacle's size in the station's <em>local</em> space.
-        /// <see cref="NavMeshObstacle.size"/> is scaled by the transform, and the station's root
-        /// is scaled to <see cref="DefaultScale"/>, so a unit local size carves the very same
-        /// 2x1x2 world footprint as the body.
+        /// The default prefab body (the forge) in the station's <em>local</em> space. The root is
+        /// scaled to <see cref="DefaultScale"/>, so this is 8 x 6.4 x 8 m in the world.
         /// </summary>
-        public static Vector3 ObstacleLocalSize => Vector3.one;
+        public static Vector3 BodyLocalSize => CraftingStation.FurnaceBodyLocalSize;
+
+        public static Vector3 BodyLocalCenter => CraftingStation.FurnaceBodyLocalCenter;
+
+        /// <summary>
+        /// The carving obstacle's size in the station's <em>local</em> space.
+        /// <see cref="NavMeshObstacle.size"/> is scaled by the transform, so it matches the body.
+        /// </summary>
+        public static Vector3 ObstacleLocalSize => BodyLocalSize;
+
+        public static Vector3 ObstacleLocalCenter => BodyLocalCenter;
 
         public static Vector3 DefaultSpawnPosition => new(2f, DefaultHeight / 2f, 5f);
 
+        /// <summary>
+        /// Builds the station with its fallback materials. This is the runtime/test entry point;
+        /// the editor baker calls the material overload with the authored assets instead.
+        /// </summary>
         public static NetworkObject Create()
         {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = PrefabName;
+            return Create(null, null);
+        }
+
+        /// <summary>
+        /// Builds the station body and both visual anchors. A null material falls back to a
+        /// flat colour so the factory still works without an editor bake.
+        /// </summary>
+        public static NetworkObject Create(Material anvilMetal, Material anvilWood)
+        {
+            GameObject go = new(PrefabName);
             go.transform.localScale = DefaultScale;
 
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
-            go.AddComponent<CraftingStation>();
+            CraftingStation station = go.AddComponent<CraftingStation>();
 
-            ApplyBrownMaterial(go);
-
-            // Ensure the BoxCollider is not a trigger so OnMouseDown() fires and players
-            // cannot walk through the crafting station.
-            if (go.TryGetComponent(out BoxCollider boxCollider))
-            {
-                boxCollider.isTrigger = false;
-            }
+            // The body collider is not a trigger so OnMouseDown() fires and players cannot walk
+            // through the station. The root has no mesh renderer; the visual parts live under
+            // the Visuals child and are toggled by the replicated station type.
+            BoxCollider boxCollider = go.AddComponent<BoxCollider>();
+            boxCollider.isTrigger = false;
+            boxCollider.size = BodyLocalSize;
+            boxCollider.center = BodyLocalCenter;
 
             // Add NavMeshObstacle so the NavMesh is carved around the crafting station,
             // preventing players from walking through its location when clicking elsewhere.
             var obstacle = go.AddComponent<NavMeshObstacle>();
             obstacle.carving = true;
             obstacle.size = ObstacleLocalSize;
-            obstacle.center = Vector3.zero;
+            obstacle.center = ObstacleLocalCenter;
+
+            BuildVisuals(
+                go.transform,
+                anvilMetal ?? FallbackMaterial("AnvilMetal", new Color(0.16f, 0.17f, 0.19f)),
+                anvilWood ?? FallbackMaterial("AnvilWood", BrownColor),
+                out GameObject furnace,
+                out GameObject anvil);
+
+            station.SetVisuals(furnace, anvil);
 
             return networkObject;
+        }
+
+        /// <summary>
+        /// Builds the visual anchors under <paramref name="root"/>. The anvil is procedural; the
+        /// furnace is an empty anchor the imported forge model parents into. The editor baker
+        /// reuses this when refreshing the saved prefab so the hierarchy has one source of truth.
+        /// </summary>
+        public static void BuildVisuals(
+            Transform root,
+            Material anvilMetal,
+            Material anvilWood,
+            out GameObject furnace,
+            out GameObject anvil)
+        {
+            GameObject visuals = new("Visuals");
+            visuals.transform.SetParent(root, false);
+
+            furnace = new GameObject("Furnace");
+            furnace.transform.SetParent(visuals.transform, false);
+
+            anvil = BuildAnvil(visuals.transform, anvilMetal, anvilWood);
+
+            furnace.SetActive(true);
+            anvil.SetActive(false);
         }
 
         public static bool Contains(PrefabObjects prefabs, NetworkObject craftingStation)
@@ -96,22 +148,84 @@ namespace MMO.Net
             return spawner;
         }
 
-        private static void ApplyBrownMaterial(GameObject go)
+        /// <summary>
+        /// Wood-stump anvil: stump and iron band, base, waist, face, heel and a rounded horn.
+        /// Coordinates are in the root's local space, whose world scale is 2x1x2.
+        /// </summary>
+        private static GameObject BuildAnvil(Transform parent, Material metal, Material wood)
+        {
+            GameObject root = new("Anvil");
+            root.transform.SetParent(parent, false);
+
+            Primitive(root.transform, "Stump", PrimitiveType.Cylinder,
+                new Vector3(0f, -0.38f, 0f), new Vector3(0.30f, 0.12f, 0.30f), wood);
+            Primitive(root.transform, "StumpBand", PrimitiveType.Cylinder,
+                new Vector3(0f, -0.265f, 0f), new Vector3(0.31f, 0.02f, 0.31f), metal);
+            Primitive(root.transform, "Base", PrimitiveType.Cube,
+                new Vector3(0f, -0.20f, 0f), new Vector3(0.30f, 0.12f, 0.26f), metal);
+            Primitive(root.transform, "Waist", PrimitiveType.Cube,
+                new Vector3(0f, -0.06f, 0f), new Vector3(0.20f, 0.16f, 0.18f), metal);
+            Primitive(root.transform, "UnderFace", PrimitiveType.Cube,
+                new Vector3(0f, 0.05f, 0f), new Vector3(0.34f, 0.10f, 0.22f), metal);
+            Primitive(root.transform, "Face", PrimitiveType.Cube,
+                new Vector3(0f, 0.135f, 0f), new Vector3(0.46f, 0.11f, 0.22f), metal);
+            Primitive(root.transform, "Heel", PrimitiveType.Cube,
+                new Vector3(-0.27f, 0.135f, 0f), new Vector3(0.10f, 0.08f, 0.22f), metal);
+            Primitive(root.transform, "Horn", PrimitiveType.Sphere,
+                new Vector3(0.28f, 0.135f, 0f), new Vector3(0.18f, 0.12f, 0.14f), metal);
+
+            return root;
+        }
+
+        private static GameObject Primitive(
+            Transform parent,
+            string name,
+            PrimitiveType type,
+            Vector3 localPosition,
+            Vector3 localScale,
+            Material material)
+        {
+            GameObject go = GameObject.CreatePrimitive(type);
+            go.name = name;
+
+            Collider collider = go.GetComponent<Collider>();
+            if (collider != null)
+                DestroyObject(collider);
+
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPosition;
+            go.transform.localScale = localScale;
+
+            MeshRenderer renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.receiveShadows = true;
+            return go;
+        }
+
+        private static Material FallbackMaterial(string name, Color color)
         {
             Shader shader = ResolveShader();
             if (shader == null)
-                return;
+                return null;
 
-            Material material = new(shader);
-            material.name = "CraftingStationBrown";
-            material.color = BrownColor;
-            material.SetColor("_BaseColor", BrownColor);
-            material.SetColor("_Color", BrownColor);
-
-            if (go.TryGetComponent(out Renderer renderer))
+            Material material = new(shader)
             {
-                renderer.material = material;
-            }
+                name = name,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+            material.color = color;
+            material.SetColor("_BaseColor", color);
+            material.SetColor("_Color", color);
+            return material;
+        }
+
+        private static void DestroyObject(UnityEngine.Object target)
+        {
+            if (Application.isPlaying)
+                UnityEngine.Object.Destroy(target);
+            else
+                UnityEngine.Object.DestroyImmediate(target);
         }
 
         private static Shader ResolveShader()

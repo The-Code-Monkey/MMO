@@ -66,6 +66,11 @@ invokes `RequestOpenStation` — that now starts a **server round-trip**: the cl
 decides what the station offers and sends it back (section 5). The client never reads recipes from
 its own registry to render a panel.
 
+The model is data-driven too: the prefab carries a `Furnace` and an `Anvil` child under `Visuals/`,
+and `ApplyVisuals` shows the one matching the replicated type (with the furnace as the fallback for
+`None`/`Alchemy`). The anvil is procedural; the furnace hosts the imported forge model. New station
+types add a model child and a case, not a separate prefab.
+
 ### Clicking a station: walk first, then open
 
 A click on a station is not a request to open a panel from wherever the player happens to stand —
@@ -76,10 +81,9 @@ does that in three steps:
 1. **Already in reach** — `PlayerCrafting.IsWithinReach` says yes, so the panel opens at once. No
    walk, no marker.
 2. **Too far** — the station is remembered as the *pending* station and the player is asked to walk
-   to `CraftingStation.StandOffPosition` (`:29`): two metres in front of the station. Two metres,
-   not three, because the player and the station do not share a pivot height — a stand-off equal to
-   the 3 m reach measures further than the reach once the player is standing on it, and the server
-   would refuse the open.
+   to `CraftingStation.StandOffPosition` (`:52`): the anvil uses a 2 m stand-off, the large forge
+   5 m, both inside the 6 m craft reach. The player and the station do not share a pivot height, so
+   the reach is measured from pivots, not feet.
 3. **The walk ends** — the click-to-move marker clearing is the signal that the walk is over
    (`UpdateMarker` → `OpenPendingStation`). The panel opens then, and only if the player really
    ended up within reach: a walk that stopped short leaves the panel closed, because the server
@@ -99,9 +103,11 @@ A station is also **solid ground**: the prefab carries a `NavMeshObstacle` that 
 the zone NavMesh around the station's body, so a click-to-move route planned by the server bends
 around the workbench instead of running through it (see
 [14](14-server-authority-hardening.md#click-to-move--the-server-owns-the-route-not-just-the-direction)).
-The obstacle's size is set in the station's **local** space (`CraftingStationPrefabFactory.ObstacleLocalSize`),
-because `NavMeshObstacle.size` is scaled by the transform — the station's root is scaled to
-`DefaultScale`, so a unit local size carves the same 2x1x2 world footprint as the body.
+The obstacle's size is set in the station's **local** space (`CraftingStationPrefabFactory.BodyLocalSize`),
+because `NavMeshObstacle.size` is scaled by the transform. The station's root stays scaled to
+`DefaultScale` for placement, but the body and its carve match the visible model: the forge is
+8 x 6.4 x 8 m in world space, the anvil 1.6 x 1 x 1.2 m. `CraftingStation.ApplyVisuals` swaps those
+sizes when the replicated type changes.
 
 ## 3. Crafting rules and offers
 
@@ -153,7 +159,7 @@ crafting panel can bind to it.
 - `RpcRequestOpen` (`:100`) — `[ServerRpc]`; re-checks the sender owns the object, then calls
   `TrySendOffers`.
 - `TrySendOffers(target, stationObject)` (`:115`, `[Server]`) — the server's gate: the station must
-  exist and the player must be within `MaxCraftDistance` (`:29`). Only then does it build the payload
+  exist and the player must be within `MaxCraftDistance` (`:30`). Only then does it build the payload
   and answer **that one client** with `RpcOpenStation`.
 - `BuildOffers(station)` (`:140`, `[Server]`) — `CraftingOfferRules.Available(station.StationType,
   CraftingLevel, inventory.Items)` copied into a `RecipeOffer[]` for the wire.
@@ -177,7 +183,7 @@ refuses — the walk would end and no panel would ever appear.
 
 ### Crafting
 
-- `MaxCraftDistance = 3f` (`:29`) — how close the player must stand to the station.
+- `MaxCraftDistance = 6f` (`:30`) — how close the player must stand to the station.
 - `RequestCraft(station, recipeName)` (`:152`) — owner only; sends `RpcRequestCraft`.
 - `RpcRequestCraft` (`:167`) — `[ServerRpc]`; re-checks the sender owns the object, then `TryCraft`;
   on success it re-sends the offers (`TrySendOffers`) so the panel is handed the freshly-affordable

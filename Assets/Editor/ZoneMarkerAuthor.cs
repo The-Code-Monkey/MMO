@@ -20,8 +20,6 @@ namespace MMO.Editor
 
             if (layout == ZoneSceneBaker.ZoneLayout.SafeZone)
             {
-                AddStationMarker(markers, 1, new Vector3(-6f, stationY, -6f), CraftingStationType.Furnace);
-                AddStationMarker(markers, 2, new Vector3(-4f, stationY, -7f), CraftingStationType.Anvil);
                 AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, -4f), BankKind.Personal);
                 AddBankTellerMarker(markers, 2, new Vector3(4f, tellerY, -4f), BankKind.Guild);
                 AddNodeMarker(markers, 1, new Vector3(-15f, nodeY, 5f));
