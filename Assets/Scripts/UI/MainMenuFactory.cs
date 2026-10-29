@@ -85,7 +85,7 @@ namespace MMO.UI
         {
             GameObject title = UIBuilder.Rect(
                 parent, "Title", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(0f, -58f), new Vector2(520f, 90f));
+                new Vector2(0f, -5f), new Vector2(520f, 90f));
             Text text = title.AddComponent<Text>();
             UIBuilder.ApplyLabel(text, 46, TextAnchor.MiddleCenter, 9);
             text.text = "AethelBourne Online";
