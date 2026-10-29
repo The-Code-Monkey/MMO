@@ -1,3 +1,4 @@
+using FishNet.Object;
 using MMO.Bootstrap;
 using MMO.Net;
 using System.Collections.Generic;
@@ -42,6 +43,7 @@ namespace MMO.Editor
                 useTokenAuth: true);
 
             NetworkManagerSceneBaker.CreateInActiveScene(settings);
+            RegisterLargeResourceNode();
 
             MainMenuBootstrap bootstrap = CreateBootstrap();
             Undo.RegisterCreatedObjectUndo(bootstrap.gameObject, "Create Main Menu Bootstrap");
@@ -51,6 +53,18 @@ namespace MMO.Editor
 
             Selection.activeGameObject = bootstrap.gameObject;
             EditorGUIUtility.PingObject(bootstrap.gameObject);
+        }
+
+        /// <summary>
+        /// The menu's NetworkManager survives into the zone as the client's manager, so it has to
+        /// know every prefab a zone can spawn — including the large ore vein.
+        /// </summary>
+        private static void RegisterLargeResourceNode()
+        {
+            var manager = Object.FindFirstObjectByType<FishNet.Managing.NetworkManager>();
+            var large = AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.LargePrefabPath);
+            if (manager != null && large != null)
+                ResourceNodePrefabFactory.Register(manager.SpawnablePrefabs, large);
         }
 
         private static MainMenuBootstrap CreateBootstrap()

@@ -181,7 +181,7 @@ namespace MMO.Tests
             InScene(ZoneSceneBaker.SafeZonePath, scene =>
             {
                 Transform markers = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.MarkersName);
-                Assert.AreEqual(2, markers.GetComponentsInChildren<CraftingStationMarker>().Length, "Furnace and anvil.");
+                Assert.AreEqual(1, markers.GetComponentsInChildren<CraftingStationMarker>().Length, "The SafeZone keeps the furnace.");
                 Assert.AreEqual(3, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
                 Assert.AreEqual(0, markers.GetComponentsInChildren<EnemyMarker>().Length, "A safe town has no enemies.");
             });
@@ -193,9 +193,27 @@ namespace MMO.Tests
             InScene(ZoneSceneBaker.WildernessZonePath, scene =>
             {
                 Transform markers = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.MarkersName);
-                Assert.AreEqual(4, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
+                Assert.AreEqual(6, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
                 Assert.Greater(markers.GetComponentsInChildren<EnemyMarker>().Length, 0, "A wilderness with nothing to fight is a park.");
                 Assert.AreEqual(0, markers.GetComponentsInChildren<CraftingStationMarker>().Length);
+            });
+        }
+
+        [Test]
+        public void Wilderness_HasSmallAndLargeOreNodes()
+        {
+            InScene(ZoneSceneBaker.WildernessZonePath, scene =>
+            {
+                Transform markers = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.MarkersName);
+                ResourceNodeMarker[] nodes = markers.GetComponentsInChildren<ResourceNodeMarker>();
+                var large = AssetDatabase.LoadAssetAtPath<FishNet.Object.NetworkObject>(
+                    ResourceNodeAssetBaker.LargePrefabPath);
+
+                Assert.IsNotNull(large, "The large iron-ore prefab is missing.");
+                Assert.IsTrue(nodes.Any(marker => marker.NodePrefab == large),
+                    "The Wilderness needs a marker pointed at the large iron-ore prefab.");
+                Assert.IsTrue(nodes.Any(marker => marker.NodePrefab == null),
+                    "The Wilderness still needs ordinary small iron-ore markers.");
             });
         }
 

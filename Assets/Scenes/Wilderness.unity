@@ -78900,6 +78900,8 @@ Transform:
   - {fileID: 2048505523}
   - {fileID: 2114911352}
   - {fileID: 421102346}
+  - {fileID: 2109186687}
+  - {fileID: 706381759}
   m_Father: {fileID: 803271090}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &379943121
@@ -144553,6 +144555,51 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 721000000000000002, guid: f6a36bfb47e14d508abe4c5ea2ea7e30, type: 3}
   m_PrefabInstance: {fileID: 705832668}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &706381758
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 706381759}
+  - component: {fileID: 706381760}
+  m_Layer: 0
+  m_Name: ResourceNodeMarker_6
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &706381759
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 706381758}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 2, y: 0.6, z: -20}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 379805912}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &706381760
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 706381758}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cfc31467d0747aeb24783532fc5b4dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.ResourceNodeMarker
+  _nodePrefab: {fileID: 31098904505174769, guid: 16b869bd123c39ee99657820889a7d00, type: 3}
 --- !u!1001 &706525021
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -371378,6 +371425,7 @@ MonoBehaviour:
   - {fileID: 53440267552716857, guid: 5fdf8c61728429dd18c766e3e1df6411, type: 3}
   - {fileID: 3988032019876809668, guid: e5c0d253e2f664bd9976d1c421e73e7e, type: 3}
   - {fileID: 5592969042921838602, guid: 4c9bdf27a2f8a34dd8a5bf7a39bdea46, type: 3}
+  - {fileID: 31098904505174769, guid: 16b869bd123c39ee99657820889a7d00, type: 3}
 --- !u!1001 &1871904668
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -419784,6 +419832,51 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 721000000000000002, guid: f6a36bfb47e14d508abe4c5ea2ea7e30, type: 3}
   m_PrefabInstance: {fileID: 2109024954}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &2109186686
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2109186687}
+  - component: {fileID: 2109186688}
+  m_Layer: 0
+  m_Name: ResourceNodeMarker_5
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2109186687
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2109186686}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -2, y: 0.6, z: -20}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 379805912}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2109186688
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2109186686}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cfc31467d0747aeb24783532fc5b4dc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Net.ResourceNodeMarker
+  _nodePrefab: {fileID: 0}
 --- !u!1001 &2109467011
 PrefabInstance:
   m_ObjectHideFlags: 0

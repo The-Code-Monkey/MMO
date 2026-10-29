@@ -245,6 +245,30 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void ApplyDepletedState_WithModels_SwapsFullForEmpty()
+        {
+            var root = Track(new GameObject("ResourceNodeWithModels"));
+            ResourceNode node = root.AddComponent<ResourceNode>();
+            var full = new GameObject("Full");
+            full.transform.SetParent(root.transform);
+            var empty = new GameObject("Empty");
+            empty.transform.SetParent(root.transform);
+
+            node.SetVisuals(full, empty);
+
+            Assert.IsTrue(full.activeSelf, "A fresh node shows the ore model.");
+            Assert.IsFalse(empty.activeSelf, "The depleted model starts hidden.");
+
+            node.ApplyDepletedState(true);
+            Assert.IsFalse(full.activeSelf, "Depleting hides the ore model.");
+            Assert.IsTrue(empty.activeSelf, "Depleting shows the empty-rock model.");
+
+            node.ApplyDepletedState(false);
+            Assert.IsTrue(full.activeSelf, "Respawning restores the ore model.");
+            Assert.IsFalse(empty.activeSelf, "Respawning hides the empty-rock model.");
+        }
+
+        [Test]
         public void ApplyDepletedState_IsIdempotent()
         {
             GameObject go = Track(GameObject.CreatePrimitive(PrimitiveType.Cube));

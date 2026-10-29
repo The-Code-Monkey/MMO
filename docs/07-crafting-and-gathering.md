@@ -240,6 +240,11 @@ drops the shipped `Iron Ore` item, five units, bare-handed (no tool, tier 0), a 
 (`Assets/Scripts/Gameplay/ResourceDefinition.cs:101`) finds it by name, which is how the prefab
 factory hands a runtime-built node its configuration.
 
+The large variant is `Assets/Resources/ResourceDefinitions/Iron_Ore_Large.asset`: the same ore,
+reset, interval and reach, but **15 units** and the `ResourceNode_Large` prefab with its own full and
+empty models. The Wilderness authors one small and one large vein; any `ResourceNodeMarker` can point
+its `NodePrefab` at the large prefab to place another.
+
 The definition carries **no networking**. Both ends read the same asset through the same prefab —
 exactly like `WeaponData` on `PlayerCombat` — so there is nothing to replicate and nothing a client
 can lie about.

@@ -129,30 +129,44 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void EnsureResourceNodePrefab_ProducesAnOreCube()
+        public void EnsureResourceNodePrefab_ProducesTheOreModel()
         {
             NetworkObject prefab = ResourceNodeBaker.EnsureResourceNodePrefab();
 
-            Assert.IsNotNull(prefab.GetComponent<BoxCollider>());
-            Assert.IsNotNull(prefab.GetComponent<MeshFilter>());
+            Assert.IsNotNull(prefab.GetComponent<BoxCollider>(),
+                "The root keeps the click collider even though the model is a child.");
             Assert.AreEqual(ResourceNodePrefabFactory.DefaultScale, prefab.transform.localScale);
             Assert.AreEqual(ResourceNodePrefabFactory.PrefabName, prefab.name);
 
-            Material material = prefab.GetComponent<MeshRenderer>()?.sharedMaterial;
+            Assert.IsNotNull(prefab.transform.Find("Visuals/IronOreMesh"),
+                "The baked node must carry the imported ore model under Visuals.");
+
+            MeshRenderer renderer = prefab.GetComponentInChildren<MeshRenderer>(true);
+            Assert.IsNotNull(renderer, "A vein nobody can see is not a landmark.");
+
+            Material material = renderer.sharedMaterial;
             if (material == null)
             {
                 Assert.Ignore("No material could be resolved in this environment.");
                 return;
             }
 
-            Color colour = material.HasProperty("_BaseColor")
-                ? material.GetColor("_BaseColor")
-                : material.HasProperty("_Color")
-                    ? material.color
-                    : Color.clear;
+            Assert.AreEqual("IronOre", material.name,
+                "The baked node must wear the iron-ore material, not a flat fallback colour.");
+        }
 
-            Assert.AreEqual(ResourceNodePrefabFactory.OreColor, colour,
-                "The vein must stay ore-coloured after it becomes an asset.");
+        [Test]
+        public void EnsureResourceNodePrefab_HasFullAndEmptyModels()
+        {
+            NetworkObject prefab = ResourceNodeBaker.EnsureResourceNodePrefab();
+
+            Transform full = prefab.transform.Find("Visuals/IronOreMesh");
+            Transform empty = prefab.transform.Find("Visuals/IronOreEmptyMesh");
+
+            Assert.IsNotNull(full, "The node needs its full ore model.");
+            Assert.IsNotNull(empty, "The node needs its depleted ore model.");
+            Assert.IsTrue(full.gameObject.activeSelf, "The full model is the default state.");
+            Assert.IsFalse(empty.gameObject.activeSelf, "The empty model only shows while depleted.");
         }
 
         [Test]
