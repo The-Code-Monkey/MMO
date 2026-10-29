@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
-"""Generate the seamless ground texture maps used by the MMO graybox kit.
+"""Generate the seamless surface maps used by the MMO graybox kit.
 
-Three surfaces are implemented: grass, cobblestone and a worn cobblestone
-path variant. The output is deterministic for a given seed so a rebake does
-not churn the PNGs.
+Surfaces: grass, cobblestone, worn cobblestone, generic wall, roof tiles,
+and the crafting-station materials (anvil metal, furnace stone). The output
+is deterministic for a given seed so a rebake does not churn the PNGs.
 
     python3 tools/generate_ground_textures.py --kind grass
     python3 tools/generate_ground_textures.py --kind cobblestone
     python3 tools/generate_ground_textures.py --kind cobblestone-worn
+    python3 tools/generate_ground_textures.py --kind anvil
+    python3 tools/generate_ground_textures.py --kind furnace
 
-Outputs, under Assets/Textures/Ground:
-    Grass_Albedo.png / Cobblestone_Albedo.png          sRGB base colour
-    Grass_Normal.png / Cobblestone_Normal.png          tangent-space normal map (linear)
-    Grass_Mask.png / Cobblestone_Mask.png              R metallic, G ambient occlusion,
-    Cobblestone_Worn_Mask.png                          A smoothness (linear)
+Ground and building maps land under Assets/Textures/Ground and
+Assets/Textures/Building; crafting maps land under Assets/Textures/Crafting.
+
+Outputs per surface:
+    {Surface}_Albedo.png          sRGB base colour
+    {Surface}_Normal.png          tangent-space normal map (linear)
+    {Surface}_Mask.png            R metallic, G ambient occlusion,
+                                  A smoothness (linear)
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = REPO_ROOT / "Assets" / "Textures" / "Ground"
+CRAFTING_OUT = REPO_ROOT / "Assets" / "Textures" / "Crafting"
 
 
 def periodic_value_noise(size: int, period: int, rng: np.random.Generator) -> np.ndarray:
@@ -141,8 +147,8 @@ def paint_blobs(size: int, rng: np.random.Generator, palette: list[tuple[int, in
 def paint_tufts(size: int, rng: np.random.Generator, count: int) -> Image.Image:
     layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
-    light = (158, 187, 102)
-    dark = (30, 62, 29)
+    light = (168, 196, 112)
+    dark = (48, 82, 42)
     for _ in range(count):
         x = float(rng.uniform(0, size))
         y = float(rng.uniform(0, size))
@@ -156,7 +162,7 @@ def paint_tufts(size: int, rng: np.random.Generator, count: int) -> Image.Image:
             mid_x = x + math.cos(angle + lean) * length * 0.55
             mid_y = y + math.sin(angle + lean) * length * 0.55
             color = light if rng.random() < 0.55 else dark
-            alpha = int(rng.integers(45, 105))
+            alpha = int(rng.integers(30, 75))
             width = 1 if size < 1500 else 2
             for dx, dy in wrap_offsets(size, x, y, length):
                 draw.line(
@@ -232,62 +238,39 @@ def generate_grass(out_dir: Path, size: int, seed: int) -> None:
     rng = np.random.default_rng(seed)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    broad = fbm(size, rng, (2, 4, 8, 16), (0.48, 0.30, 0.16, 0.06))
-    mid = fbm(size, rng, (3, 6, 12, 24), (0.42, 0.31, 0.19, 0.08))
+    broad = fbm(size, rng, (6, 12, 24, 48), (0.30, 0.30, 0.24, 0.16))
     fine = fbm(size, rng, (12, 24, 48, 96), (0.44, 0.30, 0.18, 0.08))
 
-    low = smoothstep(0.25, 0.78, broad)
-    middle = smoothstep(0.28, 0.82, mid)
-    tone = np.clip(0.64 * low + 0.36 * middle, 0.0, 1.0)
+    tone = np.clip(
+        0.5 + (broad - 0.5) * 0.20 + (fine - 0.5) * 0.22,
+        0.0,
+        1.0,
+    )
 
     grass_ramp = [
-        (0.0, (0.125, 0.235, 0.118)),
-        (0.34, (0.180, 0.353, 0.161)),
-        (0.58, (0.271, 0.475, 0.208)),
-        (0.78, (0.400, 0.584, 0.282)),
-        (1.0, (0.620, 0.753, 0.424)),
-    ]
-    moss_ramp = [
-        (0.0, (0.216, 0.353, 0.157)),
-        (0.5, (0.349, 0.502, 0.208)),
-        (1.0, (0.545, 0.635, 0.318)),
+        (0.0, (0.345, 0.490, 0.250)),
+        (0.5, (0.395, 0.550, 0.292)),
+        (1.0, (0.455, 0.615, 0.340)),
     ]
 
     base = color_ramp(tone, [s for s, _ in grass_ramp], [c for _, c in grass_ramp])
-    moss = color_ramp(middle, [s for s, _ in moss_ramp], [c for _, c in moss_ramp])
-    moss_amount = smoothstep(0.50, 0.80, broad)[..., None] * 0.50
-    base = base * (1.0 - moss_amount) + moss * moss_amount
-
-    base *= (0.975 + 0.055 * fine[..., None])
-
-    blobs = paint_blobs(
-        size,
-        rng,
-        palette=[(78, 120, 57), (48, 88, 40), (110, 141, 68), (34, 67, 31)],
-        count=max(10, size // 64),
-        min_radius=max(40, size // 14),
-        max_radius=max(90, size // 6),
-        min_alpha=3,
-        max_alpha=8,
-    )
-    base = combine_layers(base, blobs)
+    base *= (0.99 + 0.02 * fine[..., None])
 
     tufts = paint_tufts(size, rng, count=max(90, size // 3))
     base = combine_layers(base, tufts)
 
-    height = 0.50 * broad + 0.22 * mid
-    height += np.asarray(blobs.getchannel("A"), dtype=np.float32) / 255.0 * 0.10
-    height += np.asarray(tufts.getchannel("A"), dtype=np.float32) / 255.0 * 0.38
+    height = 0.12 * broad + 0.06 * fine
+    height += np.asarray(tufts.getchannel("A"), dtype=np.float32) / 255.0 * 0.45
     height = height.astype(np.float32)
     height = gaussian_blur_wrap(height, sigma=max(0.5, size / 1800.0))
     height -= height.min()
     height /= max(height.max(), 1e-6)
 
-    normal = normal_from_height(height, strength=size * 0.024)
+    normal = normal_from_height(height, strength=size * 0.014)
     normal = normal * 0.5 + 0.5
 
-    ao = (0.86 + 0.14 * smoothstep(0.05, 0.95, height)).astype(np.float32)
-    smoothness = (0.30 + 0.12 * fine).astype(np.float32)
+    ao = (0.95 + 0.05 * smoothstep(0.05, 0.95, height)).astype(np.float32)
+    smoothness = (0.18 + 0.06 * fine).astype(np.float32)
     mask = np.dstack((np.zeros_like(height), ao, np.zeros_like(height), smoothness))
 
     save_png(out_dir / "Grass_Albedo.png", base, "RGB")
@@ -489,30 +472,157 @@ def generate_roof_tiles(out_dir: Path, size: int, seed: int) -> None:
     save_png(out_dir / "RoofTiles_Mask.png", mask, "RGBA")
 
 
+def generate_anvil(out_dir: Path, size: int, seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    broad = fbm(size, rng, (3, 6, 12, 24), (0.40, 0.30, 0.20, 0.10))
+    fine = fbm(size, rng, (16, 32, 64, 128), (0.40, 0.30, 0.20, 0.10))
+    first, _, _ = periodic_voronoi(size, 18, rng)
+    dimple = 1.0 - smoothstep(0.0, 0.60 / 18.0, first)
+
+    metal_ramp = [
+        (0.0, (0.110, 0.115, 0.125)),
+        (0.45, (0.170, 0.180, 0.195)),
+        (0.78, (0.240, 0.250, 0.270)),
+        (1.0, (0.290, 0.300, 0.320)),
+    ]
+    base = color_ramp(
+        np.clip(0.55 * broad + 0.45 * fine, 0.0, 1.0),
+        [s for s, _ in metal_ramp],
+        [c for _, c in metal_ramp],
+    )
+    base *= (0.94 + 0.09 * dimple[..., None])
+
+    rust_amount = smoothstep(0.64, 0.88, broad) * 0.45
+    rust_color = np.array((0.225, 0.115, 0.055), dtype=np.float32)
+    base = base * (1.0 - rust_amount[..., None]) + rust_color * rust_amount[..., None]
+    base *= (0.965 + 0.07 * fine[..., None])
+
+    height = 0.30 * fine + 0.18 * broad + 0.30 * dimple
+    height = gaussian_blur_wrap(height.astype(np.float32), sigma=max(0.5, size / 2400.0))
+    height -= height.min()
+    height /= max(height.max(), 1e-6)
+
+    normal = normal_from_height(height, strength=size * 0.022)
+    normal = normal * 0.5 + 0.5
+
+    ao = (0.80 + 0.20 * smoothstep(0.05, 0.95, height)).astype(np.float32)
+    smoothness = (0.62 - 0.35 * rust_amount + 0.10 * dimple).astype(np.float32)
+    metallic = (1.0 - 0.80 * rust_amount).astype(np.float32)
+    mask = np.dstack((metallic, ao, np.zeros_like(height), smoothness))
+
+    save_png(out_dir / "Anvil_Albedo.png", base, "RGB")
+    save_png(out_dir / "Anvil_Normal.png", normal, "RGB")
+    save_png(out_dir / "Anvil_Mask.png", mask, "RGBA")
+
+
+def generate_furnace(out_dir: Path, size: int, seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = 6
+    cols = 4
+    coords = (np.arange(size, dtype=np.float32) + 0.5) / size
+    u = coords[None, :]
+    v = coords[:, None]
+
+    row = np.floor(v * rows).astype(np.int32)
+    fu = u * cols + (row % 2) * 0.5
+    col = np.floor(fu).astype(np.int32) % cols
+    tu = fu - np.floor(fu)
+    tv = v * rows - row
+
+    margin_u = 0.030
+    margin_v = 0.060
+    seam_u = smoothstep(0.0, margin_u, tu) * smoothstep(0.0, margin_u, 1.0 - tu)
+    seam_v = smoothstep(0.0, margin_v, tv) * smoothstep(0.0, margin_v, 1.0 - tv)
+    stone = seam_u * seam_v
+    mortar = 1.0 - stone
+    bevel = smoothstep(0.0, 0.12, tu) * smoothstep(0.0, 0.12, 1.0 - tu)
+    bevel *= smoothstep(0.0, 0.20, tv) * smoothstep(0.0, 0.20, 1.0 - tv)
+
+    broad = fbm(size, rng, (3, 6, 12, 24), (0.40, 0.30, 0.20, 0.10))
+    fine = fbm(size, rng, (16, 32, 64, 128), (0.40, 0.30, 0.20, 0.10))
+
+    palette = np.array(
+        [
+            (0.255, 0.235, 0.215),
+            (0.315, 0.290, 0.265),
+            (0.215, 0.200, 0.185),
+            (0.360, 0.325, 0.290),
+            (0.285, 0.260, 0.235),
+        ],
+        dtype=np.float32,
+    )
+    brick_color = palette[rng.integers(0, len(palette), size=rows * cols)]
+    brick = brick_color[row * cols + col]
+    brick *= (0.90 + 0.16 * broad[..., None])
+    brick *= (0.97 + 0.05 * fine[..., None])
+    brick *= (0.84 + 0.20 * bevel[..., None])
+
+    soot = smoothstep(0.58, 0.86, broad)[..., None] * 0.42
+    soot_color = np.array((0.055, 0.052, 0.050), dtype=np.float32)
+    brick = brick * (1.0 - soot) + soot_color * soot
+    mortar_color = np.array((0.125, 0.118, 0.110), dtype=np.float32)
+
+    base = brick * stone[..., None] + mortar_color * mortar[..., None]
+
+    height = stone * (0.50 + 0.35 * bevel) + 0.10 * broad + 0.05 * fine
+    height += np.asarray(
+        Image.fromarray(np.clip(mortar * 255.0, 0, 255).astype(np.uint8))
+        .filter(ImageFilter.GaussianBlur(radius=max(0.5, size / 1600.0))),
+        dtype=np.float32,
+    ) / 255.0 * -0.10
+    height = gaussian_blur_wrap(height.astype(np.float32), sigma=max(0.4, size / 2200.0))
+    height -= height.min()
+    height /= max(height.max(), 1e-6)
+
+    normal = normal_from_height(height, strength=size * 0.030)
+    normal = normal * 0.5 + 0.5
+
+    ao = (0.65 + 0.35 * smoothstep(0.05, 0.95, height)).astype(np.float32)
+    smoothness = (0.10 + 0.10 * fine).astype(np.float32)
+    mask = np.dstack((np.zeros_like(height), ao, np.zeros_like(height), smoothness))
+
+    save_png(out_dir / "Furnace_Albedo.png", base, "RGB")
+    save_png(out_dir / "Furnace_Normal.png", normal, "RGB")
+    save_png(out_dir / "Furnace_Mask.png", mask, "RGBA")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--kind",
-        choices=("grass", "cobblestone", "cobblestone-worn", "wall", "roof", "all"),
+        choices=("grass", "cobblestone", "cobblestone-worn", "wall", "roof", "anvil", "furnace", "all"),
         default="grass")
     parser.add_argument("--size", type=int, default=1024)
     parser.add_argument("--seed", type=int, default=20261028)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
     if args.size < 256 or args.size & (args.size - 1):
         parser.error("--size must be a power of two of at least 256")
 
+    def target(kind: str) -> Path:
+        if args.out is not None:
+            return args.out
+        return CRAFTING_OUT if kind in ("anvil", "furnace") else DEFAULT_OUT
+
     if args.kind in ("grass", "all"):
-        generate_grass(args.out, args.size, args.seed)
+        generate_grass(target("grass"), args.size, args.seed)
     if args.kind in ("cobblestone", "all"):
-        generate_cobblestone(args.out, args.size, args.seed)
+        generate_cobblestone(target("cobblestone"), args.size, args.seed)
     if args.kind in ("cobblestone-worn", "all"):
-        generate_cobblestone(args.out, args.size, args.seed + 1, worn=True)
+        generate_cobblestone(target("cobblestone-worn"), args.size, args.seed + 1, worn=True)
     if args.kind in ("wall", "all"):
-        generate_wall(args.out, args.size, args.seed + 2)
+        generate_wall(target("wall"), args.size, args.seed + 2)
     if args.kind in ("roof", "all"):
-        generate_roof_tiles(args.out, args.size, args.seed + 3)
+        generate_roof_tiles(target("roof"), args.size, args.seed + 3)
+    if args.kind in ("anvil", "all"):
+        generate_anvil(target("anvil"), args.size, args.seed + 4)
+    if args.kind in ("furnace", "all"):
+        generate_furnace(target("furnace"), args.size, args.seed + 5)
 
 
 if __name__ == "__main__":

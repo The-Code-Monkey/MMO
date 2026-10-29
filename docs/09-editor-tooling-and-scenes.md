@@ -27,7 +27,9 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Create Player Prefab And Wire Scene` | `PlayerPrefabBaker` | The above, then wires a `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Target Dummy Prefab` | `TargetDummyBaker` | Builds the training-dummy prefab and wires its spawner. |
 | `Tools > MMO > Create Crafting Station Prefab` | `CraftingStationBaker` | Builds the crafting-station prefab and wires its spawner. |
+| `Tools > MMO > Rebuild Crafting Station Assets` | `CraftingStationAssetBaker` | Imports the anvil/furnace maps, builds their materials, and refreshes the station prefab's models. |
 | `Tools > MMO > Create Resource Node Prefab` | `ResourceNodeBaker` | Builds the resource-node prefab a zone's markers spawn. |
+| `Tools > MMO > Rebuild Resource Node Assets` | `ResourceNodeAssetBaker` | Imports the iron-ore maps, builds the `IronOre` material, and mounts the ore model on the node prefab. |
 | `Tools > MMO > Create Loot Bag Prefab` | `LootBagBaker` | Builds the loot-bag prefab a black-zone death drops. |
 | `Tools > MMO > Create Camera Rig` | `LocalCameraBaker` | Drops the scene's `PersistentCameraController` camera rig into the active scene. |
 | `Tools > MMO > Create NetworkManager In Scene` | `NetworkManagerSceneBaker` | Drops a fully wired `NetworkManager` into the current scene. |
@@ -68,6 +70,17 @@ server-side on startup.
 `Assets/Editor/CraftingStationBaker.cs:11`. Builds via `CraftingStationPrefabFactory.Create()`.
 `WireCraftingStation` (`:67`) registers the prefab and attaches `CraftingStationSpawner`.
 
+The prefab is one networked station with two visual anchors under `Visuals/`: the imported
+`Assets/Models/Crafting/Forge/Forge.fbx` under `Furnace`, and a procedural `Anvil` on a wood stump.
+`CraftingStation.ApplyVisuals` shows the variant matching the replicated
+`StationType`; `None` and `Alchemy` fall back to the furnace until an alchemy model exists.
+`CraftingStationAssetBaker` (`Tools > MMO > Rebuild Crafting Station Assets`) imports
+`Assets/Textures/Crafting/{Anvil,Furnace}_{Albedo,Normal,Mask}.png` and the forge's
+`Forge_{Diffuse,Normal,Mask,Emissive}.png`, builds
+`Assets/Materials/Crafting/{Anvil_Metal,Furnace_Stone,Wood_Stump,Forge}.mat`, drops the forge FBX
+under the `Furnace` anchor (rotated to face the player, scaled to the footprint), and refreshes the
+prefab in place so its GUID and scene references survive.
+
 ### GroundAssetBaker
 
 `Assets/Editor/GroundAssetBaker.cs`. `RebuildGrass`, `RebuildCobblestone` and
@@ -86,6 +99,8 @@ python3 tools/generate_ground_textures.py --kind cobblestone
 python3 tools/generate_ground_textures.py --kind cobblestone-worn
 python3 tools/generate_ground_textures.py --kind wall --out Assets/Textures/Building
 python3 tools/generate_ground_textures.py --kind roof --out Assets/Textures/Building
+python3 tools/generate_ground_textures.py --kind anvil
+python3 tools/generate_ground_textures.py --kind furnace
 ```
 
 The script is deterministic for a given seed, so regenerating does not churn the PNGs.
@@ -104,6 +119,24 @@ the shared graybox material.
 `Assets/Editor/ResourceNodeBaker.cs:19`. Builds via `ResourceNodePrefabFactory.Create()`. It has no
 `Wire...` method of its own — resource nodes are authored as `ResourceNodeMarker`s in a zone and the
 prefab is registered into the scene by `WorldBootstrapBaker.RegisterMarkerPrefabs` (see below).
+
+`ResourceNodeAssetBaker` (`Tools > MMO > Rebuild Resource Node Assets`) imports
+`Assets/Models/Resources/IronOre/IronOre.fbx` (full), `IronOreEmpty.fbx` (depleted),
+`IronOreLarge.fbx` (large) and `IronOreLargeEmpty.fbx` (large depleted), plus their texture sets
+under `Assets/Textures/Resources/`, and builds
+`IronOre.mat` / `IronOreEmpty.mat` / `IronOreLarge.mat` / `IronOreLargeEmpty.mat`. It refreshes `ResourceNode.prefab` in
+place: the root keeps the unit click collider and NavMesh carve, and both models hang under
+`Visuals/` scaled to 1.6 m and floor-aligned. It also writes `ResourceNode_Large.prefab`, which
+carries `Iron_Ore_Large` (15 ore, same reset/interval/range), its own full and empty models scaled
+to 2.4 m, and a 2.8 x 2.4 x 2.2 m body/carve.
+`ResourceNode.ApplyDepletedState` swaps `IronOreMesh` for `IronOreEmptyMesh`, drops the collider and
+carve so the empty rock cannot be gathered, and restores the full model on respawn.
+
+To place a large vein, point a `ResourceNodeMarker`'s `NodePrefab` at
+`Assets/Prefabs/ResourceNode_Large.prefab`; `MarkerPrefabRegistrar` adds it to the scene's
+spawnable collection. The Main Menu's NetworkManager also carries the large prefab, because that
+manager survives into the zone as the client's manager and must be able to resolve every prefab the
+server spawns.
 
 ### LootBagBaker
 

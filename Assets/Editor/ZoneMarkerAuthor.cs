@@ -1,7 +1,9 @@
+using FishNet.Object;
 using MMO.Banking;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Net;
+using UnityEditor;
 using UnityEngine;
 
 namespace MMO.Editor
@@ -20,8 +22,6 @@ namespace MMO.Editor
 
             if (layout == ZoneSceneBaker.ZoneLayout.SafeZone)
             {
-                AddStationMarker(markers, 1, new Vector3(-6f, stationY, -6f), CraftingStationType.Furnace);
-                AddStationMarker(markers, 2, new Vector3(-4f, stationY, -7f), CraftingStationType.Anvil);
                 AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, -4f), BankKind.Personal);
                 AddBankTellerMarker(markers, 2, new Vector3(4f, tellerY, -4f), BankKind.Guild);
                 AddNodeMarker(markers, 1, new Vector3(-15f, nodeY, 5f));
@@ -36,6 +36,12 @@ namespace MMO.Editor
                 AddNodeMarker(markers, 2, new Vector3(8f, nodeY, 12f));
                 AddNodeMarker(markers, 3, new Vector3(-14f, nodeY, -6f));
                 AddNodeMarker(markers, 4, new Vector3(6f, nodeY, -16f));
+                AddNodeMarker(markers, 5, new Vector3(-2f, nodeY, -20f));
+                AddNodeMarker(
+                    markers,
+                    6,
+                    new Vector3(2f, nodeY, -20f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.LargePrefabPath));
                 AddEnemyMarker(markers, 1, new Vector3(5f, enemyY, -8f));
                 AddEnemyMarker(markers, 2, new Vector3(-8f, enemyY, 8f));
                 AddEnemyMarker(markers, 3, new Vector3(10f, enemyY, 2f));
@@ -48,11 +54,17 @@ namespace MMO.Editor
             AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, 4f), BankKind.Personal);
         }
 
-        private static void AddNodeMarker(Transform parent, int index, Vector3 position)
+        private static void AddNodeMarker(
+            Transform parent,
+            int index,
+            Vector3 position,
+            NetworkObject prefab = null)
         {
             var go = ZoneSceneScaffold.CreateChild($"ResourceNodeMarker_{index}", parent);
             go.transform.localPosition = position;
-            go.AddComponent<ResourceNodeMarker>();
+            var marker = go.AddComponent<ResourceNodeMarker>();
+            if (prefab != null)
+                marker.SetNodePrefab(prefab);
         }
 
         private static void AddStationMarker(Transform parent, int index, Vector3 position, CraftingStationType type)

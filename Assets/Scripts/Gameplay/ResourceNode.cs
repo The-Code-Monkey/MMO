@@ -52,6 +52,9 @@ namespace MMO.Gameplay
     {
         [SerializeField] private ResourceDefinition _definition;
 
+        [SerializeField] private GameObject _fullVisual;
+        [SerializeField] private GameObject _emptyVisual;
+
         // Server-owned. Clients hold a replicated copy and are refused if they try to write.
         private readonly SyncVar<int> _remaining = new();
         private readonly SyncVar<bool> _depleted = new();
@@ -146,6 +149,18 @@ namespace MMO.Gameplay
         public void SetDefinition(ResourceDefinition definition)
         {
             _definition = definition;
+        }
+
+        /// <summary>
+        /// Points the node at its full and depleted models. The editor baker calls this when it
+        /// builds the prefab; the fallback cube has neither, so depletion falls back to hiding
+        /// the root renderer.
+        /// </summary>
+        public void SetVisuals(GameObject fullVisual, GameObject emptyVisual)
+        {
+            _fullVisual = fullVisual;
+            _emptyVisual = emptyVisual;
+            ApplyDepletedState(Depleted);
         }
 
         public override void OnStartNetwork()
@@ -288,11 +303,23 @@ namespace MMO.Gameplay
         /// </remarks>
         public void ApplyDepletedState(bool depleted)
         {
-            if (TryGetComponent(out Collider nodeCollider))
+            // No collider means the depleted vein cannot be clicked or gathered.
+            foreach (Collider nodeCollider in GetComponentsInChildren<Collider>(true))
                 nodeCollider.enabled = !depleted;
 
-            if (TryGetComponent(out Renderer nodeRenderer))
-                nodeRenderer.enabled = !depleted;
+            if (_fullVisual != null || _emptyVisual != null)
+            {
+                if (_fullVisual != null)
+                    _fullVisual.SetActive(!depleted);
+                if (_emptyVisual != null)
+                    _emptyVisual.SetActive(depleted);
+            }
+            else
+            {
+                // Runtime-built cube: there is no alternate model, so hide the only renderer.
+                foreach (Renderer nodeRenderer in GetComponentsInChildren<Renderer>(true))
+                    nodeRenderer.enabled = !depleted;
+            }
 
             // The carve goes with the body: a depleted vein is not an invisible wall.
             if (TryGetComponent(out NavMeshObstacle obstacle))

@@ -91,6 +91,48 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void TheLargeDefinition_IsAnIronVeinWithMoreOre()
+        {
+            var definition = AssetDatabase.LoadAssetAtPath<ResourceDefinition>(
+                ResourceNodeAssetBaker.LargeDefinitionPath);
+
+            Assert.IsNotNull(definition, "The large iron-ore definition is missing.");
+            Assert.AreEqual(ResourceType.Ore, definition.Type);
+            Assert.IsNotNull(definition.Drop);
+            Assert.AreEqual("Iron Ore", definition.Drop.ItemName);
+            Assert.AreEqual(15, definition.DropAmount,
+                "The large vein must hold more ore than the normal five-harvest vein.");
+            Assert.Greater(definition.DropAmount, ResourceDefinition.LoadDefault().DropAmount);
+        }
+
+        [Test]
+        public void TheLargePrefab_CarriesTheLargeDefinitionAndBothModels()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(ResourceNodeAssetBaker.LargePrefabPath);
+            var definition = AssetDatabase.LoadAssetAtPath<ResourceDefinition>(
+                ResourceNodeAssetBaker.LargeDefinitionPath);
+
+            Assert.IsNotNull(prefab, "The large iron-ore prefab is missing.");
+            Transform full = prefab.transform.Find("Visuals/IronOreMesh");
+            Transform empty = prefab.transform.Find("Visuals/IronOreEmptyMesh");
+            Assert.IsNotNull(full);
+            Assert.IsNotNull(empty);
+            Assert.AreEqual("IronOreLarge", full.GetComponent<MeshRenderer>().sharedMaterial.name);
+            Assert.AreEqual("IronOreLargeEmpty", empty.GetComponent<MeshRenderer>().sharedMaterial.name);
+
+            ResourceNode node = prefab.GetComponent<ResourceNode>();
+            Assert.IsNotNull(node);
+            Assert.AreSame(definition, node.Definition,
+                "The large prefab must carry the large definition, or it yields the normal amount.");
+
+            var collider = prefab.GetComponent<BoxCollider>();
+            Assert.IsNotNull(collider);
+            Assert.AreEqual(new Vector3(2.8f, 2.4f, 2.2f),
+                Vector3.Scale(collider.size, prefab.transform.lossyScale),
+                "The large model needs a collider big enough to click.");
+        }
+
+        [Test]
         public void ThePrefabFactory_BuildsANodeThatCarriesTheShippedDefinition()
         {
             NetworkObject prefab = ResourceNodePrefabFactory.Create();

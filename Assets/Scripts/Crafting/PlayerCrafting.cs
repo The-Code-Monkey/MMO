@@ -27,7 +27,7 @@ namespace MMO.Crafting
     /// </summary>
     public sealed class PlayerCrafting : NetworkBehaviour, ICraftingSource
     {
-        public const float MaxCraftDistance = 3f;
+        public const float MaxCraftDistance = 6f;
 
         private readonly SyncVar<int> _craftingXp = new();
 
