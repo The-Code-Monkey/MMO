@@ -10,31 +10,37 @@ namespace MMO.Editor
     {
         private const string GrayboxFolder = "Assets/Prefabs/Graybox/";
         private const string FloorTilePrefab = GrayboxFolder + "Floor_2x2.prefab";
+        public const string GrassTilePrefab = "Assets/Prefabs/Ground/Ground_Grass.prefab";
+        public const string CobblestoneTilePrefab = "Assets/Prefabs/Ground/Ground_Cobblestone.prefab";
         private const string WallPrefab = GrayboxFolder + "Wall_2x2.prefab";
         private const string TallWallPrefab = GrayboxFolder + "Wall_1x3.prefab";
         private const string RampPrefab = GrayboxFolder + "Ramp_1x2.prefab";
+        public const string WornCobblestonePathPrefab = "Assets/Prefabs/Ground/Path_Cobblestone_Worn.prefab";
+        private const string WallMaterial = "Assets/Materials/Building/Wall_Generic.mat";
+        private const string RoofMaterial = "Assets/Materials/Building/Roof_Tiles.mat";
         private const string RedMaterial = "Assets/Materials/DevTextures/DevGrid_Red.mat";
         private const int ScatterSeed = 20261015;
         private const int ScatterClusters = 14;
         private const int ScatterReservedAttempts = 100;
         private const float ScatterInset = 3f;
 
-        public static void BuildGround(Transform parent)
+        public static void BuildGround(Transform parent, string tilePrefab = GrassTilePrefab,
+            float extent = ZoneSceneBaker.GroundExtent)
         {
-            GameObject floor = ZoneSceneBaker.LoadPrefab(FloorTilePrefab);
-            int tiles = Mathf.RoundToInt(ZoneSceneBaker.GroundExtent / ZoneSceneBaker.GroundTile);
-            float start = -ZoneSceneBaker.GroundExtent / 2f + ZoneSceneBaker.GroundTile / 2f;
+            GameObject floor = ZoneSceneBaker.LoadPrefab(tilePrefab);
+            int tiles = Mathf.RoundToInt(extent / ZoneSceneBaker.GroundTile);
+            float start = -extent / 2f + ZoneSceneBaker.GroundTile / 2f;
 
             for (int x = 0; x < tiles; x++)
                 for (int z = 0; z < tiles; z++)
                     ZoneSceneBaker.PlaceKit(floor, parent, start + x * ZoneSceneBaker.GroundTile, start + z * ZoneSceneBaker.GroundTile);
         }
 
-        public static void BuildBoundary(Transform parent)
+        public static void BuildBoundary(Transform parent, float extent = ZoneSceneBaker.GroundExtent)
         {
             GameObject wall = ZoneSceneBaker.LoadPrefab(WallPrefab);
-            int segments = Mathf.RoundToInt(ZoneSceneBaker.GroundExtent / ZoneSceneBaker.GroundTile);
-            float half = ZoneSceneBaker.GroundExtent / 2f;
+            int segments = Mathf.RoundToInt(extent / ZoneSceneBaker.GroundTile);
+            float half = extent / 2f;
             float start = -half + ZoneSceneBaker.GroundTile / 2f;
 
             // The two central segments of the +Z edge are left out: that 4 m opening is the
@@ -55,11 +61,77 @@ namespace MMO.Editor
             }
         }
 
-        public static void BuildTown(Transform parent)
+        public static void BuildTown(Transform buildings, Transform streets)
         {
-            BuildBuilding(parent, "TownHall", new Vector3(-10f, 0f, -10f), width: 8, depth: 6);
-            BuildBuilding(parent, "House_A", new Vector3(10f, 0f, -10f), width: 6, depth: 6);
-            BuildBuilding(parent, "House_B", new Vector3(10f, 0f, 10f), width: 6, depth: 6);
+            BuildStreetGrid(streets);
+
+            BuildBuilding(buildings, "TownHall", new Vector3(-24f, 0f, -24f), width: 8, depth: 8);
+            BuildBuilding(buildings, "House_A", new Vector3(-24f, 0f, -8f), width: 8, depth: 6);
+            BuildBuilding(buildings, "House_B", new Vector3(-24f, 0f, 8f), width: 6, depth: 8);
+            BuildBuilding(buildings, "House_C", new Vector3(-24f, 0f, 24f), width: 8, depth: 8);
+            BuildBuilding(buildings, "House_D", new Vector3(-8f, 0f, -24f), width: 8, depth: 6);
+            BuildBuilding(buildings, "House_E", new Vector3(-8f, 0f, 24f), width: 6, depth: 8);
+            BuildBuilding(buildings, "House_F", new Vector3(8f, 0f, -24f), width: 6, depth: 8);
+            BuildBuilding(buildings, "House_G", new Vector3(8f, 0f, 24f), width: 8, depth: 6);
+            BuildBuilding(buildings, "House_H", new Vector3(24f, 0f, -24f), width: 8, depth: 8);
+            BuildBuilding(buildings, "House_I", new Vector3(24f, 0f, -8f), width: 6, depth: 8);
+            BuildBuilding(buildings, "House_J", new Vector3(24f, 0f, 8f), width: 8, depth: 6);
+            BuildBuilding(buildings, "House_K", new Vector3(24f, 0f, 24f), width: 8, depth: 8);
+        }
+
+        /// <summary>
+        /// A 4x4 block grid on 16 m pitch. Roads are two worn-cobblestone tiles wide and the four
+        /// central blocks are left open as the town square.
+        /// </summary>
+        private static void BuildStreetGrid(Transform parent)
+        {
+            GameObject path = ZoneSceneBaker.LoadPrefab(WornCobblestonePathPrefab);
+            float[] roadLines = { -32f, -16f, 0f, 16f, 32f };
+            const float edge = 35f;
+            const float offset = 1f;
+            const float y = 0.055f;
+
+            for (int lineIndex = 0; lineIndex < roadLines.Length; lineIndex++)
+            {
+                float line = roadLines[lineIndex];
+
+                for (float along = -edge; along <= edge; along += ZoneSceneBaker.GroundTile)
+                {
+                    ZoneSceneBaker.PlaceKit(path, parent, along, line - offset, y: y);
+                    ZoneSceneBaker.PlaceKit(path, parent, along, line + offset, y: y);
+                }
+            }
+
+            for (int lineIndex = 0; lineIndex < roadLines.Length; lineIndex++)
+            {
+                float line = roadLines[lineIndex];
+
+                for (float along = -edge; along <= edge; along += ZoneSceneBaker.GroundTile)
+                {
+                    if (Mathf.Abs(along - NearestRoadLine(along, roadLines)) < ZoneSceneBaker.GroundTile)
+                        continue;
+
+                    ZoneSceneBaker.PlaceKit(path, parent, line - offset, along, y: y);
+                    ZoneSceneBaker.PlaceKit(path, parent, line + offset, along, y: y);
+                }
+            }
+        }
+
+        private static float NearestRoadLine(float value, float[] roadLines)
+        {
+            float nearest = roadLines[0];
+            float best = Mathf.Abs(value - nearest);
+            for (int i = 1; i < roadLines.Length; i++)
+            {
+                float distance = Mathf.Abs(value - roadLines[i]);
+                if (distance < best)
+                {
+                    best = distance;
+                    nearest = roadLines[i];
+                }
+            }
+
+            return nearest;
         }
 
         /// <summary>
@@ -71,6 +143,8 @@ namespace MMO.Editor
             Transform root = ZoneSceneScaffold.CreateChild(name, parent).transform;
             GameObject wall = ZoneSceneBaker.LoadPrefab(TallWallPrefab);
             GameObject roof = ZoneSceneBaker.LoadPrefab(FloorTilePrefab);
+            Material wallMaterial = LoadMaterial(WallMaterial);
+            Material roofMaterial = LoadMaterial(RoofMaterial);
 
             float halfWidth = width / 2f;
             float halfDepth = depth / 2f;
@@ -81,17 +155,17 @@ namespace MMO.Editor
                 float x = center.x - halfWidth + 0.5f + i;
 
                 if (i != width / 2 - 1 && i != width / 2)
-                    ZoneSceneBaker.PlaceKit(wall, root, x, center.z - halfDepth);
+                    PlaceBuildingPiece(wall, root, x, center.z - halfDepth, wallMaterial);
 
-                ZoneSceneBaker.PlaceKit(wall, root, x, center.z + halfDepth);
+                PlaceBuildingPiece(wall, root, x, center.z + halfDepth, wallMaterial);
             }
 
             // Walls running along Z, on the ±X edges (rotated 90°).
             for (int i = 0; i < depth; i++)
             {
                 float z = center.z - halfDepth + 0.5f + i;
-                ZoneSceneBaker.PlaceKit(wall, root, center.x - halfWidth, z, 90f);
-                ZoneSceneBaker.PlaceKit(wall, root, center.x + halfWidth, z, 90f);
+                PlaceBuildingPiece(wall, root, center.x - halfWidth, z, wallMaterial, 90f);
+                PlaceBuildingPiece(wall, root, center.x + halfWidth, z, wallMaterial, 90f);
             }
 
             // Flat roof of 2×2 kit floors at the top of the walls.
@@ -99,10 +173,30 @@ namespace MMO.Editor
             int tilesZ = depth / 2;
             for (int ix = 0; ix < tilesX; ix++)
                 for (int iz = 0; iz < tilesZ; iz++)
-                    ZoneSceneBaker.PlaceKit(roof, root,
+                    PlaceBuildingPiece(roof, root,
                         center.x - halfWidth + 1f + ix * ZoneSceneBaker.GroundTile,
                         center.z - halfDepth + 1f + iz * ZoneSceneBaker.GroundTile,
-                        y: 3f);
+                        roofMaterial, y: 3f);
+        }
+
+        private static void PlaceBuildingPiece(
+            GameObject prefab, Transform parent, float x, float z, Material material, float yRotation = 0f, float? y = null)
+        {
+            GameObject instance = ZoneSceneBaker.PlaceKit(prefab, parent, x, z, yRotation, y);
+            var renderer = instance.GetComponent<MeshRenderer>();
+            if (renderer == null)
+                return;
+
+            renderer.sharedMaterial = material;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(renderer);
+        }
+
+        private static Material LoadMaterial(string path)
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+                throw new InvalidOperationException($"Building material missing at '{path}'. Run Tools > MMO > Rebuild Building Assets.");
+            return material;
         }
 
         public static void BuildWilderness(Transform scatter, Transform hazards)

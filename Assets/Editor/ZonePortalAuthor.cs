@@ -14,11 +14,12 @@ namespace MMO.Editor
             string targetHost,
             ushort targetPort,
             string targetServerId,
-            string targetZoneName)
+            string targetZoneName,
+            float groundExtent = ZoneSceneBaker.GroundExtent)
         {
             var go = ZoneSceneScaffold.CreateChild(portalName, zoneRoot);
             go.transform.localPosition = new Vector3(
-                0f, ZoneSceneBaker.PortalHeight / 2f, ZoneSceneBaker.GroundExtent / 2f - 0.5f);
+                0f, ZoneSceneBaker.PortalHeight / 2f, groundExtent / 2f - 0.5f);
 
             var collider = go.AddComponent<BoxCollider>();
             collider.isTrigger = true;

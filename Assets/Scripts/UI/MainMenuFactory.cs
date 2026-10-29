@@ -88,7 +88,7 @@ namespace MMO.UI
                 new Vector2(0f, -58f), new Vector2(520f, 90f));
             Text text = title.AddComponent<Text>();
             UIBuilder.ApplyLabel(text, 46, TextAnchor.MiddleCenter, 9);
-            text.text = "MMO";
+            text.text = "AethelBourne Online";
             text.fontStyle = FontStyle.Bold;
         }
 

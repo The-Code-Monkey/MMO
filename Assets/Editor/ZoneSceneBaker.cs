@@ -59,17 +59,22 @@ namespace MMO.Editor
         /// <see cref="SocialHubService.ZoneId"/> and to the other zone's transfer trigger source
         /// and target, so a handoff is addressable end to end.
         /// </summary>
-        public const string SafeZoneServerId = "server-a";
-        public const string WildernessServerId = "server-b";
-        public const string TutorialServerId = "server-tutorial";
+        public const string SafeZoneServerId = ZoneServerIds.SafeZone;
+        public const string WildernessServerId = ZoneServerIds.Wilderness;
+        public const string TutorialServerId = ZoneServerIds.Tutorial;
 
         /// <summary>Host the transfer triggers point at when the destination is a local process.</summary>
         public const string DefaultTargetHost = "127.0.0.1";
 
         // ---- Layout -------------------------------------------------------
 
-        /// <summary>Full width and depth of the walkable ground, in metres.</summary>
+        /// <summary>Tutorial width/depth. Also the extent used to keep wilderness content central.</summary>
         public const float GroundExtent = 40f;
+
+        /// <summary>Safe zone and wilderness are four times longer on each side than the tutorial.</summary>
+        public const float SafeZoneGroundExtent = GroundExtent * 4f;
+        public const float WildernessGroundExtent = GroundExtent * 4f;
+        public const float TutorialGroundExtent = GroundExtent;
 
         /// <summary>Footprint of a single ground tile. The kit's Floor_2x2 is 2 m on a side.</summary>
         public const float GroundTile = 2f;
@@ -85,6 +90,7 @@ namespace MMO.Editor
         public const string GroundName = "Ground";
         public const string BoundaryWallsName = "BoundaryWalls";
         public const string BuildingsName = "Buildings";
+        public const string StreetsName = "Streets";
         public const string ScatterName = "Scatter";
         public const string HazardsName = "Hazards";
         public const string SpawnPointsName = "SpawnPoints";
@@ -115,6 +121,7 @@ namespace MMO.Editor
         }
 
         /// <summary>Rebuilds <c>Assets/Scenes/SafeZone.unity</c>.</summary>
+        [MenuItem("Tools/MMO/Build Safe Zone")]
         public static void BuildSafeZone() => BuildScene(
             scenePath: SafeZonePath,
             risk: ZoneRiskTier.Safe,
@@ -129,6 +136,7 @@ namespace MMO.Editor
             layout: ZoneLayout.SafeZone);
 
         /// <summary>Rebuilds <c>Assets/Scenes/Wilderness.unity</c>.</summary>
+        [MenuItem("Tools/MMO/Build Wilderness Zone")]
         public static void BuildWilderness() => BuildScene(
             scenePath: WildernessZonePath,
             risk: ZoneRiskTier.Red,
@@ -150,6 +158,7 @@ namespace MMO.Editor
         /// loop is built on. New players are routed here by the Main Menu's default zone (the
         /// fallback when the backend reports no last zone).
         /// </summary>
+        [MenuItem("Tools/MMO/Build Tutorial Zone")]
         public static void BuildTutorial() => BuildScene(
             scenePath: TutorialZonePath,
             risk: ZoneRiskTier.Safe,
@@ -210,13 +219,16 @@ namespace MMO.Editor
             var zoneRoot = new GameObject(ZoneRootName);
             Transform ground = CreateChild(GroundName, zoneRoot.transform).transform;
             Transform boundary = CreateChild(BoundaryWallsName, zoneRoot.transform).transform;
+            float groundExtent = GroundExtentFor(layout);
 
-            GrayboxZoneGeometry.BuildGround(ground);
-            GrayboxZoneGeometry.BuildBoundary(boundary);
+            GrayboxZoneGeometry.BuildGround(ground, GroundPrefabFor(layout), groundExtent);
+            GrayboxZoneGeometry.BuildBoundary(boundary, groundExtent);
 
             if (layout == ZoneLayout.SafeZone)
             {
-                GrayboxZoneGeometry.BuildTown(CreateChild(BuildingsName, zoneRoot.transform).transform);
+                GrayboxZoneGeometry.BuildTown(
+                    CreateChild(BuildingsName, zoneRoot.transform).transform,
+                    CreateChild(StreetsName, zoneRoot.transform).transform);
             }
             else if (layout == ZoneLayout.Wilderness)
             {
@@ -237,7 +249,8 @@ namespace MMO.Editor
 
             ZoneRiskAuthor.CreateRiskConfig(zoneRoot.transform, risk);
             ZonePortalAuthor.Create(
-                zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName);
+                zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName,
+                groundExtent);
 
             // --- INJECT NAVMESH BAKING HERE ---
             // No obstacle is placed here: the crafting station carries its own NavMeshObstacle
@@ -251,6 +264,21 @@ namespace MMO.Editor
 
             ZoneBuildFiles.SaveScene(scene, scenePath);
         }
+
+        /// <summary>Ground prefab per zone. Change one branch to give that zone its own surface.</summary>
+        private static string GroundPrefabFor(ZoneLayout layout) => layout switch
+        {
+            ZoneLayout.SafeZone => GrayboxZoneGeometry.CobblestoneTilePrefab,
+            ZoneLayout.Wilderness => GrayboxZoneGeometry.GrassTilePrefab,
+            _ => GrayboxZoneGeometry.GrassTilePrefab,
+        };
+
+        private static float GroundExtentFor(ZoneLayout layout) => layout switch
+        {
+            ZoneLayout.SafeZone => SafeZoneGroundExtent,
+            ZoneLayout.Wilderness => WildernessGroundExtent,
+            _ => TutorialGroundExtent,
+        };
 
         private static int SpawnCountFor(ZoneLayout layout) => layout switch
         {
