@@ -6,5 +6,6 @@ namespace MMO.Net
         public const string SafeZone = "server-a";
         public const string Wilderness = "server-b";
         public const string Tutorial = "server-tutorial";
+        public const string TestZone = "server-test";
     }
 }

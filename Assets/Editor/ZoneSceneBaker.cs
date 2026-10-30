@@ -18,12 +18,12 @@ using UnityEngine.SceneManagement;
 namespace MMO.Editor
 {
     /// <summary>
-    /// Assembles the three always-on zones the multi-server architecture is tested against: the
-    /// flat <c>Tutorial</c> training ground, the walkable <c>SafeZone</c> town and the hostile
-    /// <c>Wilderness</c>. Each is a self-contained scene — its own <see cref="NetworkManager"/> on
-    /// its own port, its own <see cref="ZoneRiskConfig"/>, its own
-    /// <see cref="SocialHubService.ZoneId"/> and a <see cref="ZoneTransferTrigger"/> road to the
-    /// next one — so the set really is separate servers rather than rooms of one.
+    /// Assembles the always-on zones the multi-server architecture is tested against: the flat
+    /// <c>Tutorial</c> training ground, the walkable <c>SafeZone</c> town, the hostile
+    /// <c>Wilderness</c> and the debug <c>TestZone</c>. Each is a self-contained scene — its own
+    /// <see cref="NetworkManager"/> on its own port, its own <see cref="ZoneRiskConfig"/>, its own
+    /// <see cref="SocialHubService.ZoneId"/> and one <see cref="ZoneTransferTrigger"/> road per
+    /// connection — so the set really is separate servers rather than rooms of one.
     ///
     /// <para>
     /// Geometry is assembled from the primitive <b>graybox prefab kit</b>
@@ -39,11 +39,13 @@ namespace MMO.Editor
         public const string SafeZonePath = "Assets/Scenes/SafeZone.unity";
         public const string WildernessZonePath = "Assets/Scenes/Wilderness.unity";
         public const string TutorialZonePath = "Assets/Scenes/Tutorial.unity";
+        public const string TestZonePath = "Assets/Scenes/TestZone.unity";
 
         /// <summary>Scene/zone names used as the transfer trigger's target zone label.</summary>
         public const string SafeZoneName = "SafeZone";
         public const string WildernessZoneName = "Wilderness";
         public const string TutorialZoneName = "Tutorial";
+        public const string TestZoneName = "TestZone";
 
         /// <summary>
         /// Distinct ports so both zones can run side by side on one machine — the whole point of
@@ -53,6 +55,7 @@ namespace MMO.Editor
         public const ushort SafeZonePort = 7770;
         public const ushort WildernessZonePort = 7771;
         public const ushort TutorialZonePort = 7772;
+        public const ushort TestZonePort = 7773;
 
         /// <summary>
         /// Stable server ids. The same ids are written to the zone's
@@ -62,6 +65,7 @@ namespace MMO.Editor
         public const string SafeZoneServerId = ZoneServerIds.SafeZone;
         public const string WildernessServerId = ZoneServerIds.Wilderness;
         public const string TutorialServerId = ZoneServerIds.Tutorial;
+        public const string TestZoneServerId = ZoneServerIds.TestZone;
 
         /// <summary>Host the transfer triggers point at when the destination is a local process.</summary>
         public const string DefaultTargetHost = "127.0.0.1";
@@ -75,6 +79,7 @@ namespace MMO.Editor
         public const float SafeZoneGroundExtent = GroundExtent * 4f;
         public const float WildernessGroundExtent = GroundExtent * 4f;
         public const float TutorialGroundExtent = GroundExtent;
+        public const float TestZoneGroundExtent = GroundExtent * 2f;
 
         /// <summary>Footprint of a single ground tile. The kit's Floor_2x2 is 2 m on a side.</summary>
         public const float GroundTile = 2f;
@@ -82,6 +87,7 @@ namespace MMO.Editor
         public const int SpawnPointCount = 4;
         public const int WildernessSpawnPointCount = 2;
         public const int TutorialSpawnPointCount = 1;
+        public const int TestSpawnPointCount = 1;
         public const float PortalHeight = 3f;
 
         // ---- Names --------------------------------------------------------
@@ -109,6 +115,30 @@ namespace MMO.Editor
             SafeZone,
             Wilderness,
             Tutorial,
+            TestZone,
+        }
+
+        internal readonly struct ZoneLink
+        {
+            public readonly string PortalName;
+            public readonly string TargetHost;
+            public readonly ushort TargetPort;
+            public readonly string TargetZoneName;
+            public readonly string TargetServerId;
+
+            public ZoneLink(
+                string portalName,
+                string targetHost,
+                ushort targetPort,
+                string targetZoneName,
+                string targetServerId)
+            {
+                PortalName = portalName;
+                TargetHost = targetHost;
+                TargetPort = targetPort;
+                TargetZoneName = targetZoneName;
+                TargetServerId = targetServerId;
+            }
         }
 
         [MenuItem(MenuPath)]
@@ -117,7 +147,9 @@ namespace MMO.Editor
             BuildSafeZone();
             BuildWilderness();
             BuildTutorial();
-            ZoneBuildFiles.AddToBuildSettings(SafeZonePath, WildernessZonePath, TutorialZonePath);
+            BuildTestZone();
+            ZoneBuildFiles.AddToBuildSettings(
+                SafeZonePath, WildernessZonePath, TutorialZonePath, TestZonePath);
         }
 
         /// <summary>Rebuilds <c>Assets/Scenes/SafeZone.unity</c>.</summary>
@@ -128,11 +160,11 @@ namespace MMO.Editor
             port: SafeZonePort,
             serverId: SafeZoneServerId,
             templateId: "safezone",
-            targetHost: DefaultTargetHost,
-            targetPort: WildernessZonePort,
-            targetZoneName: WildernessZoneName,
-            targetServerId: WildernessServerId,
-            portalName: "PortalToWilderness",
+            links: new[]
+            {
+                Link("PortalToWilderness", WildernessZonePort, WildernessZoneName, WildernessServerId),
+                Link("PortalToTestZone", TestZonePort, TestZoneName, TestZoneServerId),
+            },
             layout: ZoneLayout.SafeZone);
 
         /// <summary>Rebuilds <c>Assets/Scenes/Wilderness.unity</c>.</summary>
@@ -143,11 +175,10 @@ namespace MMO.Editor
             port: WildernessZonePort,
             serverId: WildernessServerId,
             templateId: "wilderness",
-            targetHost: DefaultTargetHost,
-            targetPort: SafeZonePort,
-            targetZoneName: SafeZoneName,
-            targetServerId: SafeZoneServerId,
-            portalName: "PortalToSafeZone",
+            links: new[]
+            {
+                Link("PortalToSafeZone", SafeZonePort, SafeZoneName, SafeZoneServerId),
+            },
             layout: ZoneLayout.Wilderness);
 
         /// <summary>
@@ -165,12 +196,28 @@ namespace MMO.Editor
             port: TutorialZonePort,
             serverId: TutorialServerId,
             templateId: "tutorial",
-            targetHost: DefaultTargetHost,
-            targetPort: SafeZonePort,
-            targetZoneName: SafeZoneName,
-            targetServerId: SafeZoneServerId,
-            portalName: "PortalToSafeZone",
+            links: new[]
+            {
+                Link("PortalToSafeZone", SafeZonePort, SafeZoneName, SafeZoneServerId),
+            },
             layout: ZoneLayout.Tutorial);
+
+        /// <summary>Rebuilds <c>Assets/Scenes/TestZone.unity</c>, the ore testing ground.</summary>
+        [MenuItem("Tools/MMO/Build Test Zone")]
+        public static void BuildTestZone() => BuildScene(
+            scenePath: TestZonePath,
+            risk: ZoneRiskTier.Safe,
+            port: TestZonePort,
+            serverId: TestZoneServerId,
+            templateId: "testzone",
+            links: new[]
+            {
+                Link("PortalToSafeZone", SafeZonePort, SafeZoneName, SafeZoneServerId),
+            },
+            layout: ZoneLayout.TestZone);
+
+        private static ZoneLink Link(string portalName, ushort port, string zoneName, string serverId)
+            => new ZoneLink(portalName, DefaultTargetHost, port, zoneName, serverId);
 
         private static void BuildScene(
             string scenePath,
@@ -178,11 +225,7 @@ namespace MMO.Editor
             ushort port,
             string serverId,
             string templateId,
-            string targetHost,
-            ushort targetPort,
-            string targetZoneName,
-            string targetServerId,
-            string portalName,
+            ZoneLink[] links,
             ZoneLayout layout)
         {
             ZoneBuildFiles.EnsureSceneFolder();
@@ -222,7 +265,7 @@ namespace MMO.Editor
             float groundExtent = GroundExtentFor(layout);
 
             GrayboxZoneGeometry.BuildGround(ground, GroundPrefabFor(layout), groundExtent);
-            GrayboxZoneGeometry.BuildBoundary(boundary, groundExtent);
+            GrayboxZoneGeometry.BuildBoundary(boundary, groundExtent, links.Length);
 
             if (layout == ZoneLayout.SafeZone)
             {
@@ -237,7 +280,7 @@ namespace MMO.Editor
                     CreateChild(HazardsName, zoneRoot.transform).transform);
                 ZoneRiskAuthor.CreateClaimFlag(zoneRoot.transform);
             }
-            // The tutorial zone is deliberately bare: flat ground and boundary only.
+            // Tutorial and TestZone are deliberately bare: flat ground and boundary only.
 
             ZoneSpawnAuthor.Wire(manager, ZoneSpawnAuthor.CreateSpawnPoints(zoneRoot.transform, SpawnCountFor(layout)));
             ZoneMarkerAuthor.AddMarkers(zoneRoot.transform, layout);
@@ -248,9 +291,14 @@ namespace MMO.Editor
             WorldBootstrapBaker.RegisterMarkerPrefabs(manager);
 
             ZoneRiskAuthor.CreateRiskConfig(zoneRoot.transform, risk);
-            ZonePortalAuthor.Create(
-                zoneRoot.transform, portalName, serverId, targetHost, targetPort, targetServerId, targetZoneName,
-                groundExtent);
+
+            for (int i = 0; i < links.Length; i++)
+            {
+                ZoneLink link = links[i];
+                ZonePortalAuthor.Create(
+                    zoneRoot.transform, link.PortalName, serverId, link.TargetHost, link.TargetPort,
+                    link.TargetServerId, link.TargetZoneName, groundExtent, i, links.Length);
+            }
 
             // --- INJECT NAVMESH BAKING HERE ---
             // No obstacle is placed here: the crafting station carries its own NavMeshObstacle
@@ -265,7 +313,6 @@ namespace MMO.Editor
             ZoneBuildFiles.SaveScene(scene, scenePath);
         }
 
-        /// <summary>Ground prefab per zone. Change one branch to give that zone its own surface.</summary>
         private static string GroundPrefabFor(ZoneLayout layout) => layout switch
         {
             ZoneLayout.SafeZone => GrayboxZoneGeometry.CobblestoneTilePrefab,
@@ -277,6 +324,7 @@ namespace MMO.Editor
         {
             ZoneLayout.SafeZone => SafeZoneGroundExtent,
             ZoneLayout.Wilderness => WildernessGroundExtent,
+            ZoneLayout.TestZone => TestZoneGroundExtent,
             _ => TutorialGroundExtent,
         };
 
@@ -284,6 +332,7 @@ namespace MMO.Editor
         {
             ZoneLayout.Wilderness => WildernessSpawnPointCount,
             ZoneLayout.Tutorial => TutorialSpawnPointCount,
+            ZoneLayout.TestZone => TestSpawnPointCount,
             _ => SpawnPointCount,
         };
 

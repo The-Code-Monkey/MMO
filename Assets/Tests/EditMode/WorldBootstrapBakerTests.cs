@@ -1,6 +1,7 @@
 using System.Linq;
 using FishNet.Managing;
 using FishNet.Managing.Object;
+using FishNet.Object;
 using MMO.Editor;
 using MMO.Gameplay;
 using MMO.Net;
@@ -25,6 +26,7 @@ namespace MMO.Tests
         private bool _safeExisted;
         private bool _wildernessExisted;
         private bool _tutorialExisted;
+        private bool _testExisted;
 
         [OneTimeSetUp]
         public void BuildZones()
@@ -33,6 +35,7 @@ namespace MMO.Tests
             _safeExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.SafeZonePath) != null;
             _wildernessExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.WildernessZonePath) != null;
             _tutorialExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.TutorialZonePath) != null;
+            _testExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.TestZonePath) != null;
 
             ZoneSceneBaker.BuildBoth();
         }
@@ -48,6 +51,8 @@ namespace MMO.Tests
                 AssetDatabase.DeleteAsset(ZoneSceneBaker.WildernessZonePath);
             if (!_tutorialExisted)
                 AssetDatabase.DeleteAsset(ZoneSceneBaker.TutorialZonePath);
+            if (!_testExisted)
+                AssetDatabase.DeleteAsset(ZoneSceneBaker.TestZonePath);
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         }
@@ -143,12 +148,77 @@ namespace MMO.Tests
             });
         }
 
+        // ---- The test zone -------------------------------------------------
+
+        [Test]
+        public void TestZone_IsInEnabledBuildSettings()
+        {
+            Assert.IsTrue(EditorBuildSettings.scenes.Any(s => s.enabled && s.path == ZoneSceneBaker.TestZonePath));
+        }
+
+        [Test]
+        public void TestZone_HasANetworkManagerAndOneSpawnPoint()
+        {
+            InScene(ZoneSceneBaker.TestZonePath, scene =>
+            {
+                Assert.IsTrue(NetworkManagerSceneBaker.Validate(scene, out string error), error);
+
+                Transform spawnPoints = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.SpawnPointsName);
+                Assert.IsNotNull(spawnPoints);
+                Assert.AreEqual(ZoneSceneBaker.TestSpawnPointCount, spawnPoints.childCount);
+                Assert.IsTrue(spawnPoints.GetChild(0).GetComponent<PlayerSpawnPoint>().IsDefault);
+            });
+        }
+
+        [Test]
+        public void TestZone_HasEveryOreNode()
+        {
+            InScene(ZoneSceneBaker.TestZonePath, scene =>
+            {
+                Transform markers = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.MarkersName);
+                Assert.IsNotNull(markers);
+
+                ResourceNodeMarker[] nodes = markers.GetComponentsInChildren<ResourceNodeMarker>();
+                Assert.AreEqual(8, nodes.Length);
+
+                NetworkObject[] expected =
+                {
+                    ResourceNodeBaker.LoadResourceNodePrefab(),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.LargePrefabPath),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.CopperPrefabPath),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.CopperLargePrefabPath),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.TinPrefabPath),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.TinLargePrefabPath),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.CobaltPrefabPath),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.VeridiumPrefabPath),
+                };
+
+                foreach (NetworkObject prefab in expected)
+                    Assert.IsTrue(nodes.Any(node => node.NodePrefab == prefab),
+                        $"TestZone is missing a marker for '{prefab?.name}'.");
+            });
+        }
+
+        [Test]
+        public void TestZone_PortalLeadsToTheSafeZone()
+        {
+            InScene(ZoneSceneBaker.TestZonePath, scene =>
+            {
+                Transform portal = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), "PortalToSafeZone");
+                Assert.IsNotNull(portal);
+
+                var serialized = new SerializedObject(portal.GetComponent<ZoneTransferTrigger>());
+                Assert.AreEqual(ZoneSceneBaker.SafeZonePort, (ushort)serialized.FindProperty("_targetPort").intValue);
+                Assert.AreEqual(ZoneSceneBaker.SafeZoneServerId, serialized.FindProperty("_targetServerId").stringValue);
+            });
+        }
+
         // ---- The bootstrap and markers on every zone -----------------------
 
         [Test]
         public void EveryZone_HasAWorldBootstrapOnItsNetworkManager()
         {
-            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath })
+            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath, ZoneSceneBaker.TestZonePath })
             {
                 InScene(path, scene =>
                 {
@@ -162,7 +232,7 @@ namespace MMO.Tests
         [Test]
         public void EveryZone_SpawnPointsCarryPlayerSpawnPoints()
         {
-            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath })
+            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath, ZoneSceneBaker.TestZonePath })
             {
                 InScene(path, scene =>
                 {
@@ -176,13 +246,14 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void SafeZone_HasStationAndNodeMarkers()
+        public void SafeZone_HasOnlyBankTellers()
         {
             InScene(ZoneSceneBaker.SafeZonePath, scene =>
             {
                 Transform markers = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.MarkersName);
-                Assert.AreEqual(1, markers.GetComponentsInChildren<CraftingStationMarker>().Length, "The SafeZone keeps the furnace.");
-                Assert.AreEqual(3, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
+                Assert.AreEqual(2, markers.GetComponentsInChildren<BankTellerMarker>().Length);
+                Assert.AreEqual(0, markers.GetComponentsInChildren<CraftingStationMarker>().Length);
+                Assert.AreEqual(0, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
                 Assert.AreEqual(0, markers.GetComponentsInChildren<EnemyMarker>().Length, "A safe town has no enemies.");
             });
         }
@@ -220,7 +291,7 @@ namespace MMO.Tests
         [Test]
         public void EveryZone_HasNoFixedDummyOrStationSpawner()
         {
-            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath })
+            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath, ZoneSceneBaker.TestZonePath })
             {
                 InScene(path, scene =>
                 {
@@ -236,7 +307,7 @@ namespace MMO.Tests
         [Test]
         public void EveryZone_RegistersTheResourceNodePrefab()
         {
-            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath })
+            foreach (string path in new[] { ZoneSceneBaker.SafeZonePath, ZoneSceneBaker.WildernessZonePath, ZoneSceneBaker.TutorialZonePath, ZoneSceneBaker.TestZonePath })
             {
                 InScene(path, scene =>
                 {

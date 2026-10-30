@@ -24,6 +24,7 @@ namespace MMO.Editor
             {
                 AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, -4f), BankKind.Personal);
                 AddBankTellerMarker(markers, 2, new Vector3(4f, tellerY, -4f), BankKind.Guild);
+                AddStationMarker(markers, 3, new Vector3(10f, stationY, -10f), CraftingStationType.Furnace);
                 return;
             }
 
@@ -42,6 +43,51 @@ namespace MMO.Editor
                 AddEnemyMarker(markers, 1, new Vector3(5f, enemyY, -8f));
                 AddEnemyMarker(markers, 2, new Vector3(-8f, enemyY, 8f));
                 AddEnemyMarker(markers, 3, new Vector3(10f, enemyY, 2f));
+                return;
+            }
+
+            if (layout == ZoneSceneBaker.ZoneLayout.TestZone)
+            {
+                AddNodeMarker(
+                    markers,
+                    1,
+                    new Vector3(-8f, nodeY, -6f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeBaker.PrefabAssetPath));
+                AddNodeMarker(
+                    markers,
+                    2,
+                    new Vector3(8f, nodeY, -6f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.LargePrefabPath));
+                AddNodeMarker(
+                    markers,
+                    3,
+                    new Vector3(-8f, nodeY, 6f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.CopperPrefabPath));
+                AddNodeMarker(
+                    markers,
+                    4,
+                    new Vector3(8f, nodeY, 6f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.CopperLargePrefabPath));
+                AddNodeMarker(
+                    markers,
+                    5,
+                    new Vector3(-8f, nodeY, 14f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.TinPrefabPath));
+                AddNodeMarker(
+                    markers,
+                    6,
+                    new Vector3(8f, nodeY, 14f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.TinLargePrefabPath));
+                AddNodeMarker(
+                    markers,
+                    7,
+                    new Vector3(-8f, nodeY, 24f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.CobaltPrefabPath));
+                AddNodeMarker(
+                    markers,
+                    8,
+                    new Vector3(8f, nodeY, 24f),
+                    AssetDatabase.LoadAssetAtPath<NetworkObject>(ResourceNodeAssetBaker.VeridiumPrefabPath));
                 return;
             }
 

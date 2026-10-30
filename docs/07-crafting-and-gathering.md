@@ -245,6 +245,13 @@ reset, interval and reach, but **15 units** and the `ResourceNode_Large` prefab 
 empty models. The Wilderness authors one small and one large vein; any `ResourceNodeMarker` can point
 its `NodePrefab` at the large prefab to place another.
 
+Copper and tin follow the same pattern. `Copper_Ore`, `Copper_Ore_Large`, `Tin_Ore` and
+`Tin_Ore_Large` drop the `Copper Ore` / `Tin Ore` items and use the same 5/15 split. Cobalt and
+veridium are small-only (`Cobalt_Ore`, `Veridium_Ore`) and each carries its own depleted model and
+material. TestZone authors all eight node markers: iron, copper and tin small and large, plus cobalt
+and veridium. Copper and tin share `StoneOreEmpty` when depleted; the large variants use
+`StoneOreLargeEmpty`; cobalt and veridium use their own empty assets.
+
 The definition carries **no networking**. Both ends read the same asset through the same prefab —
 exactly like `WeaponData` on `PlayerCombat` — so there is nothing to replicate and nothing a client
 can lie about.

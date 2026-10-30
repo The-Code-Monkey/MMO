@@ -32,6 +32,7 @@ namespace MMO.Tests
         private EditorBuildSettingsScene[] _originalBuildScenes;
         private bool _safeExisted;
         private bool _wildernessExisted;
+        private bool _testExisted;
 
         [OneTimeSetUp]
         public void BuildZones()
@@ -39,6 +40,7 @@ namespace MMO.Tests
             _originalBuildScenes = EditorBuildSettings.scenes;
             _safeExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.SafeZonePath) != null;
             _wildernessExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.WildernessZonePath) != null;
+            _testExisted = AssetDatabase.LoadAssetAtPath<SceneAsset>(ZoneSceneBaker.TestZonePath) != null;
 
             ZoneSceneBaker.BuildBoth();
         }
@@ -53,6 +55,9 @@ namespace MMO.Tests
 
             if (!_wildernessExisted)
                 AssetDatabase.DeleteAsset(ZoneSceneBaker.WildernessZonePath);
+
+            if (!_testExisted)
+                AssetDatabase.DeleteAsset(ZoneSceneBaker.TestZonePath);
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         }
@@ -75,6 +80,7 @@ namespace MMO.Tests
 
             CollectionAssert.Contains(enabled, ZoneSceneBaker.SafeZonePath);
             CollectionAssert.Contains(enabled, ZoneSceneBaker.WildernessZonePath);
+            CollectionAssert.Contains(enabled, ZoneSceneBaker.TestZonePath);
         }
 
         [Test]
@@ -92,6 +98,13 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void TestZone_HasANetworkManager()
+        {
+            InScene(ZoneSceneBaker.TestZonePath, scene =>
+                Assert.IsTrue(NetworkManagerSceneBaker.Validate(scene, out string error), error));
+        }
+
+        [Test]
         public void AllZoneScenes_HaveAnAuthoredCameraRig()
         {
             // The rig is deliberately authored in the zone rather than carried on the player
@@ -102,7 +115,8 @@ namespace MMO.Tests
                      {
                          ZoneSceneBaker.SafeZonePath,
                          ZoneSceneBaker.WildernessZonePath,
-                         ZoneSceneBaker.TutorialZonePath
+                         ZoneSceneBaker.TutorialZonePath,
+                         ZoneSceneBaker.TestZonePath
                      })
             {
                 InScene(path, scene =>
@@ -138,8 +152,11 @@ namespace MMO.Tests
         {
             Assert.AreEqual(ZoneSceneBaker.SafeZonePort, PortOf(ZoneSceneBaker.SafeZonePath));
             Assert.AreEqual(ZoneSceneBaker.WildernessZonePort, PortOf(ZoneSceneBaker.WildernessZonePath));
+            Assert.AreEqual(ZoneSceneBaker.TestZonePort, PortOf(ZoneSceneBaker.TestZonePath));
             Assert.AreNotEqual(ZoneSceneBaker.SafeZonePort, ZoneSceneBaker.WildernessZonePort,
                 "Two processes on one host need two ports; the whole point is running both locally.");
+            Assert.AreNotEqual(ZoneSceneBaker.TestZonePort, ZoneSceneBaker.SafeZonePort);
+            Assert.AreNotEqual(ZoneSceneBaker.TestZonePort, ZoneSceneBaker.WildernessZonePort);
         }
 
         [Test]
@@ -147,6 +164,7 @@ namespace MMO.Tests
         {
             Assert.AreEqual(ZoneSceneBaker.SafeZoneServerId, ZoneIdOf(ZoneSceneBaker.SafeZonePath));
             Assert.AreEqual(ZoneSceneBaker.WildernessServerId, ZoneIdOf(ZoneSceneBaker.WildernessZonePath));
+            Assert.AreEqual(ZoneSceneBaker.TestZoneServerId, ZoneIdOf(ZoneSceneBaker.TestZonePath));
         }
 
         [Test]
@@ -155,6 +173,7 @@ namespace MMO.Tests
             Assert.IsTrue(UseTokenAuthOf(ZoneSceneBaker.SafeZonePath),
                 "Cross-zone joins carry the backend session token the gate validates.");
             Assert.IsTrue(UseTokenAuthOf(ZoneSceneBaker.WildernessZonePath));
+            Assert.IsTrue(UseTokenAuthOf(ZoneSceneBaker.TestZonePath));
         }
 
         // ---- Risk tiers ----------------------------------------------------
@@ -169,6 +188,12 @@ namespace MMO.Tests
         public void Wilderness_DeclaresTheRedTier()
         {
             Assert.AreEqual(ZoneRiskTier.Red, RiskTierOf(ZoneSceneBaker.WildernessZonePath));
+        }
+
+        [Test]
+        public void TestZone_DeclaresTheSafeTier()
+        {
+            Assert.AreEqual(ZoneRiskTier.Safe, RiskTierOf(ZoneSceneBaker.TestZonePath));
         }
 
         [Test]
@@ -193,6 +218,20 @@ namespace MMO.Tests
         // ---- Portals -------------------------------------------------------
 
         [Test]
+        public void PortalSlots_AreDistinctForAnyConnectionCount()
+        {
+            for (int count = 1; count <= 8; count++)
+            {
+                var seen = new HashSet<Vector3>();
+                for (int index = 0; index < count; index++)
+                    seen.Add(ZonePortalAuthor.PositionFor(index, count, ZoneSceneBaker.GroundExtent));
+
+                Assert.AreEqual(count, seen.Count,
+                    $"Slot positions must not collide for a zone with {count} connected zones.");
+            }
+        }
+
+        [Test]
         public void PortalFromSafeZone_PointsAtWilderness()
         {
             PortalFields portal = PortalOf(ZoneSceneBaker.SafeZonePath, "PortalToWilderness");
@@ -202,6 +241,30 @@ namespace MMO.Tests
             Assert.AreEqual(ZoneSceneBaker.WildernessServerId, portal.TargetServerId);
             Assert.AreEqual(ZoneSceneBaker.WildernessZoneName, portal.TargetZoneName);
             Assert.AreEqual(ZoneSceneBaker.SafeZoneServerId, portal.SourceServerId);
+        }
+
+        [Test]
+        public void PortalFromSafeZone_PointsAtTestZone()
+        {
+            PortalFields portal = PortalOf(ZoneSceneBaker.SafeZonePath, "PortalToTestZone");
+
+            Assert.AreEqual(ZoneSceneBaker.DefaultTargetHost, portal.TargetHost);
+            Assert.AreEqual(ZoneSceneBaker.TestZonePort, portal.TargetPort);
+            Assert.AreEqual(ZoneSceneBaker.TestZoneServerId, portal.TargetServerId);
+            Assert.AreEqual(ZoneSceneBaker.TestZoneName, portal.TargetZoneName);
+            Assert.AreEqual(ZoneSceneBaker.SafeZoneServerId, portal.SourceServerId);
+        }
+
+        [Test]
+        public void PortalFromTestZone_PointsAtSafeZone()
+        {
+            PortalFields portal = PortalOf(ZoneSceneBaker.TestZonePath, "PortalToSafeZone");
+
+            Assert.AreEqual(ZoneSceneBaker.DefaultTargetHost, portal.TargetHost);
+            Assert.AreEqual(ZoneSceneBaker.SafeZonePort, portal.TargetPort);
+            Assert.AreEqual(ZoneSceneBaker.SafeZoneServerId, portal.TargetServerId);
+            Assert.AreEqual(ZoneSceneBaker.SafeZoneName, portal.TargetZoneName);
+            Assert.AreEqual(ZoneSceneBaker.TestZoneServerId, portal.SourceServerId);
         }
 
         [Test]
@@ -251,7 +314,23 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void BoundaryWalls_WrapTheZoneAndLeaveThePortalGapOpen()
+        public void TestZoneGround_UsesTheGrassPrefab()
+        {
+            InScene(ZoneSceneBaker.TestZonePath, scene =>
+            {
+                Transform ground = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.GroundName);
+                Assert.IsNotNull(ground);
+
+                int tilesPerSide = Mathf.RoundToInt(ZoneSceneBaker.TestZoneGroundExtent / ZoneSceneBaker.GroundTile);
+                Assert.AreEqual(tilesPerSide * tilesPerSide, ground.childCount);
+
+                foreach (Transform tile in ground)
+                    AssertIsGroundPrefabInstance(tile, GrayboxZoneGeometry.GrassTilePrefab);
+            });
+        }
+
+        [Test]
+        public void BoundaryWalls_WrapTheZoneAndLeaveEveryPortalGapOpen()
         {
             InScene(ZoneSceneBaker.SafeZonePath, scene =>
             {
@@ -259,17 +338,17 @@ namespace MMO.Tests
                 Assert.IsNotNull(walls);
 
                 int segments = Mathf.RoundToInt(ZoneSceneBaker.SafeZoneGroundExtent / ZoneSceneBaker.GroundTile);
-                Assert.AreEqual(segments * 4 - 2, walls.childCount,
-                    "Four full edges minus the two segments that make the portal gap.");
+                Assert.AreEqual(segments * 4 - 4, walls.childCount,
+                    "Four full edges minus two 4 m gaps, one per SafeZone gate.");
 
                 foreach (Transform wall in walls)
                 {
                     AssertIsGrayboxPrefabInstance(wall);
 
                     Vector3 p = wall.localPosition;
-                    bool onExitEdge = Mathf.Abs(p.z - ZoneSceneBaker.SafeZoneGroundExtent / 2f) < 0.01f;
+                    bool onEdge = Mathf.Abs(Mathf.Abs(p.z) - ZoneSceneBaker.SafeZoneGroundExtent / 2f) < 0.01f;
                     bool inGap = Mathf.Abs(Mathf.Abs(p.x) - ZoneSceneBaker.GroundTile / 2f) < 0.01f;
-                    Assert.IsFalse(onExitEdge && inGap, "The portal gap must stay clear of walls.");
+                    Assert.IsFalse(onEdge && inGap, "Every portal gap must stay clear of walls.");
                 }
             });
         }

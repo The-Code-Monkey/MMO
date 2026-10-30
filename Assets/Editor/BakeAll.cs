@@ -19,7 +19,8 @@ namespace MMO.Editor
             // with correct carving dimensions (fixes walk-through issue).
             CraftingStationBaker.EnsureCraftingStationPrefab();
             LootBagBaker.EnsureLootBagPrefab();
-            ResourceNodeBaker.EnsureResourceNodePrefab();
+            ResourceNodeAssetBaker.Rebuild();
+            ItemIconBaker.Rebuild();
             BankTellerBaker.EnsureBankTellerPrefab();
 
             // Rebuild scenes in an order that matches the expected startup flow.

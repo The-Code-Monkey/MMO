@@ -7,8 +7,9 @@ namespace MMO.UI
 {
     /// <summary>
     /// The inventory grid: one cell per bag square, each carrying an
-    /// <see cref="InventorySlotView"/> so a right-click still reaches the server, and a label the
-    /// grid paints item names into.
+    /// <see cref="InventorySlotView"/> so a right-click still reaches the server, an icon for the
+    /// item's <see cref="ItemDefinition.Icon"/>, and a text label as the fallback for items that
+    /// have no artwork.
     ///
     /// <para>
     /// The whole screen is one subscription. <see cref="Bind"/> attaches to the source's
@@ -45,12 +46,14 @@ namespace MMO.UI
         /// </summary>
         public sealed class Cell
         {
-            internal Cell(int gridX, int gridY, InventorySlotView slot, Image background, Text label)
+            internal Cell(
+                int gridX, int gridY, InventorySlotView slot, Image background, Image icon, Text label)
             {
                 GridX = gridX;
                 GridY = gridY;
                 Slot = slot;
                 Background = background;
+                Icon = icon;
                 Label = label;
             }
 
@@ -66,7 +69,10 @@ namespace MMO.UI
             /// <summary>The cell background, tinted when something covers the cell.</summary>
             public Image Background { get; }
 
-            /// <summary>The label painted with an item name when this cell starts a footprint.</summary>
+            /// <summary>The item artwork, hidden when the item has no icon.</summary>
+            public Image Icon { get; }
+
+            /// <summary>The label painted with an item name when this cell starts a footprint and has no icon.</summary>
             public Text Label { get; }
         }
 
@@ -140,8 +146,18 @@ namespace MMO.UI
                 if (cell.Background != null)
                     cell.Background.color = occupied ? OccupiedCellColor : EmptyCellColor;
 
+                Sprite icon = startsFootprint
+                    ? ItemDefinitionRegistry.Resolve(item.ItemName)?.Icon
+                    : null;
+
+                if (cell.Icon != null)
+                {
+                    cell.Icon.sprite = icon;
+                    cell.Icon.enabled = icon != null;
+                }
+
                 if (cell.Label != null)
-                    cell.Label.text = startsFootprint ? item.ItemName : string.Empty;
+                    cell.Label.text = startsFootprint && icon == null ? item.ItemName : string.Empty;
             }
         }
 
@@ -187,6 +203,19 @@ namespace MMO.UI
             Image background = cellObject.GetComponent<Image>();
             background.color = EmptyCellColor;
 
+            var iconObject = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            RectTransform iconRect = (RectTransform)iconObject.transform;
+            iconRect.SetParent(cellObject.transform, false);
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.offsetMin = new Vector2(4f, 4f);
+            iconRect.offsetMax = new Vector2(-4f, -4f);
+
+            Image icon = iconObject.GetComponent<Image>();
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+            icon.enabled = false;
+
             var labelObject = new GameObject("Label", typeof(RectTransform));
             RectTransform labelRect = (RectTransform)labelObject.transform;
             labelRect.SetParent(cellObject.transform, false);
@@ -212,7 +241,7 @@ namespace MMO.UI
             slot.SetInventory(_source);
             slot.SetCell(gridX, gridY);
 
-            return new Cell(gridX, gridY, slot, background, label);
+            return new Cell(gridX, gridY, slot, background, icon, label);
         }
 
         private void ClearCells()

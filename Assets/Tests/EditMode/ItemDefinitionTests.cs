@@ -69,7 +69,7 @@ namespace MMO.Tests
         {
             foreach (string name in new[]
                      {
-                         "_itemName", "_equipSlot", "_requiredLevel",
+                         "_itemName", "_icon", "_equipSlot", "_requiredLevel",
                          "_gridWidth", "_gridHeight", "_maxHealthBonus", "_maxManaBonus",
                          "_isStackable", "_maxStackSize", "_value",
                      })
@@ -87,7 +87,7 @@ namespace MMO.Tests
         {
             foreach (string name in new[]
                      {
-                         "ItemName", "EquipSlot", "RequiredLevel",
+                         "ItemName", "Icon", "EquipSlot", "RequiredLevel",
                          "GridWidth", "GridHeight", "MaxHealthBonus", "MaxManaBonus",
                          "IsStackable", "MaxStackSize", "Value",
                      })
@@ -120,6 +120,7 @@ namespace MMO.Tests
             _created = ScriptableObject.CreateInstance<ItemDefinition>();
 
             Assert.IsEmpty(_created.ItemName);
+            Assert.IsNull(_created.Icon, "A new item has no artwork until a designer assigns a sprite.");
             Assert.AreEqual(EquipmentSlot.None, _created.EquipSlot,
                 "A fresh asset is a bag item until someone names a wearable slot for it.");
             Assert.AreEqual(0, _created.RequiredLevel);
@@ -188,6 +189,24 @@ namespace MMO.Tests
             Assert.AreEqual("Iron Helm", helm.ItemName);
             Assert.AreEqual(EquipmentSlot.Head, helm.EquipSlot, "The issue places headgear in the Head slot.");
             Assert.Greater(helm.MaxHealthBonus, 0, "The helm is the shipped example of equipment changing a stat cap.");
+        }
+
+        [Test]
+        public void ShippedOreItems_HaveIcons()
+        {
+            foreach (string path in new[]
+                     {
+                         "Assets/Resources/Items/Iron_Ore.asset",
+                         "Assets/Resources/Items/Iron_Ingot.asset",
+                         "Assets/Resources/Items/Copper_Ore.asset",
+                         "Assets/Resources/Items/Tin_Ore.asset",
+                         "Assets/Resources/Items/Cobalt_Ore.asset",
+                         "Assets/Resources/Items/Veridium_Ore.asset",
+                     })
+            {
+                ItemDefinition item = Load(path);
+                Assert.IsNotNull(item.Icon, $"'{path}' needs its UI icon.");
+            }
         }
 
         [Test]

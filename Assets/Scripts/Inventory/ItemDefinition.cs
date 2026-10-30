@@ -25,6 +25,7 @@ namespace MMO.Inventory
     public sealed class ItemDefinition : ScriptableObject
     {
         [SerializeField] private string _itemName = string.Empty;
+        [SerializeField] private Sprite _icon;
         [SerializeField] private EquipmentSlot _equipSlot = EquipmentSlot.None;
         [SerializeField, Min(0)] private int _requiredLevel;
         [SerializeField, Min(1)] private int _gridWidth = 1;
@@ -45,6 +46,12 @@ namespace MMO.Inventory
         /// for the <c>Resources.Load</c> fallback to find it.
         /// </summary>
         public string ItemName => _itemName;
+
+        /// <summary>
+        /// The optional UI sprite for this item. Null falls back to the item's name, so an
+        /// unillustrated item still reads correctly.
+        /// </summary>
+        public Sprite Icon => _icon;
 
         /// <summary>The slot this item is designated to when equipped.</summary>
         public EquipmentSlot EquipSlot => _equipSlot;

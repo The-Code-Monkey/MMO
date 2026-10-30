@@ -50,7 +50,8 @@ with `Assets > Create > MMO > Item Definition`. Fields:
 | Field | Meaning | Line |
 |---|---|---|
 | `ItemName` | Registry key and display name. | `:26` |
-| `EquipSlot` | Which equipment slot it goes in. | `:27` |
+| `Icon` | Optional UI sprite; null falls back to the item name. | `:27` |
+| `EquipSlot` | Which equipment slot it goes in. | `:29` |
 | `RequiredLevel` | Minimum player level to equip. | `:28` |
 | `GridWidth`, `GridHeight` | Footprint in the bag grid (default 1×1). | `:29`, `:30` |
 | `MaxHealthBonus` | Health cap bonus when equipped. | `:31` |
@@ -70,7 +71,9 @@ free — "Bronze Pickaxe" and "Iron Pickaxe" are two items of one kind at two ti
 lives on the item, never in the resource.
 
 Existing items live in `Assets/Resources/Items/` (e.g. `Iron_Ore.asset`, `Iron_Helm.asset`,
-`Broadsword.asset`).
+`Broadsword.asset`). Item artwork lives in `Assets/Textures/Items/`; `Tools > MMO > Rebuild Item
+Icons` imports each image as a UI sprite and matches it to an item by its normalized name
+(`Iron Ore` -> `iron_ore`). Items without a matching image keep a null icon and render as text.
 
 ### Self-registration
 
