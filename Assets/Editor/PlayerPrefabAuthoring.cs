@@ -12,6 +12,11 @@ namespace MMO.Editor
     {
         public const string VisualRootName = "Visuals";
 
+        // The rigged model's origin is at its feet, while the player root is the capsule centre.
+        // Half the 2 m capsule puts the contact point at -1; the sole sits 0.1 below the model
+        // origin, so the visual drops 0.9 to stand the feet on the capsule bottom.
+        private const float VisualFootDrop = -0.9f;
+
         public static void EquipDefaultWeapon(NetworkObject player)
         {
             PlayerCombat combat = player != null ? player.GetComponent<PlayerCombat>() : null;
@@ -54,7 +59,7 @@ namespace MMO.Editor
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(assets.VisualPrefab);
             visual.name = VisualRootName;
             visual.transform.SetParent(player.transform, false);
-            visual.transform.localPosition = Vector3.zero;
+            visual.transform.localPosition = new Vector3(0f, VisualFootDrop, 0f);
             visual.transform.localRotation = Quaternion.identity;
             visual.transform.localScale = Vector3.one;
 
