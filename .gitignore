@@ -43,3 +43,6 @@ crashlytics-build.properties
 /Assets/Resources/PerformanceTestRunSettings.json
 /Assets/packages-merged-link/
 /.ai-game-dev/
+
+# Raw source art (the imported copy lives in Assets/Models/Player)
+/player model/

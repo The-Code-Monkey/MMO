@@ -75,7 +75,7 @@ Inside `MMO.Runtime` the code is organised by feature folder, and each folder ha
 | `Assets/Scripts/Social` | `MMO.Social` | Parties, guilds and the social hub. |
 | `Assets/Scripts/UI` | `MMO.UI` | Code-built screens (Main Menu, HUD). |
 | `Assets/Scripts/Bootstrap` | `MMO.Bootstrap` | The Main Menu boot script and login connector. |
-| `Assets/Scripts/Client` | `MMO.Client` | Client-only camera rig. |
+| `Assets/Scripts/Client` | `MMO.Client` | Client-only camera rig and the cosmetic player visual/animation driver. |
 
 > **A note on `agents.md`.** The project's AI-facing guidelines file talks about four assemblies
 > named `Project.Core`, `Project.Server`, `Project.Client` and `Project.Shared`. That is an
