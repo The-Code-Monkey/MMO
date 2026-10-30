@@ -18,7 +18,7 @@ MonoBehaviour:
   _groundSpeedMultiplier: 1.1
   _flightSpeedMultiplier: 1.1
   _size: 1.3
-  _modelPrefab: {fileID: 0}
+  _modelPrefab: {fileID: 9123491492219522216, guid: d67c2db889565c26cb638ef930c59f01, type: 3}
   _visualOffset: {x: 0, y: -0.9, z: 0}
   _riderOffset: {x: 0, y: 0.7, z: 0}
   _visualYawOffset: 0
