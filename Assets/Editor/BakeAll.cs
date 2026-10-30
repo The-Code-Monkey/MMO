@@ -30,6 +30,11 @@ namespace MMO.Editor
             // Zone scenes get camera rigs injected by ZoneSceneBaker and also
             // reference shared prefabs; rebake them after prefabs.
             ZoneSceneBaker.BuildBoth();
+
+            // Rebuilt prefabs are saved with their old hashes so no intermediate collision is
+            // logged, but the collection still has to be regenerated once to pick up new assets
+            // and to keep its sorted order stable.
+            FishNetPrefabCollectionRefresher.Refresh();
         }
     }
 }

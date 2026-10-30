@@ -18,6 +18,7 @@ again reuses or overwrites its output instead of duplicating it.
 
 | Menu item | Class | What it does |
 |---|---|---|
+| `Tools > MMO > Bake All (Prefabs + Scenes)` | `BakeAll` | Runs every prefab baker, rebuilds the main menu and all four zone scenes, then does one FishNet default-prefab refresh. |
 | `Tools > MMO > Configure URP` | `UrpSetupBaker` | Creates/assigns the URP pipeline and renderer assets. |
 | `Tools > MMO > Rebuild Ground Grass Assets` | `GroundAssetBaker` | Imports the grass maps and builds the `Ground_Grass` material and 2 m prefab. |
 | `Tools > MMO > Rebuild Ground Cobblestone Assets` | `GroundAssetBaker` | Imports the cobblestone maps and builds the `Ground_Cobblestone` material and 2 m prefab. |
@@ -47,6 +48,14 @@ again reuses or overwrites its output instead of duplicating it.
 Each prefab baker follows the same shape: build the object via the matching **runtime factory**,
 save it with `PrefabUtility.SaveAsPrefabAsset`, and destroy the in-scene copy afterwards. The
 runtime factories live in `Assets/Scripts/Net` (see [04](04-networking-and-the-join-flow.md)).
+
+A `NetworkObject` built by a factory carries `AssetPathHash = 0`. Saving it that way makes FishNet
+log a hash collision against every other prefab still at zero, because its incremental
+`AssetPostprocessor` does not rehash a prefab that was overwritten in place. Bakers that rebuild a
+prefab which already exists therefore copy the old hash onto the new object before saving
+(`ResourceNodeAssetBaker.PreserveAssetPathHash`). `BakeAll` finishes with one
+`FishNetPrefabCollectionRefresher.Refresh()` so the default prefab collection is regenerated from
+the final assets, in sorted order, and genuinely new prefabs get their hash.
 
 ### PlayerPrefabBaker
 
