@@ -12,9 +12,9 @@ namespace MMO.Gameplay
     /// their local asset through <see cref="MountDataRegistry"/>.
     ///
     /// <para>
-    /// There is no per-mount prefab. <see cref="MountPrefabFactory"/> builds one generic body from
-    /// <see cref="Size"/> and drops <see cref="ModelPrefab"/> over it, so authoring a new mount is
-    /// "set isFlying/speed/size, point at a model" rather than "build another prefab".
+    /// There is no networked per-mount prefab. <see cref="MountPrefabFactory"/> builds one generic
+    /// body from <see cref="Size"/> and drops <see cref="ModelPrefab"/> over it, so authoring a new
+    /// mount is "set isFlying/speed/size, point at a model" rather than "build another networked prefab".
     /// </para>
     /// </summary>
     [CreateAssetMenu(fileName = "New Mount Data", menuName = "MMO/Mount Data")]
@@ -38,6 +38,21 @@ namespace MMO.Gameplay
         /// <summary>Cosmetic model placed over the generic body; may be left empty.</summary>
         [SerializeField] private GameObject _modelPrefab;
 
+        /// <summary>
+        /// Local offset of the cosmetic model from the player root. The player root is the capsule
+        /// centre, so a model whose origin sits at its feet needs a negative Y offset.
+        /// </summary>
+        [SerializeField] private Vector3 _visualOffset = Vector3.zero;
+
+        /// <summary>
+        /// Local offset applied to the rider's visual while mounted, relative to its unmounted
+        /// position. Lifts the existing character model onto the mount's saddle.
+        /// </summary>
+        [SerializeField] private Vector3 _riderOffset = Vector3.zero;
+
+        /// <summary>Yaw correction for a model that does not face the same axis as the player.</summary>
+        [SerializeField] private float _visualYawOffset;
+
         [SerializeField, Min(0f)] private float _mountCastSeconds = 1.5f;
 
         public string MountName => _mountName;
@@ -54,6 +69,12 @@ namespace MMO.Gameplay
         public float Size => Mathf.Max(0.1f, _size);
 
         public GameObject ModelPrefab => _modelPrefab;
+
+        public Vector3 VisualOffset => _visualOffset;
+
+        public Vector3 RiderOffset => _riderOffset;
+
+        public float VisualYawOffset => _visualYawOffset;
 
         /// <summary>Seconds the server waits between "use mount" and "mounted".</summary>
         public float MountCastSeconds => Mathf.Max(0f, _mountCastSeconds);

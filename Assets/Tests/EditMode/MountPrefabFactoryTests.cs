@@ -40,6 +40,25 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Create_AppliesVisualOffsetAndYaw()
+        {
+            MountData data = NewMount(size: 1f);
+
+            var inspector = new SerializedObject(data);
+            inspector.FindProperty("_visualOffset").vector3Value = new Vector3(0f, -0.9f, 0.25f);
+            inspector.FindProperty("_visualYawOffset").floatValue = 180f;
+            inspector.ApplyModifiedPropertiesWithoutUndo();
+
+            GameObject mount = MountPrefabFactory.Create(data);
+            _created.Add(mount);
+
+            Assert.AreEqual(0f, mount.transform.localPosition.x, 0.0001f);
+            Assert.AreEqual(-0.9f, mount.transform.localPosition.y, 0.0001f);
+            Assert.AreEqual(0.25f, mount.transform.localPosition.z, 0.0001f);
+            Assert.AreEqual(180f, mount.transform.localEulerAngles.y, 0.001f);
+        }
+
+        [Test]
         public void Create_WithAModel_PutsItOverTheGenericBody()
         {
             var model = new GameObject("AuthoredModel");

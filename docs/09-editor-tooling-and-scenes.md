@@ -25,6 +25,7 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Rebuild Ground Worn Cobblestone Assets` | `GroundAssetBaker` | Imports the worn maps and builds the `Path_Cobblestone_Worn` overlay prefab. |
 | `Tools > MMO > Rebuild Building Assets` | `BuildingAssetBaker` | Imports the generic wall and roof-tile maps and builds their materials. |
 | `Tools > MMO > Rebuild Player Character Assets` | `PlayerCharacterAssetBaker` | Imports the rigged character FBX, builds its material, AnimatorController and visual prefab. |
+| `Tools > MMO > Rebuild Donkey Mount Assets` | `DonkeyMountAssetBaker` | Imports the static donkey FBX, builds its URP material, mask and mount prefab, then points `Resources/Mounts/Donkey.asset` at it. |
 | `Tools > MMO > Create Player Prefab` | `PlayerPrefabBaker` | Builds and saves the networked player prefab. |
 | `Tools > MMO > Create Player Prefab And Wire Scene` | `PlayerPrefabBaker` | The above, then wires a `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Target Dummy Prefab` | `TargetDummyBaker` | Builds the training-dummy prefab and wires its spawner. |

@@ -32,6 +32,7 @@ namespace MMO.Client
         private Animator _animator;
         private Transform _root;
         private PlayerMover _mover;
+        private PlayerMount _mount;
         private PlayerStats _stats;
         private NetworkObject _networkObject;
         private Vector3 _lastRootPosition;
@@ -43,6 +44,7 @@ namespace MMO.Client
             _animator = GetComponent<Animator>();
             _root = transform.parent;
             _mover = GetComponentInParent<PlayerMover>();
+            _mount = GetComponentInParent<PlayerMount>();
             _stats = GetComponentInParent<PlayerStats>();
             _networkObject = GetComponentInParent<NetworkObject>();
         }
@@ -89,7 +91,9 @@ namespace MMO.Client
             var horizontal = new Vector3(displacement.x, 0f, displacement.z);
             float speed = horizontal.magnitude / deltaTime;
             float maxSpeed = _mover != null ? Mathf.Max(0.01f, _mover.MaxSpeed) : 6f;
-            float targetSpeed = PlayerLocomotionMath.NormalizeSpeed(speed, maxSpeed);
+            float targetSpeed = _mount != null && _mount.IsMounted
+                ? 0f
+                : PlayerLocomotionMath.NormalizeSpeed(speed, maxSpeed);
             _speed = Mathf.Lerp(_speed, targetSpeed, 1f - Mathf.Exp(-_speedDamping * deltaTime));
             _animator.SetFloat(SpeedParameter, _speed);
 

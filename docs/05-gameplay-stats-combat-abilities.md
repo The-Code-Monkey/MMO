@@ -389,13 +389,15 @@ Auras are session-only in this issue; there is no buff-bar UI and no aura persis
 
 ## 6. Mounts
 
-Mounts are data-only and server-authoritative. There is **no per-mount prefab**: a mount is a
-`MountData` asset (is it flying, its ground/flight speed multipliers, its size, and a cosmetic model)
-and the code builds one generic body for it.
+Mounts are data-only and server-authoritative. There is **no networked per-mount prefab**: a mount
+is a `MountData` asset (is it flying, its ground/flight speed multipliers, its size, and an optional
+cosmetic model prefab) and the code builds one generic body for it.
 
 - `MountData` (`Assets/Scripts/Gameplay/MountData.cs:21`) — private `[SerializeField]` data with
   read-only properties, like `AbilityData`. `ItemName` is the inventory item that summons it and the
-  key both ends resolve by.
+  key both ends resolve by. `VisualOffset` grounds the cosmetic model (the player root is the
+  capsule centre), `RiderOffset` lifts the player visual onto the saddle, and `VisualYawOffset`
+  corrects a model that does not face the player's forward axis.
 - `MountDataRegistry` (`Assets/Scripts/Gameplay/MountDataRegistry.cs`) — resolves `ItemName` to the
   local asset, falling back to `Resources/Mounts`.
 - `MountStateMachine` (`Assets/Scripts/Gameplay/MountStateMachine.cs`) — the pure core:
@@ -415,10 +417,17 @@ and the code builds one generic body for it.
   already carry or wear one. The item is the authority for having the mount, and the player must
   equip it into the mount slot before **G** will work.
 - Shipped donkey data: `Assets/Resources/Items/Donkey.asset` (the item) and
-  `Assets/Resources/Mounts/Donkey.asset` (ground mount, 1.1× speed, 5 s to mount or dismount).
+  `Assets/Resources/Mounts/Donkey.asset` (ground mount, 1.1× speed, 5 s to mount or dismount). The
+  donkey FBX is a static mesh — no skeleton or clips — rendered by the baked
+  `Assets/Prefabs/DonkeyMount.prefab`. `PlayerCharacterVisual` keeps the rider in its idle pose
+  while mounted.
+- `DonkeyMountAssetBaker` (`Assets/Editor/DonkeyMountAssetBaker.cs`) — imports the FBX, builds the
+  URP material/mask and prefab, and points the donkey `MountData` at them. Run
+  `Tools > MMO > Rebuild Donkey Mount Assets` (also part of Bake All) after a fresh checkout, because
+  Unity regenerates `.meta` GUIDs on import.
 - `MountPrefabFactory` (`Assets/Scripts/Gameplay/MountPrefabFactory.cs`) — builds the generic capsule
-  scaled by `Size`, strips colliders (the player's own capsule stays the only physics surface), and
-  drops `ModelPrefab` over it when set.
+  scaled by `Size`, applies the visual offset/yaw, strips colliders (the player's own capsule stays
+  the only physics surface), and drops `ModelPrefab` over it when set.
 - `PlayerMover` gains two server-only hooks: `SetSpeedMultiplier(float)` (derived from mount state, so
   a client cannot set its own speed) and `SetFlight(bool)` (ground X/Z NavMesh movement versus
   volumetric X/Y/Z straight-line movement). There is no gravity simulation to toggle; flight stops
@@ -440,7 +449,8 @@ SERVER  sender owns object? → MountDataRegistry.Resolve(itemName)
         → GetEquipped(EquipmentSlot.Mount).ItemName == itemName? → MountStateMachine.RequestMount(now)
         → Update ticks Mounting → Mounted
         → PlayerMover.SetSpeedMultiplier(ground) ; SyncVar State/MountItemName replicate
-CLIENT  OnChange → MountPrefabFactory builds the cosmetic body under the player
+CLIENT  OnChange → MountPrefabFactory builds the cosmetic body under the player;
+        PlayerMount applies the visual/rider offsets and copies the rider's facing each frame
 FLYING  RequestTakeoff → server checks ZoneRiskConfig.ResolveAllowsFlyingAt(position)
         → PlayerMover.SetFlight(true), flight multiplier; landing snaps to the NavMesh
 ```
@@ -469,5 +479,6 @@ stow the excess.
 - **Add a mount.** Create an `Assets > Create > MMO > Mount Data` asset, set `ItemName` to the
   inventory item that summons it, then isFlying / speed multipliers / size and (optionally) a model.
   Save it under `Assets/Resources/Mounts` so the registry finds it. Give the matching item asset
-  `EquipSlot = Mount`; a mount only works while worn in that slot. No prefab and no mount-specific
-  code needed.
+  `EquipSlot = Mount`; a mount only works while worn in that slot. No mount-specific code is needed.
+  If the model has no skeleton, bake a standalone prefab (as `DonkeyMountAssetBaker` does) and set
+  `VisualOffset` / `RiderOffset` so it stands on the player's feet plane and sits the rider on it.
