@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FishNet.Object;
 using MMO.Editor;
 using MMO.Gameplay;
@@ -228,6 +229,48 @@ namespace MMO.Tests
             {
                 var prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
                 Assert.IsNotNull(prefab, $"Node prefab missing at '{path}'.");
+            }
+        }
+
+        [Test]
+        public void EveryNodePrefab_HasAUniqueFishNetAssetPathHash()
+        {
+            var paths = new Dictionary<ulong, string>();
+
+            foreach (string path in ResourceNodeAssetBaker.AllPrefabPaths)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
+                Assert.IsNotNull(prefab, $"Node prefab missing at '{path}'.");
+                Assert.AreNotEqual(0ul, prefab.AssetPathHash,
+                    $"'{path}' has no FishNet AssetPathHash; a build will log a hash collision.");
+
+                Assert.IsFalse(paths.TryGetValue(prefab.AssetPathHash, out string other),
+                    $"'{path}' and '{other}' share FishNet AssetPathHash {prefab.AssetPathHash}.");
+                paths.Add(prefab.AssetPathHash, path);
+            }
+        }
+
+        [Test]
+        public void RebuildingNodePrefabs_PreservesTheirFishNetAssetPathHash()
+        {
+            var before = new Dictionary<string, ulong>();
+            foreach (string path in ResourceNodeAssetBaker.AllPrefabPaths)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
+                Assert.IsNotNull(prefab, $"Node prefab missing at '{path}'.");
+                before.Add(path, prefab.AssetPathHash);
+            }
+
+            ResourceNodeAssetBaker.Rebuild();
+
+            foreach (string path in ResourceNodeAssetBaker.AllPrefabPaths)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
+                Assert.IsNotNull(prefab, $"Node prefab missing at '{path}'.");
+                Assert.AreNotEqual(0ul, prefab.AssetPathHash,
+                    $"'{path}' lost its FishNet AssetPathHash during a rebuild.");
+                Assert.AreEqual(before[path], prefab.AssetPathHash,
+                    $"'{path}' changed FishNet AssetPathHash during a rebuild.");
             }
         }
 
