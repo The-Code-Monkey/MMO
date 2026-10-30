@@ -60,6 +60,11 @@ namespace MMO.Client
             Instance = this;
             _settings = new SettingsStore().Load();
             BuildPool();
+
+            // Audio is created with the effects endpoint: both are presentation for the same
+            // accepted cast, and both must exist before the first impact arrives.
+            AudioService.Ensure(transform);
+            ApplySettings(_settings);
         }
 
         /// <summary>Plays the placeholder burst for one accepted cast.</summary>
@@ -72,11 +77,15 @@ namespace MMO.Client
                 return;
 
             _pool?.Rent(position, DefaultLifetime);
+            AudioService.Instance?.PlayImpact(position, isOwnCast ? 10 : 0);
         }
 
         /// <summary>Swaps the presentation settings, e.g. when the settings panel applies a change.</summary>
         public void ApplySettings(SettingsModel settings)
-            => _settings = settings ?? SettingsModel.Defaults();
+        {
+            _settings = settings ?? SettingsModel.Defaults();
+            AudioService.Instance?.ApplySettings(_settings);
+        }
 
         private void BuildPool()
         {
