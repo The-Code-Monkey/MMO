@@ -279,13 +279,22 @@ namespace MMO.Gameplay
         /// </summary>
         private void HandleMountKey()
         {
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard == null || !keyboard.gKey.wasPressedThisFrame)
-                return;
+            ClientInput input = ClientInput.Current;
+            if (input != null)
+            {
+                if (!input.WasPressed(GameAction.Mount))
+                    return;
+            }
+            else
+            {
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null || !keyboard.gKey.wasPressedThisFrame)
+                    return;
 
-            // Typing "g" into chat or a price field must not mount.
-            if (IsTypingInUi())
-                return;
+                // Typing "g" into chat or a price field must not mount.
+                if (IsTypingInUi())
+                    return;
+            }
 
             if (State == MountState.Unmounted)
             {

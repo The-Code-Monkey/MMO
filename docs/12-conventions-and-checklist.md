@@ -63,6 +63,9 @@ rules method, stop and pass `now` in instead.
   only writer.
 - **Replication drives the UI through events**, never polling. Views subscribe to `VitalsChanged`,
   `SlotsChanged`, `ContainersChanged`, `StateChanged`, etc. No view defines `Update`.
+- **Gameplay keys are read through `ClientInput`**, not checked directly, so a rebind reaches every
+  consumer. Local preference files (settings and bindings) fall back to defaults on a missing,
+  corrupt or unwritable file and never stop the client.
 
 ## 4. Data is data
 

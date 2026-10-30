@@ -1,4 +1,5 @@
 using MMO.Auction;
+using MMO.Client;
 using MMO.Inventory;
 using MMO.Social;
 using UnityEngine;
@@ -33,7 +34,11 @@ namespace MMO.UI
 
         private void Update()
         {
-            if (UInput.GetKeyDown(_openKey))
+            bool pressed = ClientInput.Current != null
+                ? ClientInput.Current.WasPressed(GameAction.Auction)
+                : UInput.GetKeyDown(_openKey);
+
+            if (pressed)
             {
                 ToggleAuctionHouse();
             }
