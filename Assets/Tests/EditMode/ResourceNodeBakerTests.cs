@@ -161,7 +161,7 @@ namespace MMO.Tests
             NetworkObject prefab = ResourceNodeBaker.EnsureResourceNodePrefab();
 
             Transform full = prefab.transform.Find("Visuals/IronOreMesh");
-            Transform empty = prefab.transform.Find("Visuals/IronOreEmptyMesh");
+            Transform empty = prefab.transform.Find("Visuals/StoneOreEmptyMesh");
 
             Assert.IsNotNull(full, "The node needs its full ore model.");
             Assert.IsNotNull(empty, "The node needs its depleted ore model.");

@@ -20,36 +20,38 @@ namespace MMO.Editor
         public const string TextureFolder = "Assets/Textures/Resources";
         public const string MaterialFolder = "Assets/Materials/Resources";
         public const string ModelFolder = "Assets/Models/Resources/IronOre";
+        public const string StoneModelFolder = "Assets/Models/Resources/StoneOre";
 
         public const string OreModelPath = ModelFolder + "/IronOre.fbx";
-        public const string OreEmptyModelPath = ModelFolder + "/IronOreEmpty.fbx";
+        public const string StoneEmptyModelPath = StoneModelFolder + "/StoneOreEmpty.fbx";
         public const string OreLargeModelPath = ModelFolder + "/IronOreLarge.fbx";
-        public const string OreLargeEmptyModelPath = ModelFolder + "/IronOreLargeEmpty.fbx";
+        public const string StoneLargeEmptyModelPath = StoneModelFolder + "/StoneOreLargeEmpty.fbx";
         public const string OreDiffusePath = TextureFolder + "/IronOre/IronOre_Diffuse.png";
         public const string OreNormalPath = TextureFolder + "/IronOre/IronOre_Normal.png";
         public const string OreMaskPath = TextureFolder + "/IronOre/IronOre_Mask.png";
         public const string OreEmissivePath = TextureFolder + "/IronOre/IronOre_Emissive.png";
         public const string OreMaterialPath = MaterialFolder + "/IronOre.mat";
 
-        public const string OreEmptyDiffusePath = TextureFolder + "/IronOreEmpty/IronOreEmpty_Diffuse.png";
-        public const string OreEmptyNormalPath = TextureFolder + "/IronOreEmpty/IronOreEmpty_Normal.png";
-        public const string OreEmptyMaskPath = TextureFolder + "/IronOreEmpty/IronOreEmpty_Mask.png";
-        public const string OreEmptyMaterialPath = MaterialFolder + "/IronOreEmpty.mat";
+        public const string StoneEmptyDiffusePath = TextureFolder + "/StoneOreEmpty/StoneOreEmpty_Diffuse.png";
+        public const string StoneEmptyNormalPath = TextureFolder + "/StoneOreEmpty/StoneOreEmpty_Normal.png";
+        public const string StoneEmptyMaskPath = TextureFolder + "/StoneOreEmpty/StoneOreEmpty_Mask.png";
+        public const string StoneEmptyMaterialPath = MaterialFolder + "/StoneOreEmpty.mat";
 
         public const string OreLargeDiffusePath = TextureFolder + "/IronOreLarge/IronOreLarge_Diffuse.png";
         public const string OreLargeNormalPath = TextureFolder + "/IronOreLarge/IronOreLarge_Normal.png";
         public const string OreLargeMaskPath = TextureFolder + "/IronOreLarge/IronOreLarge_Mask.png";
         public const string OreLargeMaterialPath = MaterialFolder + "/IronOreLarge.mat";
 
-        public const string OreLargeEmptyDiffusePath = TextureFolder + "/IronOreLargeEmpty/IronOreLargeEmpty_Diffuse.png";
-        public const string OreLargeEmptyNormalPath = TextureFolder + "/IronOreLargeEmpty/IronOreLargeEmpty_Normal.png";
-        public const string OreLargeEmptyMaskPath = TextureFolder + "/IronOreLargeEmpty/IronOreLargeEmpty_Mask.png";
-        public const string OreLargeEmptyMaterialPath = MaterialFolder + "/IronOreLargeEmpty.mat";
+        public const string StoneLargeEmptyDiffusePath = TextureFolder + "/StoneOreLargeEmpty/StoneOreLargeEmpty_Diffuse.png";
+        public const string StoneLargeEmptyNormalPath = TextureFolder + "/StoneOreLargeEmpty/StoneOreLargeEmpty_Normal.png";
+        public const string StoneLargeEmptyMaskPath = TextureFolder + "/StoneOreLargeEmpty/StoneOreLargeEmpty_Mask.png";
+        public const string StoneLargeEmptyMaterialPath = MaterialFolder + "/StoneOreLargeEmpty.mat";
 
         public const string LargeDefinitionPath = "Assets/Resources/ResourceDefinitions/Iron_Ore_Large.asset";
         public const string LargePrefabPath = "Assets/Prefabs/ResourceNode_Large.prefab";
 
         private const float OreTargetHeight = 1.6f;
+        private const float ModelYaw = 180f;
         private const float LargeTargetHeight = 2.4f;
         private const int LargeDropAmount = 15;
 
@@ -63,25 +65,26 @@ namespace MMO.Editor
             }
 
             GroundAssetBaker.EnsureFolder(TextureFolder + "/IronOre");
-            GroundAssetBaker.EnsureFolder(TextureFolder + "/IronOreEmpty");
+            GroundAssetBaker.EnsureFolder(TextureFolder + "/StoneOreEmpty");
             GroundAssetBaker.EnsureFolder(TextureFolder + "/IronOreLarge");
-            GroundAssetBaker.EnsureFolder(TextureFolder + "/IronOreLargeEmpty");
+            GroundAssetBaker.EnsureFolder(TextureFolder + "/StoneOreLargeEmpty");
             GroundAssetBaker.EnsureFolder(MaterialFolder);
             GroundAssetBaker.EnsureFolder(ModelFolder);
+            GroundAssetBaker.EnsureFolder(StoneModelFolder);
 
             ConfigureTextures(
                 OreDiffusePath, OreNormalPath, OreMaskPath, OreEmissivePath);
             ConfigureTextures(
-                OreEmptyDiffusePath, OreEmptyNormalPath, OreEmptyMaskPath, null);
+                StoneEmptyDiffusePath, StoneEmptyNormalPath, StoneEmptyMaskPath, null);
             ConfigureTextures(
                 OreLargeDiffusePath, OreLargeNormalPath, OreLargeMaskPath, null);
             ConfigureTextures(
-                OreLargeEmptyDiffusePath, OreLargeEmptyNormalPath, OreLargeEmptyMaskPath, null);
+                StoneLargeEmptyDiffusePath, StoneLargeEmptyNormalPath, StoneLargeEmptyMaskPath, null);
 
             ConfigureModel(OreModelPath);
-            ConfigureModel(OreEmptyModelPath);
+            ConfigureModel(StoneEmptyModelPath);
             ConfigureModel(OreLargeModelPath);
-            ConfigureModel(OreLargeEmptyModelPath);
+            ConfigureModel(StoneLargeEmptyModelPath);
 
             Material ore = EnsureOreMaterial();
             Material oreEmpty = EnsureEmptyMaterial();
@@ -138,11 +141,11 @@ namespace MMO.Editor
         private static Material EnsureEmptyMaterial()
         {
             Material oreEmpty = GroundAssetBaker.EnsureMaterial(
-                OreEmptyMaterialPath,
-                "IronOreEmpty",
-                OreEmptyDiffusePath,
-                OreEmptyNormalPath,
-                OreEmptyMaskPath);
+                StoneEmptyMaterialPath,
+                "StoneOreEmpty",
+                StoneEmptyDiffusePath,
+                StoneEmptyNormalPath,
+                StoneEmptyMaskPath);
             oreEmpty.SetFloat("_Smoothness", 1f);
             oreEmpty.SetFloat("_SmoothnessTextureChannel", 0f);
             oreEmpty.DisableKeyword("_EMISSION");
@@ -172,11 +175,11 @@ namespace MMO.Editor
         private static Material EnsureLargeEmptyMaterial()
         {
             Material oreLargeEmpty = GroundAssetBaker.EnsureMaterial(
-                OreLargeEmptyMaterialPath,
-                "IronOreLargeEmpty",
-                OreLargeEmptyDiffusePath,
-                OreLargeEmptyNormalPath,
-                OreLargeEmptyMaskPath);
+                StoneLargeEmptyMaterialPath,
+                "StoneOreLargeEmpty",
+                StoneLargeEmptyDiffusePath,
+                StoneLargeEmptyNormalPath,
+                StoneLargeEmptyMaskPath);
             oreLargeEmpty.SetFloat("_Smoothness", 1f);
             oreLargeEmpty.SetFloat("_SmoothnessTextureChannel", 0f);
             oreLargeEmpty.DisableKeyword("_EMISSION");
@@ -223,7 +226,7 @@ namespace MMO.Editor
                     RemoveComponent<MeshFilter>(built.gameObject);
                     RemoveComponent<MeshRenderer>(built.gameObject);
                     ApplyVisuals(
-                        built.transform, ore, oreEmpty, OreModelPath, OreEmptyModelPath, OreTargetHeight,
+                        built.transform, ore, oreEmpty, OreModelPath, StoneEmptyModelPath, OreTargetHeight,
                         out GameObject full, out GameObject empty);
                     built.GetComponent<ResourceNode>()?.SetVisuals(full, empty);
                     StripChildColliders(built.gameObject);
@@ -262,7 +265,7 @@ namespace MMO.Editor
                 }
 
                 ApplyVisuals(
-                    contents.transform, ore, oreEmpty, OreModelPath, OreEmptyModelPath, OreTargetHeight,
+                    contents.transform, ore, oreEmpty, OreModelPath, StoneEmptyModelPath, OreTargetHeight,
                     out GameObject full, out GameObject empty);
                 contents.GetComponent<ResourceNode>()?.SetVisuals(full, empty);
                 StripChildColliders(contents);
@@ -288,7 +291,7 @@ namespace MMO.Editor
                 RemoveComponent<MeshFilter>(built.gameObject);
                 RemoveComponent<MeshRenderer>(built.gameObject);
                 ApplyVisuals(
-                    built.transform, oreLarge, oreLargeEmpty, OreLargeModelPath, OreLargeEmptyModelPath,
+                    built.transform, oreLarge, oreLargeEmpty, OreLargeModelPath, StoneLargeEmptyModelPath,
                     LargeTargetHeight, out GameObject full, out GameObject empty);
                 built.GetComponent<ResourceNode>()?.SetVisuals(full, empty);
 
@@ -366,7 +369,7 @@ namespace MMO.Editor
                 1f / Mathf.Max(rootScale.z, 0.0001f));
 
             full = BuildModel(root, container.transform, fullModelPath, "IronOreMesh", ore, targetHeight);
-            empty = BuildModel(root, container.transform, emptyModelPath, "IronOreEmptyMesh", oreEmpty, targetHeight);
+            empty = BuildModel(root, container.transform, emptyModelPath, "StoneOreEmptyMesh", oreEmpty, targetHeight);
 
             full.SetActive(true);
             empty.SetActive(false);
@@ -397,7 +400,7 @@ namespace MMO.Editor
             model.name = modelName;
             model.transform.localPosition = Vector3.zero;
             // Compose the yaw with the FBX axis-conversion rotation instead of replacing it.
-            model.transform.localRotation = Quaternion.Euler(0f, 0f, 0f) * model.transform.localRotation;
+            model.transform.localRotation = Quaternion.Euler(0f, ModelYaw, 0f) * model.transform.localRotation;
 
             foreach (Collider collider in model.GetComponentsInChildren<Collider>(true))
                 Object.DestroyImmediate(collider);

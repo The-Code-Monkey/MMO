@@ -24,9 +24,6 @@ namespace MMO.Editor
             {
                 AddBankTellerMarker(markers, 1, new Vector3(2f, tellerY, -4f), BankKind.Personal);
                 AddBankTellerMarker(markers, 2, new Vector3(4f, tellerY, -4f), BankKind.Guild);
-                AddNodeMarker(markers, 1, new Vector3(-15f, nodeY, 5f));
-                AddNodeMarker(markers, 2, new Vector3(-15f, nodeY, -4f));
-                AddNodeMarker(markers, 3, new Vector3(15f, nodeY, 8f));
                 return;
             }
 

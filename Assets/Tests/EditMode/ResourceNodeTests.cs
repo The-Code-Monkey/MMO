@@ -182,6 +182,40 @@ namespace MMO.Tests
             Assert.Greater(distance, ResourceNodePrefabFactory.DefaultDepth / 2f,
                 "The stand-off must clear the body's half-depth, or the walk ends inside the vein.");
         }
+
+        [Test]
+        public void StandOffPosition_StandsInFrontOfTheNode()
+        {
+            ResourceNode node = AttachNode();
+            node.transform.position = new Vector3(3f, 0.6f, -2f);
+            node.transform.localRotation = Quaternion.Euler(0f, 30f, 0f);
+
+            float forwardOffset = Vector3.Dot(
+                node.StandOffPosition - node.transform.position,
+                node.transform.forward);
+
+            Assert.Greater(forwardOffset, 0f,
+                "The player must stand on the node's front side, not behind it.");
+        }
+
+        [Test]
+        public void StandOffPositionFrom_StaysOnTheGatherersSide()
+        {
+            ResourceNode node = AttachNode();
+            node.transform.position = new Vector3(3f, 0.6f, -2f);
+
+            Vector3 gathererPosition = node.transform.position + new Vector3(5f, 0f, -5f);
+            Vector3 standOff = node.StandOffPositionFrom(gathererPosition);
+
+            Assert.Greater(
+                Vector3.Dot(standOff - node.transform.position, gathererPosition - node.transform.position),
+                0f,
+                "The player must walk to the near side, not around to the far side.");
+            Assert.Less(
+                Vector3.Distance(node.transform.position, standOff),
+                node.InteractRange,
+                "The near-side stand-off must remain inside the gathering reach.");
+        }
         #endregion
 
         #region Server authority.

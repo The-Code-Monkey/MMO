@@ -318,7 +318,7 @@ namespace MMO.Client
 
             // Same sampled point the mover is asked for and the server samples: the marker and
             // the arrival check would otherwise disagree by the sampling radius.
-            Vector3 destination = node.StandOffPosition;
+            Vector3 destination = node.StandOffPositionFrom(transform.position);
             if (NavMesh.SamplePosition(destination, out NavMeshHit navHit, 1f, NavMesh.AllAreas))
                 destination = navHit.position;
 

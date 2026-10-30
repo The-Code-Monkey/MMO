@@ -111,7 +111,24 @@ namespace MMO.Gameplay
         /// <see cref="InteractRange"/> so the click that walked them here can start the session.
         /// </summary>
         public Vector3 StandOffPosition =>
-            transform.position - transform.forward * Mathf.Min(StandOffDistance, InteractRange * 0.75f);
+            transform.position + transform.forward * Mathf.Min(StandOffDistance, InteractRange * 0.75f);
+
+        /// <summary>
+        /// Where a player at <paramref name="gathererPosition"/> should stand: the same
+        /// stand-off distance, but on the side of the node the player is already on. Walking
+        /// around the vein to a fixed face reads as the wrong side.
+        /// </summary>
+        public Vector3 StandOffPositionFrom(Vector3 gathererPosition)
+        {
+            Vector3 direction = gathererPosition - transform.position;
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude < 0.0001f)
+                direction = transform.forward;
+
+            direction.Normalize();
+            return transform.position + direction * Mathf.Min(StandOffDistance, InteractRange * 0.75f);
+        }
 
         /// <summary>
         /// Metres from the node's centre to its standing spot — clear of the body, like the
