@@ -193,6 +193,38 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void EnsurePlayerPrefab_CarriesTheRiggedCharacterVisual()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            Transform visual = prefab.transform.Find(PlayerPrefabAuthoring.VisualRootName);
+            Assert.IsNotNull(visual, "The baked player must carry the cosmetic character model.");
+
+            Animator animator = visual.GetComponentInChildren<Animator>(true);
+            Assert.IsNotNull(animator, "The character visual needs an Animator.");
+            Assert.IsNotNull(animator.avatar, "A humanoid model without an avatar cannot play its clips.");
+            Assert.IsTrue(animator.avatar.isHuman, "The character rig must import as Humanoid.");
+            Assert.IsNotNull(animator.runtimeAnimatorController,
+                "The visual needs the generated locomotion controller.");
+
+            Assert.IsNotNull(visual.GetComponentInChildren<SkinnedMeshRenderer>(true),
+                "The character model must render as a skinned mesh.");
+
+            Assert.AreEqual(1, visual.GetComponentsInChildren<PlayerCharacterVisual>(true).Length,
+                "Exactly one visual driver should animate the model.");
+        }
+
+        [Test]
+        public void EnsurePlayerPrefab_HidesThePrimitiveCapsuleRenderer()
+        {
+            NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
+
+            var capsule = prefab.GetComponent<MeshRenderer>();
+            Assert.IsNotNull(capsule, "The primitive mesh is kept for compatibility with the factory.");
+            Assert.IsFalse(capsule.enabled, "The capsule must not render through the character model.");
+        }
+
+        [Test]
         public void EnsurePlayerPrefab_ProducesANetworkObject()
         {
             Assert.IsNotNull(PlayerPrefabBaker.EnsurePlayerPrefab(),

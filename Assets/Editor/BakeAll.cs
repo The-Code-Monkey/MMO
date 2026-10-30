@@ -12,6 +12,7 @@ namespace MMO.Editor
         {
             // Bake prefabs first. Rebaking prefabs changes their internal fileIDs,
             // so any scenes that reference them must be rebaked afterwards.
+            PlayerCharacterAssetBaker.EnsureAssets();
             PlayerPrefabBaker.EnsurePlayerPrefab();
             TargetDummyBaker.EnsureTargetDummyPrefab();
 
