@@ -74,6 +74,25 @@ namespace MMO.Client
         }
 
         /// <summary>
+        /// The world point under the mouse, used as the cast target for ability clicks and
+        /// hotkeys. Falls back to a point ahead of the player when there is no camera or hit.
+        /// </summary>
+        public Vector3 AimPoint()
+        {
+            if (_mainCam == null)
+                _mainCam = Camera.main;
+
+            if (_mainCam == null)
+                return transform.position + transform.forward * 5f;
+
+            Vector2 mousePosition = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
+            Ray ray = _mainCam.ScreenPointToRay(mousePosition);
+            return Physics.Raycast(ray, out RaycastHit hit, 1000f)
+                ? hit.point
+                : ray.GetPoint(20f);
+        }
+
+        /// <summary>
         /// Clears the destination marker once the walk is over. The decision lives in
         /// <see cref="ClickToMoveMarkerTracker"/>: a direct arrival clears it at once, and a
         /// player that has stopped moving clears it too — the server owns the walk and stops on

@@ -125,6 +125,7 @@ windows. The useful methods are:
 | `DialogueView` | `Assets/Scripts/UI/DialogueView.cs` | `PlayerDialogue` | Speaker, text and one button per server-sent dialogue choice. |
 | `ZoneTransferPromptView` | `Assets/Scripts/UI/ZoneTransferPromptView.cs` | — | Bottom-centre "To switch to zone X, press E" prompt, driven by `PlayerZoneTransfer`. |
 | `BankFrameView` | `Assets/Scripts/UI/BankFrameView.cs` | `IBankSource` | The generic bank window: bank grid + currency strip left, backpack right; optional guild tabs and rank editor. |
+| `SettingsPanelView` | `Assets/Scripts/UI/SettingsPanelView.cs` | `ClientInput` | Quality, volumes, ally-effect toggle, interpolation and rebind rows. Built concealed and toggled with the settings action. |
 
 How the views work:
 

@@ -28,6 +28,7 @@ If you only have ten minutes, read [01-architecture-overview](01-architecture-ov
 | 14 | [Server authority hardening](14-server-authority-hardening.md) | Anti-cheat: server-authoritative movement, line-of-sight raycasts, and the item-dupe guard. |
 | 15 | [Content systems: quests and dialogue](15-content-systems.md) | Quest data and progress, objective keys, server-walked dialogue and the minimal reader. |
 | 16 | [Direct trade and guild territory](16-trading-and-territory.md) | No-escrow player trade, the `ClaimFlag` scene volume, vulnerability windows and capture CAS. |
+| 17 | [Client performance and settings](17-client-performance-and-settings.md) | Pooled combat VFX, spatial audio with a voice cap, rebindable input, and local settings. |
 
 ## The one idea to remember
 

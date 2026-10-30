@@ -71,7 +71,7 @@ namespace MMO.Client
 
             ShowPrompt(gate);
 
-            if (!IsTyping() && Input.GetKeyDown(KeyCode.E))
+            if (WasInteractPressed())
             {
                 _nextRequestTime = Time.time + RequestCooldownSeconds;
                 HidePrompt();
@@ -153,6 +153,14 @@ namespace MMO.Client
         /// <summary>
         /// E is also a letter: while a text field owns focus, the press belongs to the field.
         /// </summary>
+        private static bool WasInteractPressed()
+        {
+            ClientInput input = ClientInput.Current;
+            return input != null
+                ? input.WasPressed(GameAction.Interact)
+                : !IsTyping() && Input.GetKeyDown(KeyCode.E);
+        }
+
         private static bool IsTyping()
         {
             GameObject selected = EventSystem.current != null

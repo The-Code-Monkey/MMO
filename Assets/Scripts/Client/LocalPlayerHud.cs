@@ -38,6 +38,9 @@ namespace MMO.Client
         private NetworkHud _hud;
         private PlayerBank _bank;
         private IBankSource _bankSource;
+        private ClientInput _input;
+        private ClientEffects _effects;
+        private SettingsPanelView _settingsPanel;
 
         /// <summary>This client's HUD, or null when none was built (a remote player, or a server).</summary>
         public NetworkHud Hud => _hud;
@@ -92,10 +95,29 @@ namespace MMO.Client
         /// </summary>
         private void Update()
         {
-            if (_hud == null || _hud.TradeFrame == null)
+            if (_input != null && _input.WasPressed(GameAction.OpenSettings))
+                _settingsPanel?.Toggle();
+
+            if (_hud == null)
                 return;
 
-            if (Input.GetKeyDown(_hud.TradeFrame.OpenKey))
+            if (_input != null)
+            {
+                for (int i = 0; i < GameActions.Abilities.Length; i++)
+                {
+                    if (_input.WasPressed(GameActions.Abilities[i]))
+                        _hud.ActionBar?.HandleSlotClicked(i);
+                }
+            }
+
+            if (_hud.TradeFrame == null)
+                return;
+
+            bool tradePressed = _input != null
+                ? _input.WasPressed(GameAction.Trade)
+                : Input.GetKeyDown(_hud.TradeFrame.OpenKey);
+
+            if (tradePressed)
                 _hud.TradeFrame.OpenNearest();
         }
 
@@ -130,6 +152,15 @@ namespace MMO.Client
                 dialogue: GetComponent<PlayerDialogue>(),
                 createTradeFrame: true);
 
+            // Presentation for every accepted cast this client sees, built on the owner's player
+            // object so a dedicated server and remote copies never create a pool.
+            _effects = ClientEffects.Ensure(transform);
+            _input = ClientInput.Ensure(transform);
+            _settingsPanel = SettingsPanelFactory.Create(_hud.transform, _input);
+
+            // Ability clicks and hotkeys now aim at the mouse rather than the world origin.
+            _hud.ActionBar?.SetCastTarget(AimPoint);
+
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
             _hud.BindTrade(GetComponent<PlayerTrade>(), GetComponent<PlayerInventory>());
 
@@ -144,6 +175,14 @@ namespace MMO.Client
         /// The server accepted a teller open: build the matching bank source and show the window.
         /// A guild teller also passes the guild so the rank editor appears.
         /// </summary>
+        private Vector3 AimPoint()
+        {
+            PlayerClickToMove clickToMove = GetComponent<PlayerClickToMove>();
+            return clickToMove != null
+                ? clickToMove.AimPoint()
+                : transform.position + transform.forward * 5f;
+        }
+
         private void OnBankOpened(BankKind kind)
         {
             if (_hud == null)
@@ -180,6 +219,20 @@ namespace MMO.Client
 
             _bankSource?.Unsubscribe();
             _bankSource = null;
+
+            _settingsPanel = null;
+
+            if (_input != null)
+            {
+                Destroy(_input.gameObject);
+                _input = null;
+            }
+
+            if (_effects != null)
+            {
+                Destroy(_effects.gameObject);
+                _effects = null;
+            }
 
             // Destroying the root runs NetworkHud.OnDestroy, which unbinds every screen first; the
             // reference is cleared so a later ownership change can build a fresh HUD.
