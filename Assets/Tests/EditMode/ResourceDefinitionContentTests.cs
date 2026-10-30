@@ -114,11 +114,11 @@ namespace MMO.Tests
 
             Assert.IsNotNull(prefab, "The large iron-ore prefab is missing.");
             Transform full = prefab.transform.Find("Visuals/IronOreMesh");
-            Transform empty = prefab.transform.Find("Visuals/IronOreEmptyMesh");
+            Transform empty = prefab.transform.Find("Visuals/StoneOreEmptyMesh");
             Assert.IsNotNull(full);
             Assert.IsNotNull(empty);
             Assert.AreEqual("IronOreLarge", full.GetComponent<MeshRenderer>().sharedMaterial.name);
-            Assert.AreEqual("IronOreLargeEmpty", empty.GetComponent<MeshRenderer>().sharedMaterial.name);
+            Assert.AreEqual("StoneOreLargeEmpty", empty.GetComponent<MeshRenderer>().sharedMaterial.name);
 
             ResourceNode node = prefab.GetComponent<ResourceNode>();
             Assert.IsNotNull(node);

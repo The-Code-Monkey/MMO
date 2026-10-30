@@ -121,15 +121,17 @@ the shared graybox material.
 prefab is registered into the scene by `WorldBootstrapBaker.RegisterMarkerPrefabs` (see below).
 
 `ResourceNodeAssetBaker` (`Tools > MMO > Rebuild Resource Node Assets`) imports
-`Assets/Models/Resources/IronOre/IronOre.fbx` (full), `IronOreEmpty.fbx` (depleted),
-`IronOreLarge.fbx` (large) and `IronOreLargeEmpty.fbx` (large depleted), plus their texture sets
+`Assets/Models/Resources/IronOre/IronOre.fbx` (full),
+`Assets/Models/Resources/StoneOre/StoneOreEmpty.fbx` (depleted),
+`Assets/Models/Resources/IronOre/IronOreLarge.fbx` (large) and
+`Assets/Models/Resources/StoneOre/StoneOreLargeEmpty.fbx` (large depleted), plus their texture sets
 under `Assets/Textures/Resources/`, and builds
-`IronOre.mat` / `IronOreEmpty.mat` / `IronOreLarge.mat` / `IronOreLargeEmpty.mat`. It refreshes `ResourceNode.prefab` in
+`IronOre.mat` / `StoneOreEmpty.mat` / `IronOreLarge.mat` / `StoneOreLargeEmpty.mat`. It refreshes `ResourceNode.prefab` in
 place: the root keeps the unit click collider and NavMesh carve, and both models hang under
 `Visuals/` scaled to 1.6 m and floor-aligned. It also writes `ResourceNode_Large.prefab`, which
 carries `Iron_Ore_Large` (15 ore, same reset/interval/range), its own full and empty models scaled
 to 2.4 m, and a 2.8 x 2.4 x 2.2 m body/carve.
-`ResourceNode.ApplyDepletedState` swaps `IronOreMesh` for `IronOreEmptyMesh`, drops the collider and
+`ResourceNode.ApplyDepletedState` swaps `IronOreMesh` for `StoneOreEmptyMesh`, drops the collider and
 carve so the empty rock cannot be gathered, and restores the full model on respawn.
 
 To place a large vein, point a `ResourceNodeMarker`'s `NodePrefab` at
