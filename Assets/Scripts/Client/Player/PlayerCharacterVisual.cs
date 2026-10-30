@@ -24,10 +24,10 @@ namespace MMO.Client
         [SerializeField]
         private float _turnDegreesPerSecond = 720f;
 
-        // The source FBX faces -Z. Locomotion aims the visual's +Z down the travel direction, so
-        // the model needs half a turn to keep its face, not its back, leading.
+        // The source FBX faces +Z, the same axis locomotion aims down the travel direction, so the
+        // model needs no extra turn to keep its face, not its back, leading.
         [SerializeField]
-        private float _modelYawOffset = 180f;
+        private float _modelYawOffset = 0f;
 
         private Animator _animator;
         private Transform _root;

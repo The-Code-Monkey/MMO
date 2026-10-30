@@ -456,7 +456,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: MMO.Runtime::MMO.Client.PlayerCharacterVisual
   _speedDamping: 12
   _turnDegreesPerSecond: 720
-  _modelYawOffset: 180
+  _modelYawOffset: 0
 --- !u!1 &2013167565889009135
 GameObject:
   m_ObjectHideFlags: 0
