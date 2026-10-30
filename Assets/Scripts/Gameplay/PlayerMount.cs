@@ -2,6 +2,7 @@ using System;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Client;
 using MMO.Inventory;
 using UnityEngine;
 using UnityEngine.AI;
@@ -48,7 +49,10 @@ namespace MMO.Gameplay
         private PlayerMover _mover;
         private PlayerInventory _inventory;
         private GameObject _visual;
+        private MountData _visualData;
         private string _visualItemName;
+        private Transform _riderVisual;
+        private Vector3 _riderOriginalLocalPosition;
 
         /// <summary>The replicated state. Undeclared values read as <see cref="MountState.Unmounted"/>.</summary>
         public MountState State => Normalize(_state.Value);
@@ -75,6 +79,23 @@ namespace MMO.Gameplay
 
         private PlayerInventory Inventory =>
             _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
+
+        private Transform RiderVisual
+        {
+            get
+            {
+                if (_riderVisual != null)
+                    return _riderVisual;
+
+                PlayerCharacterVisual visual = GetComponentInChildren<PlayerCharacterVisual>(true);
+                if (visual == null)
+                    return null;
+
+                _riderVisual = visual.transform;
+                _riderOriginalLocalPosition = _riderVisual.localPosition;
+                return _riderVisual;
+            }
+        }
 
         public override void OnStartNetwork()
         {
@@ -223,6 +244,9 @@ namespace MMO.Gameplay
 
             if (IsOwner)
                 HandleMountKey();
+
+            if (IsClient)
+                SyncVisualPose();
         }
 
         private void ServerTick()
@@ -455,21 +479,54 @@ namespace MMO.Gameplay
             }
 
             if (_visual != null && _visualItemName == data.ItemName)
+            {
+                ApplyRiderPose(data.RiderOffset);
                 return;
+            }
 
             DestroyVisual();
             _visual = MountPrefabFactory.Create(data);
+            _visualData = data;
             _visualItemName = data.ItemName;
 
             _visual.transform.SetParent(transform, false);
-            _visual.transform.localPosition = Vector3.zero;
-            _visual.transform.localRotation = Quaternion.identity;
+            _visual.transform.localPosition = data.VisualOffset;
+            _visual.transform.localRotation = Quaternion.Euler(0f, data.VisualYawOffset, 0f);
+            ApplyRiderPose(data.RiderOffset);
+        }
+
+        private void SyncVisualPose()
+        {
+            if (!IsMounted || _visual == null || _visualData == null)
+                return;
+
+            Transform rider = RiderVisual;
+            if (rider == null)
+                return;
+
+            _visual.transform.rotation =
+                rider.rotation * Quaternion.Euler(0f, _visualData.VisualYawOffset, 0f);
+        }
+
+        private void ApplyRiderPose(Vector3 offset)
+        {
+            if (!IsClient)
+                return;
+
+            Transform rider = RiderVisual;
+            if (rider == null)
+                return;
+
+            rider.localPosition = _riderOriginalLocalPosition + offset;
         }
 
         private void DestroyVisual()
         {
+            ApplyRiderPose(Vector3.zero);
+
             if (_visual == null)
             {
+                _visualData = null;
                 _visualItemName = null;
                 return;
             }
@@ -480,6 +537,7 @@ namespace MMO.Gameplay
                 DestroyImmediate(_visual);
 
             _visual = null;
+            _visualData = null;
             _visualItemName = null;
         }
 

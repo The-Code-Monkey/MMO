@@ -25,6 +25,8 @@ namespace MMO.Gameplay
 
             var root = new GameObject(string.IsNullOrEmpty(data.MountName) ? "Mount" : data.MountName);
             root.transform.localScale = Vector3.one * data.Size;
+            root.transform.localPosition = data.VisualOffset;
+            root.transform.localRotation = Quaternion.Euler(0f, data.VisualYawOffset, 0f);
 
             GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             body.name = "Body";
