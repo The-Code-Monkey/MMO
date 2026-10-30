@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1c4e7f2b83d4e5f9a6b0c2d1e8f7435, type: 3}
+  m_Name: Tin_Ore_Large
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.ResourceDefinition
+  _resourceType: 1
+  _drop: {fileID: 11400000, guid: e5bc2a0e85c4190679a2a8f7fdf2f21a, type: 2}
+  _dropAmount: 15
+  _gatheringTier: 0
+  _requiredTool: 0
+  _resetTime: 30
+  _gatherIntervalSeconds: 1.2
+  _interactRange: 3

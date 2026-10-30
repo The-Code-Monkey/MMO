@@ -3,7 +3,7 @@
 # Boots the local dedicated zone servers from a Linux Server build.
 #
 # Each zone is its own process on its own port (SafeZone 7770, Wilderness 7771,
-# Tutorial 7772). Any process already holding a zone's port is killed first, so a
+# Tutorial 7772, TestZone 7773). Any process already holding a zone's port is killed first, so a
 # re-run never fails with "Address already in use". Run the whole shard with no
 # arguments, or pass the zones you want.
 #
@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Headless by default: no window, no graphics device — a zone server does not render anything.
 # Override with SERVER_FLAGS="" if you need to attach a renderer while debugging.
 SERVER_FLAGS="${SERVER_FLAGS:--batchmode -nographics}"
-ALL_ZONES=(SafeZone Wilderness Tutorial)
+ALL_ZONES=(SafeZone Wilderness Tutorial TestZone)
 binary_override=""
 
 # Keep in sync with ZoneSceneBaker's baked per-zone ports.
@@ -31,6 +31,7 @@ declare -A ZONE_PORTS=(
     [SafeZone]=7770
     [Wilderness]=7771
     [Tutorial]=7772
+    [TestZone]=7773
 )
 
 usage() {

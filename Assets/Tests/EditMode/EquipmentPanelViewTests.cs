@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MMO.Inventory;
 using MMO.UI;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace MMO.Tests
@@ -45,6 +46,7 @@ namespace MMO.Tests
             }
 
             _created.Clear();
+            ItemDefinitionRegistry.Clear();
         }
 
         [Test]
@@ -71,6 +73,42 @@ namespace MMO.Tests
             EquipmentPanelView.Row mount = FindRow(panel, EquipmentSlot.Mount);
             StringAssert.Contains("Donkey", mount.Label.text);
             StringAssert.Contains("Mount", mount.Label.text);
+        }
+
+        [Test]
+        public void Repaint_ShowsTheItemIconInsteadOfItsName()
+        {
+            var texture = new Texture2D(2, 2);
+            var sprite = Sprite.Create(texture, new Rect(0f, 0f, 2f, 2f), Vector2.zero);
+            var definition = ScriptableObject.CreateInstance<ItemDefinition>();
+            var serialized = new SerializedObject(definition);
+            serialized.FindProperty("_itemName").stringValue = "Icon Test Mount";
+            serialized.FindProperty("_icon").objectReferenceValue = sprite;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            ItemDefinitionRegistry.Register(definition);
+
+            try
+            {
+                var source = new FakeEquipment();
+                EquipmentPanelView panel = NewPanel();
+                panel.Bind(source);
+
+                source.Worn[EquipmentSlot.Mount] = new ItemInstance { ItemName = "Icon Test Mount" };
+                source.Raise();
+
+                EquipmentPanelView.Row mount = FindRow(panel, EquipmentSlot.Mount);
+                Assert.AreSame(sprite, mount.Icon.sprite);
+                Assert.IsTrue(mount.Icon.enabled, "An item with artwork should show the sprite.");
+                StringAssert.Contains("Mount", mount.Label.text);
+                StringAssert.DoesNotContain("Icon Test Mount", mount.Label.text,
+                    "The icon replaces the item-name text.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(definition);
+                UnityEngine.Object.DestroyImmediate(sprite);
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
         }
 
         [Test]

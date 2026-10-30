@@ -11,11 +11,18 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d082238eae22446c85e49288212d77da, type: 3}
   m_Name: Iron_Ingot
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   _itemName: Iron Ingot
+  _icon: {fileID: 21300000, guid: 05ab0819806408e208c5bb9a47a4899d, type: 3}
   _equipSlot: 0
   _requiredLevel: 0
   _gridWidth: 1
   _gridHeight: 1
   _maxHealthBonus: 0
   _maxManaBonus: 0
+  _maxDurability: 0
+  _isStackable: 0
+  _maxStackSize: 1
+  _value: 0
+  _toolKind: 0
+  _toolTier: 0

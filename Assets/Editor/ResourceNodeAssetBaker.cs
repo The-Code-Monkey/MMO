@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using FishNet.Object;
 using MMO.Gameplay;
 using MMO.Inventory;
@@ -5,12 +7,13 @@ using MMO.Net;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.AI;
+using Object = UnityEngine.Object;
 
 namespace MMO.Editor
 {
     /// <summary>
-    /// Imports the iron-ore surface maps, builds the full and depleted URP Lit materials and
-    /// refreshes the shared <c>ResourceNode</c> prefabs (normal and large). The prefabs are
+    /// Imports the iron, copper, tin, cobalt and veridium surface maps, builds their full and depleted
+    /// URP Lit materials and refreshes every <c>ResourceNode</c> prefab (small and large). The prefabs are
     /// rebuilt in place so their GUIDs and every scene reference survive a rebake.
     /// </summary>
     public static class ResourceNodeAssetBaker
@@ -50,10 +53,51 @@ namespace MMO.Editor
         public const string LargeDefinitionPath = "Assets/Resources/ResourceDefinitions/Iron_Ore_Large.asset";
         public const string LargePrefabPath = "Assets/Prefabs/ResourceNode_Large.prefab";
 
+        public const string CopperModelFolder = "Assets/Models/Resources/CopperOre";
+        public const string TinModelFolder = "Assets/Models/Resources/TinOre";
+        public const string CobaltModelFolder = "Assets/Models/Resources/CobaltOre";
+        public const string VeridiumModelFolder = "Assets/Models/Resources/VeridiumOre";
+
+        public const string CopperPrefabPath = "Assets/Prefabs/ResourceNode_Copper.prefab";
+        public const string CopperLargePrefabPath = "Assets/Prefabs/ResourceNode_Copper_Large.prefab";
+        public const string TinPrefabPath = "Assets/Prefabs/ResourceNode_Tin.prefab";
+        public const string TinLargePrefabPath = "Assets/Prefabs/ResourceNode_Tin_Large.prefab";
+        public const string CobaltPrefabPath = "Assets/Prefabs/ResourceNode_Cobalt.prefab";
+        public const string VeridiumPrefabPath = "Assets/Prefabs/ResourceNode_Veridium.prefab";
+
+        public const string CopperDefinitionPath = "Assets/Resources/ResourceDefinitions/Copper_Ore.asset";
+        public const string CopperLargeDefinitionPath = "Assets/Resources/ResourceDefinitions/Copper_Ore_Large.asset";
+        public const string TinDefinitionPath = "Assets/Resources/ResourceDefinitions/Tin_Ore.asset";
+        public const string TinLargeDefinitionPath = "Assets/Resources/ResourceDefinitions/Tin_Ore_Large.asset";
+        public const string CobaltDefinitionPath = "Assets/Resources/ResourceDefinitions/Cobalt_Ore.asset";
+        public const string VeridiumDefinitionPath = "Assets/Resources/ResourceDefinitions/Veridium_Ore.asset";
+
+        public const string CopperItemPath = "Assets/Resources/Items/Copper_Ore.asset";
+        public const string TinItemPath = "Assets/Resources/Items/Tin_Ore.asset";
+        public const string CobaltItemPath = "Assets/Resources/Items/Cobalt_Ore.asset";
+        public const string VeridiumItemPath = "Assets/Resources/Items/Veridium_Ore.asset";
+
+        /// <summary>
+        /// Every node prefab in the order every NetworkManager must register them. FishNet derives
+        /// prefab ids from list order, so the menu and zone scenes have to agree exactly.
+        /// </summary>
+        public static readonly string[] AllPrefabPaths =
+        {
+            ResourceNodeBaker.PrefabAssetPath,
+            LargePrefabPath,
+            CopperPrefabPath,
+            CopperLargePrefabPath,
+            TinPrefabPath,
+            TinLargePrefabPath,
+            CobaltPrefabPath,
+            VeridiumPrefabPath,
+        };
+
         private const float OreTargetHeight = 1.6f;
         private const float ModelYaw = 180f;
         private const float LargeTargetHeight = 2.4f;
         private const int LargeDropAmount = 15;
+        private const int SmallDropAmount = 5;
 
         [MenuItem(MenuPath)]
         public static void Rebuild()
@@ -64,13 +108,31 @@ namespace MMO.Editor
                 return;
             }
 
-            GroundAssetBaker.EnsureFolder(TextureFolder + "/IronOre");
-            GroundAssetBaker.EnsureFolder(TextureFolder + "/StoneOreEmpty");
-            GroundAssetBaker.EnsureFolder(TextureFolder + "/IronOreLarge");
-            GroundAssetBaker.EnsureFolder(TextureFolder + "/StoneOreLargeEmpty");
-            GroundAssetBaker.EnsureFolder(MaterialFolder);
-            GroundAssetBaker.EnsureFolder(ModelFolder);
-            GroundAssetBaker.EnsureFolder(StoneModelFolder);
+            foreach (string folder in new[]
+                     {
+                         TextureFolder + "/IronOre",
+                         TextureFolder + "/StoneOreEmpty",
+                         TextureFolder + "/IronOreLarge",
+                         TextureFolder + "/StoneOreLargeEmpty",
+                         TextureFolder + "/CopperOre",
+                         TextureFolder + "/CopperOreLarge",
+                         TextureFolder + "/TinOre",
+                         TextureFolder + "/TinOreLarge",
+                         TextureFolder + "/CobaltOre",
+                         TextureFolder + "/CobaltOreEmpty",
+                         TextureFolder + "/VeridiumOre",
+                         TextureFolder + "/VeridiumOreEmpty",
+                         MaterialFolder,
+                         ModelFolder,
+                         StoneModelFolder,
+                         CopperModelFolder,
+                         TinModelFolder,
+                         CobaltModelFolder,
+                         VeridiumModelFolder,
+                     })
+            {
+                GroundAssetBaker.EnsureFolder(folder);
+            }
 
             ConfigureTextures(
                 OreDiffusePath, OreNormalPath, OreMaskPath, OreEmissivePath);
@@ -80,6 +142,22 @@ namespace MMO.Editor
                 OreLargeDiffusePath, OreLargeNormalPath, OreLargeMaskPath, null);
             ConfigureTextures(
                 StoneLargeEmptyDiffusePath, StoneLargeEmptyNormalPath, StoneLargeEmptyMaskPath, null);
+
+            foreach (NodeVariant variant in NewVariants)
+            {
+                EnsureMaskFromPbr(variant.PbrPath, variant.MaskPath);
+                ConfigureTextures(variant.DiffusePath, variant.NormalPath, variant.MaskPath, variant.EmissivePath);
+                ConfigureModel(variant.ModelPath);
+
+                if (variant.HasOwnEmpty)
+                {
+                    EnsureMaskFromPbr(variant.EmptyPbrPath, variant.EmptyMaskPath);
+                    ConfigureTextures(
+                        variant.EmptyDiffusePath, variant.EmptyNormalPath, variant.EmptyMaskPath,
+                        variant.EmptyEmissivePath);
+                    ConfigureModel(variant.EmptyModelPath);
+                }
+            }
 
             ConfigureModel(OreModelPath);
             ConfigureModel(StoneEmptyModelPath);
@@ -97,13 +175,365 @@ namespace MMO.Editor
             ResourceDefinition largeDefinition = EnsureLargeDefinition();
             RebuildLargePrefab(oreLarge, oreLargeEmpty, largeDefinition);
 
+            foreach (NodeVariant variant in NewVariants)
+                RebuildVariant(variant, oreEmpty, oreLargeEmpty);
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
             Debug.Log(prefab != null
-                ? $"Rebuilt resource node assets: {ResourceNodeBaker.PrefabAssetPath}, {LargePrefabPath}"
+                ? $"Rebuilt resource node assets: {ResourceNodeBaker.PrefabAssetPath}, {LargePrefabPath}, " +
+                  $"{CopperPrefabPath}, {CopperLargePrefabPath}, {TinPrefabPath}, {TinLargePrefabPath}, " +
+                  $"{CobaltPrefabPath}, {VeridiumPrefabPath}"
                 : "Resource node asset rebuild failed.");
         }
+
+        private sealed class NodeVariant
+        {
+            public readonly string Name;
+            public readonly string ModelPath;
+            public readonly string DiffusePath;
+            public readonly string NormalPath;
+            public readonly string PbrPath;
+            public readonly string MaskPath;
+            public readonly string EmissivePath;
+            public readonly string MaterialPath;
+            public readonly string DefinitionPath;
+            public readonly string PrefabPath;
+            public readonly string ItemPath;
+            public readonly string ItemName;
+            public readonly string FullMeshName;
+            public readonly int DropAmount;
+            public readonly bool Large;
+
+            public readonly string EmptyModelPath;
+            public readonly string EmptyMaterialPath;
+            public readonly string EmptyTextureName;
+            public readonly string EmptyDiffusePath;
+            public readonly string EmptyNormalPath;
+            public readonly string EmptyPbrPath;
+            public readonly string EmptyMaskPath;
+            public readonly string EmptyEmissivePath;
+            public readonly string EmptyMeshName;
+
+            public NodeVariant(
+                string name,
+                string modelFolder,
+                string textureFolder,
+                string materialFolder,
+                string definitionFolder,
+                string prefabFolder,
+                string itemPath,
+                string itemName,
+                string fullMeshName,
+                int dropAmount,
+                bool large,
+                bool hasEmissive,
+                string emptyModelPath = null,
+                string emptyTextureFolder = null,
+                string emptyTextureName = null,
+                bool emptyHasEmissive = false)
+            {
+                Name = name;
+                ModelPath = modelFolder + "/" + name + ".fbx";
+                DiffusePath = textureFolder + "/" + name + "_Diffuse.png";
+                NormalPath = textureFolder + "/" + name + "_Normal.png";
+                PbrPath = textureFolder + "/" + name + "_PBR.png";
+                MaskPath = textureFolder + "/" + name + "_Mask.png";
+                EmissivePath = hasEmissive ? textureFolder + "/" + name + "_Emissive.png" : null;
+                MaterialPath = materialFolder + "/" + name + ".mat";
+                string definitionLeaf = large
+                    ? name.Replace("OreLarge", "_Ore_Large")
+                    : name.Replace("Ore", "_Ore");
+                DefinitionPath = definitionFolder + "/" + definitionLeaf + ".asset";
+                string prefabLeaf = large
+                    ? name.Replace("OreLarge", "") + "_Large"
+                    : name.Replace("Ore", "");
+                PrefabPath = prefabFolder + "/ResourceNode_" + prefabLeaf + ".prefab";
+                ItemPath = itemPath;
+                ItemName = itemName;
+                FullMeshName = fullMeshName;
+                DropAmount = dropAmount;
+                Large = large;
+
+                EmptyTextureName = emptyTextureName;
+                bool ownEmpty = !string.IsNullOrEmpty(emptyTextureFolder) && !string.IsNullOrEmpty(emptyTextureName);
+                HasOwnEmpty = ownEmpty;
+                EmptyModelPath = emptyModelPath ?? (large ? StoneLargeEmptyModelPath : StoneEmptyModelPath);
+                EmptyMaterialPath = ownEmpty
+                    ? materialFolder + "/" + emptyTextureName + ".mat"
+                    : large ? StoneLargeEmptyMaterialPath : StoneEmptyMaterialPath;
+                EmptyDiffusePath = ownEmpty ? emptyTextureFolder + "/" + emptyTextureName + "_Diffuse.png" : null;
+                EmptyNormalPath = ownEmpty ? emptyTextureFolder + "/" + emptyTextureName + "_Normal.png" : null;
+                EmptyPbrPath = ownEmpty ? emptyTextureFolder + "/" + emptyTextureName + "_PBR.png" : null;
+                EmptyMaskPath = ownEmpty ? emptyTextureFolder + "/" + emptyTextureName + "_Mask.png" : null;
+                EmptyEmissivePath = ownEmpty && emptyHasEmissive
+                    ? emptyTextureFolder + "/" + emptyTextureName + "_Emissive.png"
+                    : null;
+                EmptyMeshName = ownEmpty
+                    ? emptyTextureName + "Mesh"
+                    : large ? "StoneOreLargeEmptyMesh" : "StoneOreEmptyMesh";
+            }
+
+            public bool HasOwnEmpty { get; }
+            public float TargetHeight => Large ? LargeTargetHeight : OreTargetHeight;
+        }
+
+        private const string ItemFolder = "Assets/Resources/Items";
+        private const string DefinitionFolder = "Assets/Resources/ResourceDefinitions";
+        private const string PrefabFolder = "Assets/Prefabs";
+
+        private static readonly NodeVariant[] NewVariants =
+        {
+            new NodeVariant(
+                "CopperOre", CopperModelFolder, TextureFolder + "/CopperOre", MaterialFolder,
+                DefinitionFolder, PrefabFolder, CopperItemPath, "Copper Ore", "CopperOreMesh",
+                SmallDropAmount, large: false, hasEmissive: true),
+            new NodeVariant(
+                "CopperOreLarge", CopperModelFolder, TextureFolder + "/CopperOreLarge", MaterialFolder,
+                DefinitionFolder, PrefabFolder, CopperItemPath, "Copper Ore", "CopperOreMesh",
+                LargeDropAmount, large: true, hasEmissive: false),
+            new NodeVariant(
+                "TinOre", TinModelFolder, TextureFolder + "/TinOre", MaterialFolder,
+                DefinitionFolder, PrefabFolder, TinItemPath, "Tin Ore", "TinOreMesh",
+                SmallDropAmount, large: false, hasEmissive: false),
+            new NodeVariant(
+                "TinOreLarge", TinModelFolder, TextureFolder + "/TinOreLarge", MaterialFolder,
+                DefinitionFolder, PrefabFolder, TinItemPath, "Tin Ore", "TinOreMesh",
+                LargeDropAmount, large: true, hasEmissive: false),
+            new NodeVariant(
+                "CobaltOre", CobaltModelFolder, TextureFolder + "/CobaltOre", MaterialFolder,
+                DefinitionFolder, PrefabFolder, CobaltItemPath, "Cobalt Ore", "CobaltOreMesh",
+                SmallDropAmount, large: false, hasEmissive: false,
+                emptyModelPath: CobaltModelFolder + "/CobaltOreEmpty.fbx",
+                emptyTextureFolder: TextureFolder + "/CobaltOreEmpty",
+                emptyTextureName: "CobaltOreEmpty",
+                emptyHasEmissive: false),
+            new NodeVariant(
+                "VeridiumOre", VeridiumModelFolder, TextureFolder + "/VeridiumOre", MaterialFolder,
+                DefinitionFolder, PrefabFolder, VeridiumItemPath, "Veridium Ore", "VeridiumOreMesh",
+                SmallDropAmount, large: false, hasEmissive: true,
+                emptyModelPath: VeridiumModelFolder + "/VeridiumOreEmpty.fbx",
+                emptyTextureFolder: TextureFolder + "/VeridiumOreEmpty",
+                emptyTextureName: "VeridiumOreEmpty",
+                emptyHasEmissive: true),
+        };
+
+        /// <summary>
+        /// Registers every node prefab in <see cref="AllPrefabPaths"/> order. The same order on
+        /// every end is what keeps FishNet prefab ids stable across the menu and each zone.
+        /// </summary>
+        public static int RegisterAllPrefabs(FishNet.Managing.Object.PrefabObjects prefabs)
+        {
+            if (prefabs == null)
+                return 0;
+
+            int registered = 0;
+            foreach (string path in AllPrefabPaths)
+            {
+                NetworkObject prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
+                if (prefab != null && ResourceNodePrefabFactory.Register(prefabs, prefab))
+                    registered++;
+            }
+
+            return registered;
+        }
+
+        private static void RebuildVariant(NodeVariant variant, Material empty, Material largeEmpty)
+        {
+            ItemDefinition item = EnsureItem(variant.ItemPath, variant.ItemName);
+            ResourceDefinition definition = EnsureDefinition(variant, item);
+            Material material = EnsureVariantMaterial(variant);
+            Material emptyMaterial = variant.HasOwnEmpty
+                ? EnsureEmptyVariantMaterial(variant)
+                : variant.Large ? largeEmpty : empty;
+
+            NetworkObject built = ResourceNodePrefabFactory.Create(definition);
+            built.name = Path.GetFileNameWithoutExtension(variant.PrefabPath);
+            try
+            {
+                RemoveComponent<MeshFilter>(built.gameObject);
+                RemoveComponent<MeshRenderer>(built.gameObject);
+
+                ApplyVisuals(
+                    built.transform, material, emptyMaterial,
+                    variant.ModelPath, variant.EmptyModelPath, variant.TargetHeight,
+                    out GameObject full, out GameObject emptyVisual,
+                    variant.FullMeshName, variant.EmptyMeshName);
+                built.GetComponent<ResourceNode>()?.SetVisuals(full, emptyVisual);
+
+                if (variant.Large && built.TryGetComponent(out BoxCollider body))
+                {
+                    body.isTrigger = false;
+                    body.size = new Vector3(1.4f, 2f, 1.1f);
+                    body.center = new Vector3(0f, 0.5f, 0f);
+                }
+
+                if (variant.Large && built.TryGetComponent(out NavMeshObstacle obstacle))
+                {
+                    obstacle.carving = true;
+                    obstacle.size = new Vector3(1.4f, 2f, 1.1f);
+                    obstacle.center = new Vector3(0f, 0.5f, 0f);
+                }
+
+                StripChildColliders(built.gameObject);
+                PrefabUtility.SaveAsPrefabAsset(built.gameObject, variant.PrefabPath);
+            }
+            finally
+            {
+                Object.DestroyImmediate(built.gameObject);
+            }
+        }
+
+        private static ItemDefinition EnsureItem(string path, string itemName)
+        {
+            GroundAssetBaker.EnsureFolder(ItemFolder);
+            var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(path);
+            if (item == null)
+            {
+                item = ScriptableObject.CreateInstance<ItemDefinition>();
+                AssetDatabase.CreateAsset(item, path);
+            }
+
+            var serialized = new SerializedObject(item);
+            serialized.FindProperty("_itemName").stringValue = itemName;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            item.name = Path.GetFileNameWithoutExtension(path);
+            EditorUtility.SetDirty(item);
+            return item;
+        }
+
+        private static ResourceDefinition EnsureDefinition(NodeVariant variant, ItemDefinition item)
+        {
+            GroundAssetBaker.EnsureFolder(DefinitionFolder);
+            var definition = AssetDatabase.LoadAssetAtPath<ResourceDefinition>(variant.DefinitionPath);
+            if (definition == null)
+            {
+                definition = ScriptableObject.CreateInstance<ResourceDefinition>();
+                AssetDatabase.CreateAsset(definition, variant.DefinitionPath);
+            }
+
+            var serialized = new SerializedObject(definition);
+            serialized.FindProperty("_resourceType").intValue = (int)ResourceType.Ore;
+            serialized.FindProperty("_drop").objectReferenceValue = item;
+            serialized.FindProperty("_dropAmount").intValue = variant.DropAmount;
+            serialized.FindProperty("_gatheringTier").intValue = 0;
+            serialized.FindProperty("_requiredTool").intValue = 0;
+            serialized.FindProperty("_resetTime").floatValue = 30f;
+            serialized.FindProperty("_gatherIntervalSeconds").floatValue = 1.2f;
+            serialized.FindProperty("_interactRange").floatValue = 3f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            definition.name = Path.GetFileNameWithoutExtension(variant.DefinitionPath);
+            EditorUtility.SetDirty(definition);
+            return definition;
+        }
+
+        private static Material EnsureVariantMaterial(NodeVariant variant)
+        {
+            Material material = GroundAssetBaker.EnsureMaterial(
+                variant.MaterialPath,
+                variant.Name,
+                variant.DiffusePath,
+                variant.NormalPath,
+                variant.MaskPath);
+            material.SetFloat("_Smoothness", 1f);
+            material.SetFloat("_SmoothnessTextureChannel", 0f);
+
+            if (!string.IsNullOrEmpty(variant.EmissivePath))
+            {
+                material.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(variant.EmissivePath));
+                material.SetColor("_EmissionColor", new Color(1.5f, 1.4f, 1.3f, 1f));
+                material.EnableKeyword("_EMISSION");
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            }
+            else
+            {
+                material.DisableKeyword("_EMISSION");
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            }
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material EnsureEmptyVariantMaterial(NodeVariant variant)
+        {
+            Material material = GroundAssetBaker.EnsureMaterial(
+                variant.EmptyMaterialPath,
+                variant.EmptyTextureName,
+                variant.EmptyDiffusePath,
+                variant.EmptyNormalPath,
+                variant.EmptyMaskPath);
+            material.SetFloat("_Smoothness", 1f);
+            material.SetFloat("_SmoothnessTextureChannel", 0f);
+
+            if (!string.IsNullOrEmpty(variant.EmptyEmissivePath))
+            {
+                material.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(variant.EmptyEmissivePath));
+                material.SetColor("_EmissionColor", new Color(1.5f, 1.4f, 1.3f, 1f));
+                material.EnableKeyword("_EMISSION");
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            }
+            else
+            {
+                material.DisableKeyword("_EMISSION");
+                material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            }
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        /// <summary>
+        /// Packs the supplied PBR map into the URP Lit metallic/gloss layout the rest of the
+        /// project uses: R = metallic, G = 255, B = 0, A = smoothness.
+        /// </summary>
+        private static void EnsureMaskFromPbr(string pbrPath, string maskPath)
+        {
+            string pbrAbsolute = AbsolutePath(pbrPath);
+            if (!File.Exists(pbrAbsolute))
+            {
+                Debug.LogWarning($"PBR map missing at '{pbrPath}'; the node material will have no mask.");
+                return;
+            }
+
+            var source = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            try
+            {
+                if (!ImageConversion.LoadImage(source, File.ReadAllBytes(pbrAbsolute)))
+                    throw new InvalidOperationException($"Could not decode PBR map '{pbrPath}'.");
+
+                Color32[] pixels = source.GetPixels32();
+                var packed = new Color32[pixels.Length];
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    byte metallic = pixels[i].b;
+                    byte smoothness = (byte)(255 - pixels[i].g);
+                    packed[i] = new Color32(metallic, 255, 0, smoothness);
+                }
+
+                var mask = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false);
+                try
+                {
+                    mask.SetPixels32(packed);
+                    mask.Apply(false, false);
+                    File.WriteAllBytes(AbsolutePath(maskPath), mask.EncodeToPNG());
+                }
+                finally
+                {
+                    Object.DestroyImmediate(mask);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+            }
+
+            AssetDatabase.ImportAsset(maskPath, ImportAssetOptions.ForceSynchronousImport);
+        }
+
+        private static string AbsolutePath(string assetPath)
+            => Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", assetPath);
 
         private static void ConfigureTextures(
             string diffusePath,
@@ -356,7 +786,9 @@ namespace MMO.Editor
             string emptyModelPath,
             float targetHeight,
             out GameObject full,
-            out GameObject empty)
+            out GameObject empty,
+            string fullMeshName = "IronOreMesh",
+            string emptyMeshName = "StoneOreEmptyMesh")
         {
             // The node root is scaled to 2 x 1.2 x 2. This container cancels that scale so the
             // imported models keep their proportions while still fitting the footprint.
@@ -368,8 +800,8 @@ namespace MMO.Editor
                 1f / Mathf.Max(rootScale.y, 0.0001f),
                 1f / Mathf.Max(rootScale.z, 0.0001f));
 
-            full = BuildModel(root, container.transform, fullModelPath, "IronOreMesh", ore, targetHeight);
-            empty = BuildModel(root, container.transform, emptyModelPath, "StoneOreEmptyMesh", oreEmpty, targetHeight);
+            full = BuildModel(root, container.transform, fullModelPath, fullMeshName, ore, targetHeight);
+            empty = BuildModel(root, container.transform, emptyModelPath, emptyMeshName, oreEmpty, targetHeight);
 
             full.SetActive(true);
             empty.SetActive(false);

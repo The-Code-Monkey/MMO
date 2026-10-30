@@ -29,16 +29,18 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Create Crafting Station Prefab` | `CraftingStationBaker` | Builds the crafting-station prefab and wires its spawner. |
 | `Tools > MMO > Rebuild Crafting Station Assets` | `CraftingStationAssetBaker` | Imports the anvil/furnace maps, builds their materials, and refreshes the station prefab's models. |
 | `Tools > MMO > Create Resource Node Prefab` | `ResourceNodeBaker` | Builds the resource-node prefab a zone's markers spawn. |
-| `Tools > MMO > Rebuild Resource Node Assets` | `ResourceNodeAssetBaker` | Imports the iron-ore maps, builds the `IronOre` material, and mounts the ore model on the node prefab. |
+| `Tools > MMO > Rebuild Resource Node Assets` | `ResourceNodeAssetBaker` | Imports the iron, copper, tin, cobalt and veridium maps, builds their materials, and mounts the full/depleted models on every node prefab. |
+| `Tools > MMO > Rebuild Item Icons` | `ItemIconBaker` | Imports `Assets/Textures/Items` as UI sprites and wires each `ItemDefinition` to the icon matching its item name. |
 | `Tools > MMO > Create Loot Bag Prefab` | `LootBagBaker` | Builds the loot-bag prefab a black-zone death drops. |
 | `Tools > MMO > Create Camera Rig` | `LocalCameraBaker` | Drops the scene's `PersistentCameraController` camera rig into the active scene. |
 | `Tools > MMO > Create NetworkManager In Scene` | `NetworkManagerSceneBaker` | Drops a fully wired `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Main Menu Scene` | `MainMenuSceneBaker` | Rebuilds `Assets/Scenes/MainMenu.unity` with a token-auth manager and the bootstrap. |
 | `Tools > MMO > Wire Zone With World Bootstrap` | `WorldBootstrapBaker` | Connects an open scene to the server: adds `WorldBootstrap`, tags spawn points, registers marker prefabs. |
-| `Tools > MMO > Build Zones` | `ZoneSceneBaker` | Rebuilds the `Tutorial`, `SafeZone` and `Wilderness` zones from the graybox prefab kit and registers all three in Build Settings. |
+| `Tools > MMO > Build Zones` | `ZoneSceneBaker` | Rebuilds the `Tutorial`, `SafeZone`, `Wilderness` and `TestZone` scenes from the graybox prefab kit and registers all four in Build Settings. |
 | `Tools > MMO > Build Safe Zone` | `ZoneSceneBaker` | Rebuilds only `Assets/Scenes/SafeZone.unity`. |
 | `Tools > MMO > Build Wilderness Zone` | `ZoneSceneBaker` | Rebuilds only `Assets/Scenes/Wilderness.unity`. |
 | `Tools > MMO > Build Tutorial Zone` | `ZoneSceneBaker` | Rebuilds only `Assets/Scenes/Tutorial.unity`. |
+| `Tools > MMO > Build Test Zone` | `ZoneSceneBaker` | Rebuilds only `Assets/Scenes/TestZone.unity`, the ore testing ground. |
 
 ## 3. The prefab bakers
 
@@ -182,21 +184,23 @@ and deliberately **not** on the player prefab or in the main menu (the controlle
 
 ### ZoneSceneBaker
 
-`Assets/Editor/ZoneSceneBaker.cs`. `BuildBoth` (`Tools > MMO > Build Zones`) assembles the three
-always-on zones — the flat 40 m `Tutorial` training ground, the walkable 160 m `SafeZone` town and
-the hostile 160 m `Wilderness` — each as a **self-contained zone server**. Town buildings, hazards
+`Assets/Editor/ZoneSceneBaker.cs`. `BuildBoth` (`Tools > MMO > Build Zones`) assembles the four
+always-on zones — the flat 40 m `Tutorial` training ground, the walkable 160 m `SafeZone` town,
+the hostile 160 m `Wilderness` and the 80 m `TestZone` ore ground — each as a **self-contained
+zone server**. Town buildings, hazards
 and markers stay clustered near the origin; the extra ground is open space.
 
 The safe zone town is a 4×4 block grid on a 16 m pitch. Each block is a 6–8 m kit building, the four
 central blocks are left open as the town square, and the roads are 4 m wide worn-cobblestone overlays
 under `ZoneRoot/Streets`. Town buildings use the generic wall material and terracotta roof tiles from
 `Assets/Materials/Building`. `BuildSafeZone`/`BuildWilderness`/
-`BuildTutorial` build one scene each; `ZoneSceneBakerTests` and `WorldBootstrapBakerTests` cover
+`BuildTutorial`/`BuildTestZone` build one scene each; `ZoneSceneBakerTests` and `WorldBootstrapBakerTests` cover
 them. Every scene gets a baked `NetworkManager` (via `NetworkManagerSceneBaker.CreateInActiveScene`,
-token auth on, its own port: tutorial `7772`, safe `7770`, wilderness `7771`), an authored camera
+token auth on, its own port: tutorial `7772`, safe `7770`, wilderness `7771`, test `7773`), an authored camera
 rig, a `ZoneRiskConfig`, spawn points carrying `PlayerSpawnPoint` (four in the town, two in the
 wilderness, one in the tutorial; the first is the zone default) wired into the `PlayerSpawner`, a
-`WorldBootstrap`, and one `ZoneTransferTrigger` road out (`tutorial → safe → wilderness` and back).
+`WorldBootstrap`, and one `ZoneTransferTrigger` per connection (`tutorial → safe → wilderness` and
+back, plus `safe ↔ testzone`).
 The owning client shows that gate's destination as a prompt; pressing E asks the server to transfer.
 Each scene also authors `ResourceNodeMarker` / `CraftingStationMarker` / `EnemyMarker` children under
 `ZoneRoot/Markers` that the server spawns from or configures a spawn controller for — the town has a
@@ -204,7 +208,7 @@ smithy (furnace + anvil) and edge veins, the wilderness has scattered veins and 
 points, and the tutorial has a target dummy plus
 a furnace (the placeholder forge the first iron-ore refining recipe runs at; see
 [07](07-crafting-and-gathering.md)). The zone's `SocialHubService.ZoneId` and raid-registry
-host/port/template are set so the servers are addressable and distinct, and all three scenes are
+host/port/template are set so the servers are addressable and distinct, and all four scenes are
 added to Build Settings so the `NetworkManager` build guard checks them.
 
 The tutorial is the **new-player** zone: it is the Main Menu's default (fallback) zone, so a login
@@ -269,6 +273,7 @@ menu. Passing `-zone <name>` turns the same binary into a dedicated zone server:
 server.x86_64 -zone Tutorial     # listens on 7772
 server.x86_64 -zone SafeZone     # listens on 7770
 server.x86_64 -zone Wilderness   # listens on 7771
+server.x86_64 -zone TestZone     # listens on 7773
 ```
 
 The launch is a three-step handshake between existing components, so no scene needs re-baking:
@@ -325,7 +330,7 @@ Or, for the always-on zones (tutorial + town + wilderness) at once:
 Tools > MMO > Build Zones
 ```
 
-`Build Zones` is the one-shot path from the "fresh zone scene" recipe above, repeated for all three
+`Build Zones` is the one-shot path from the "fresh zone scene" recipe above, repeated for all four
 zones and wired together: it bakes the `NetworkManager`, assembles the ground/boundary/buildings (or
 scatter + hazards) from the graybox prefab kit, drops the `PlayerSpawnPoint`s, the markers and the
 `ZoneRiskConfig`, attaches the `WorldBootstrap`, adds the cross-zone `ZoneTransferTrigger`, saves the
@@ -340,7 +345,7 @@ scenes and registers them in Build Settings.
   are missing a `NetworkManager`, hold a null spawnable-prefab entry, or have a `PlayerSpawner`
   with no prefab. Either fix the scene (re-bake it) or disable it in Build Settings.
 - **No camera when a zone loads.** Run `Tools > MMO > Create Camera Rig` in that scene (or
-  `Tools > MMO > Build Zones` to re-bake all three). A zone without a `CameraRig` renders nothing;
+  `Tools > MMO > Build Zones` to re-bake all four). A zone without a `CameraRig` renders nothing;
   the main menu is the one scene that is *supposed* to have none.
 - **Add a new baker.** Add a static class in `Assets/Editor` with a `[MenuItem("Tools/MMO/...")]`
   method that calls a runtime factory, saves the prefab with `PrefabUtility.SaveAsPrefabAsset`, and

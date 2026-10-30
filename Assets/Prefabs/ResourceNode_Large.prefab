@@ -120,23 +120,22 @@ MonoBehaviour:
   _spectatorInterpolation: 2
   _enableTeleport: 0
   _teleportThreshold: 1
-  <PrefabId>k__BackingField: 6
+  <PrefabId>k__BackingField: 65535
   <SpawnableCollectionId>k__BackingField: 0
   <AssetPathHash>k__BackingField: 3073721973096646839
   SceneId: 0
   SerializedTransformProperties:
     Position: {x: 0, y: 0, z: 0}
-    Rotation: {x: 0, y: 0, z: 0, w: 1}
-    Scale: {x: 2, y: 1.2, z: 2}
-    IsValid: 1
+    Rotation: {x: 0, y: 0, z: 0, w: 0}
+    Scale: {x: 0, y: 0, z: 0}
+    IsValid: 0
   <IsNested>k__BackingField: 0
   WasActiveDuringEdit: 0
   WasActiveDuringEdit_Set1: 1
   <ComponentIndex>k__BackingField: 0
   <PredictedSpawn>k__BackingField: {fileID: 0}
   <PredictedOwner>k__BackingField: {fileID: 0}
-  NetworkBehaviours:
-  - {fileID: 2404470471697145662}
+  NetworkBehaviours: []
   InitializedParentNetworkBehaviour: {fileID: 0}
   InitializedNestedNetworkObjects: []
   RuntimeParentNetworkBehaviour: {fileID: 0}
@@ -147,7 +146,7 @@ MonoBehaviour:
   _initializeOrder: 0
   _preventDespawnOnDisconnect: 0
   _defaultDespawnType: 0
-  _initializedTimestamp: -8584082581265239098
+  _initializedTimestamp: 0
 --- !u!114 &2404470471697145662
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -160,9 +159,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3bd32b3fc0caecd4ea7cef909d4fbb69, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Gameplay.ResourceNode
-  _componentIndexCache: 0
+  _componentIndexCache: 255
   _addedNetworkObject: {fileID: 31098904505174769}
-  _networkObjectCache: {fileID: 31098904505174769}
+  _networkObjectCache: {fileID: 0}
   _definition: {fileID: 11400000, guid: c6a1defe4f45bf961a4a2a9eeb204eed, type: 2}
   _fullVisual: {fileID: 5747341643498231767}
   _emptyVisual: {fileID: 8291763843663092880}

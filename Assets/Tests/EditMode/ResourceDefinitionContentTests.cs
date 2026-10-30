@@ -133,6 +133,105 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void TheNewOreItems_AreShippedWithTheExpectedNames()
+        {
+            var variants = new[]
+            {
+                (ResourceNodeAssetBaker.CopperItemPath, "Copper Ore"),
+                (ResourceNodeAssetBaker.TinItemPath, "Tin Ore"),
+                (ResourceNodeAssetBaker.CobaltItemPath, "Cobalt Ore"),
+                (ResourceNodeAssetBaker.VeridiumItemPath, "Veridium Ore"),
+            };
+
+            foreach ((string path, string itemName) in variants)
+            {
+                var item = AssetDatabase.LoadAssetAtPath<ItemDefinition>(path);
+                Assert.IsNotNull(item, $"Missing item at '{path}'.");
+                Assert.AreEqual(itemName, item.ItemName);
+            }
+        }
+
+        [Test]
+        public void TheNewDefinitions_AreOreVeinsWithTheSameTimingAsIron()
+        {
+            var variants = new[]
+            {
+                (ResourceNodeAssetBaker.CopperDefinitionPath, "Copper Ore", 5),
+                (ResourceNodeAssetBaker.CopperLargeDefinitionPath, "Copper Ore", 15),
+                (ResourceNodeAssetBaker.TinDefinitionPath, "Tin Ore", 5),
+                (ResourceNodeAssetBaker.TinLargeDefinitionPath, "Tin Ore", 15),
+                (ResourceNodeAssetBaker.CobaltDefinitionPath, "Cobalt Ore", 5),
+                (ResourceNodeAssetBaker.VeridiumDefinitionPath, "Veridium Ore", 5),
+            };
+
+            foreach ((string path, string itemName, int amount) in variants)
+            {
+                var definition = AssetDatabase.LoadAssetAtPath<ResourceDefinition>(path);
+                Assert.IsNotNull(definition, $"Missing definition at '{path}'.");
+                Assert.AreEqual(ResourceType.Ore, definition.Type);
+                Assert.AreEqual(itemName, definition.Drop.ItemName);
+                Assert.AreEqual(amount, definition.DropAmount);
+                Assert.AreEqual(ToolKind.None, definition.RequiredTool);
+                Assert.AreEqual(0, definition.GatheringTier);
+                Assert.AreEqual(30f, definition.ResetTime, 0.0001f);
+                Assert.AreEqual(1.2f, definition.GatherIntervalSeconds, 0.0001f);
+                Assert.AreEqual(3f, definition.InteractRange, 0.0001f);
+            }
+        }
+
+        [Test]
+        public void TheNewPrefabs_CarryTheirDefinitionAndBothModels()
+        {
+            var variants = new[]
+            {
+                (ResourceNodeAssetBaker.CopperPrefabPath, ResourceNodeAssetBaker.CopperDefinitionPath,
+                    "CopperOreMesh", "StoneOreEmptyMesh", "CopperOre", "StoneOreEmpty"),
+                (ResourceNodeAssetBaker.CopperLargePrefabPath, ResourceNodeAssetBaker.CopperLargeDefinitionPath,
+                    "CopperOreMesh", "StoneOreLargeEmptyMesh", "CopperOreLarge", "StoneOreLargeEmpty"),
+                (ResourceNodeAssetBaker.TinPrefabPath, ResourceNodeAssetBaker.TinDefinitionPath,
+                    "TinOreMesh", "StoneOreEmptyMesh", "TinOre", "StoneOreEmpty"),
+                (ResourceNodeAssetBaker.TinLargePrefabPath, ResourceNodeAssetBaker.TinLargeDefinitionPath,
+                    "TinOreMesh", "StoneOreLargeEmptyMesh", "TinOreLarge", "StoneOreLargeEmpty"),
+                (ResourceNodeAssetBaker.CobaltPrefabPath, ResourceNodeAssetBaker.CobaltDefinitionPath,
+                    "CobaltOreMesh", "CobaltOreEmptyMesh", "CobaltOre", "CobaltOreEmpty"),
+                (ResourceNodeAssetBaker.VeridiumPrefabPath, ResourceNodeAssetBaker.VeridiumDefinitionPath,
+                    "VeridiumOreMesh", "VeridiumOreEmptyMesh", "VeridiumOre", "VeridiumOreEmpty"),
+            };
+
+            foreach ((string prefabPath, string definitionPath, string fullName, string emptyName,
+                      string fullMaterial, string emptyMaterial) in variants)
+            {
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                var definition = AssetDatabase.LoadAssetAtPath<ResourceDefinition>(definitionPath);
+                Assert.IsNotNull(prefab, $"Missing prefab at '{prefabPath}'.");
+                Assert.IsNotNull(definition, $"Missing definition at '{definitionPath}'.");
+
+                Transform full = prefab.transform.Find($"Visuals/{fullName}");
+                Transform empty = prefab.transform.Find($"Visuals/{emptyName}");
+                Assert.IsNotNull(full, $"'{prefabPath}' needs '{fullName}'.");
+                Assert.IsNotNull(empty, $"'{prefabPath}' needs '{emptyName}'.");
+                Assert.AreEqual(fullMaterial, full.GetComponent<MeshRenderer>().sharedMaterial.name);
+                Assert.AreEqual(emptyMaterial, empty.GetComponent<MeshRenderer>().sharedMaterial.name);
+
+                ResourceNode node = prefab.GetComponent<ResourceNode>();
+                Assert.IsNotNull(node);
+                Assert.AreSame(definition, node.Definition);
+            }
+        }
+
+        [Test]
+        public void TheNodeCatalog_ListsEveryNodePrefab()
+        {
+            Assert.AreEqual(8, ResourceNodeAssetBaker.AllPrefabPaths.Length);
+
+            foreach (string path in ResourceNodeAssetBaker.AllPrefabPaths)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
+                Assert.IsNotNull(prefab, $"Node prefab missing at '{path}'.");
+            }
+        }
+
+        [Test]
         public void ThePrefabFactory_BuildsANodeThatCarriesTheShippedDefinition()
         {
             NetworkObject prefab = ResourceNodePrefabFactory.Create();

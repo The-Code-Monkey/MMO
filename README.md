@@ -70,7 +70,7 @@ check refuses to stomp a record the offline process never saw.
 
 The same build contains the menu and every zone. Launching it with `-zone <name>` skips the menu and
 runs that zone as a dedicated server on its baked port (Tutorial `7772`, SafeZone `7770`, Wilderness
-`7771`). `run-servers.sh` boots all of them at once:
+`7771`, TestZone `7773`). `run-servers.sh` boots all of them at once:
 
 ```sh
 ./run-servers.sh              # every zone, one process each

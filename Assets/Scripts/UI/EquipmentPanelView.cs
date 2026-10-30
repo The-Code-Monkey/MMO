@@ -30,12 +30,15 @@ namespace MMO.UI
         /// <summary>One built row: the slot, the unequip view, and the graphics a repaint touches.</summary>
         public sealed class Row
         {
-            internal Row(EquipmentSlot slot, GameObject gameObject, EquipmentSlotView view, Image background, Text label)
+            internal Row(
+                EquipmentSlot slot, GameObject gameObject, EquipmentSlotView view, Image background,
+                Image icon, Text label)
             {
                 Slot = slot;
                 GameObject = gameObject;
                 View = view;
                 Background = background;
+                Icon = icon;
                 Label = label;
             }
 
@@ -43,6 +46,7 @@ namespace MMO.UI
             public GameObject GameObject { get; }
             public EquipmentSlotView View { get; }
             public Image Background { get; }
+            public Image Icon { get; }
             public Text Label { get; }
         }
 
@@ -102,10 +106,20 @@ namespace MMO.UI
                 if (row.Background != null)
                     row.Background.color = occupied ? OccupiedRowColor : EmptyRowColor;
 
+                Sprite icon = occupied
+                    ? ItemDefinitionRegistry.Resolve(item.ItemName)?.Icon
+                    : null;
+
+                if (row.Icon != null)
+                {
+                    row.Icon.sprite = icon;
+                    row.Icon.enabled = icon != null;
+                }
+
                 if (row.Label != null)
                 {
                     string slotName = SlotLabel(row.Slot);
-                    row.Label.text = occupied ? $"{slotName}: {item.ItemName}" : slotName;
+                    row.Label.text = occupied && icon == null ? $"{slotName}: {item.ItemName}" : slotName;
                 }
             }
         }
@@ -141,12 +155,26 @@ namespace MMO.UI
             EquipmentSlotView view = rowObject.AddComponent<EquipmentSlotView>();
             view.SetSlot(slot);
 
+            var iconObject = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            RectTransform iconRect = (RectTransform)iconObject.transform;
+            iconRect.SetParent(rowObject.transform, false);
+            iconRect.anchorMin = new Vector2(0f, 0.5f);
+            iconRect.anchorMax = new Vector2(0f, 0.5f);
+            iconRect.pivot = new Vector2(0f, 0.5f);
+            iconRect.anchoredPosition = new Vector2(6f, 0f);
+            iconRect.sizeDelta = new Vector2(22f, 22f);
+
+            Image icon = iconObject.GetComponent<Image>();
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+            icon.enabled = false;
+
             var labelObject = new GameObject("Label", typeof(RectTransform));
             RectTransform labelRect = (RectTransform)labelObject.transform;
             labelRect.SetParent(rowObject.transform, false);
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = new Vector2(8f, 0f);
+            labelRect.offsetMin = new Vector2(34f, 0f);
             labelRect.offsetMax = new Vector2(-8f, 0f);
 
             Text label = labelObject.AddComponent<Text>();
@@ -160,7 +188,7 @@ namespace MMO.UI
             label.resizeTextMaxSize = 12;
             label.text = string.Empty;
 
-            return new Row(slot, rowObject, view, background, label);
+            return new Row(slot, rowObject, view, background, icon, label);
         }
 
         private void ClearRows()

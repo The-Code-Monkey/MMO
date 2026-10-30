@@ -23,9 +23,10 @@ namespace MMO.Editor
 
             int registered = 0;
 
-            NetworkObject nodePrefab = ResourceNodeBaker.EnsureResourceNodePrefab();
-            if (nodePrefab != null && ResourceNodePrefabFactory.Register(manager.SpawnablePrefabs, nodePrefab))
-                registered++;
+            // Register the whole node catalog in a fixed order before any marker-specific prefab:
+            // the menu and every zone must derive the same FishNet ids.
+            ResourceNodeBaker.EnsureResourceNodePrefab();
+            registered += ResourceNodeAssetBaker.RegisterAllPrefabs(manager.SpawnablePrefabs);
 
             foreach (ResourceNodeMarker marker in Object.FindObjectsByType<ResourceNodeMarker>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {

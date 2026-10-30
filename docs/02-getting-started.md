@@ -99,7 +99,7 @@ platform to **Linux Server** (or **Dedicated Server**) and press **Build**. The 
 launcher script, `run-servers.sh`, that boots the servers for you:
 
 ```sh
-./run-servers.sh              # every zone (SafeZone 7770, Wilderness 7771, Tutorial 7772)
+./run-servers.sh              # every zone (SafeZone 7770, Wilderness 7771, Tutorial 7772, TestZone 7773)
 ./run-servers.sh Tutorial     # just one zone
 ./run-servers.sh --list       # print the known zone names
 ```

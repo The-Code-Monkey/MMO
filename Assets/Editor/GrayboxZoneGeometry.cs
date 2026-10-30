@@ -36,29 +36,60 @@ namespace MMO.Editor
                     ZoneSceneBaker.PlaceKit(floor, parent, start + x * ZoneSceneBaker.GroundTile, start + z * ZoneSceneBaker.GroundTile);
         }
 
-        public static void BuildBoundary(Transform parent, float extent = ZoneSceneBaker.GroundExtent)
+        public static void BuildBoundary(
+            Transform parent,
+            float extent = ZoneSceneBaker.GroundExtent,
+            int portalCount = 1)
         {
             GameObject wall = ZoneSceneBaker.LoadPrefab(WallPrefab);
             int segments = Mathf.RoundToInt(extent / ZoneSceneBaker.GroundTile);
             float half = extent / 2f;
             float start = -half + ZoneSceneBaker.GroundTile / 2f;
 
-            // The two central segments of the +Z edge are left out: that 4 m opening is the
-            // doorway the portal volume sits in.
-            int doorA = segments / 2 - 1;
-            int doorB = segments / 2;
-
             for (int i = 0; i < segments; i++)
             {
                 float offset = start + i * ZoneSceneBaker.GroundTile;
 
-                if (i != doorA && i != doorB)
+                if (!IsPortalOpening(offset, half, half, portalCount, extent))
                     ZoneSceneBaker.PlaceKit(wall, parent, offset, half);
 
-                ZoneSceneBaker.PlaceKit(wall, parent, offset, -half);
-                ZoneSceneBaker.PlaceKit(wall, parent, half, offset, 90f);
-                ZoneSceneBaker.PlaceKit(wall, parent, -half, offset, 90f);
+                if (!IsPortalOpening(offset, -half, half, portalCount, extent))
+                    ZoneSceneBaker.PlaceKit(wall, parent, offset, -half);
+
+                if (!IsPortalOpening(half, offset, half, portalCount, extent))
+                    ZoneSceneBaker.PlaceKit(wall, parent, half, offset, 90f);
+
+                if (!IsPortalOpening(-half, offset, half, portalCount, extent))
+                    ZoneSceneBaker.PlaceKit(wall, parent, -half, offset, 90f);
             }
+        }
+
+        /// <summary>
+        /// True when a wall segment centre falls inside a portal's 4 m doorway. The x/z meaning
+        /// depends on which edge is being built: north/south walls vary in x, east/west in z.
+        /// </summary>
+        private static bool IsPortalOpening(
+            float along, float edge, float half, int portalCount, float extent)
+        {
+            bool horizontalEdge = Mathf.Abs(Mathf.Abs(edge) - half) < 0.01f;
+            for (int slot = 0; slot < portalCount; slot++)
+            {
+                Vector3 point = ZonePortalAuthor.EdgePointFor(slot, portalCount, extent);
+                if (horizontalEdge)
+                {
+                    if (Mathf.Abs(edge - point.z) < 0.01f &&
+                        Mathf.Abs(along - point.x) < ZoneSceneBaker.GroundTile)
+                        return true;
+                }
+                else
+                {
+                    if (Mathf.Abs(edge - point.x) < 0.01f &&
+                        Mathf.Abs(along - point.z) < ZoneSceneBaker.GroundTile)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         public static void BuildTown(Transform buildings, Transform streets)

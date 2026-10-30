@@ -92,7 +92,7 @@ namespace MMO.Bootstrap
             if (!ApplicationCanLoadZone(zone))
             {
                 Debug.LogError($"{nameof(MainMenuBootstrap)}: unknown zone '{zone}'. " +
-                               "Expected one of: SafeZone, Wilderness, Tutorial.");
+                               "Expected one of: SafeZone, Wilderness, Tutorial, TestZone.");
                 Application.Quit(1);
                 return true;
             }

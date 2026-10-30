@@ -136,9 +136,12 @@ How the views work:
   (the game wires it to the mouse position), defaulting to a point in front. Cooldowns are not shown
   because the interface deliberately does not expose them (see [05](05-gameplay-stats-combat-abilities.md)).
 - `InventoryGridView` builds one cell per grid position on `Bind` using
-  `source.GridWidth`/`GridHeight`. `Repaint` tints every cell an item covers and labels only
+  `source.GridWidth`/`GridHeight`. `Repaint` tints every cell an item covers, draws the
+  `ItemDefinition.Icon` and only falls back to a label when the item has no icon, so multi-cell
+  items still show one image at their origin cell. It labels only
   the item's origin cell, so a 2×1 item reads as one item spanning two cells.
-- `EquipmentPanelView` builds one row per `EquipmentSlots.All` entry on `Bind`, subscribes to
+- `EquipmentPanelView` builds one row per `EquipmentSlots.All` entry on `Bind`, shows the worn
+  item's icon next to the slot name (falling back to text when it has none), subscribes to
   `IEquipmentSource.ContainersChanged`, and paints `"<slot>: <item>"` (or just the slot name when
   empty). Each row carries an `EquipmentSlotView`, so a right-click asks the server to unequip that
   slot. Items in the mount slot are what makes G work (see [05](05-gameplay-stats-combat-abilities.md)).
