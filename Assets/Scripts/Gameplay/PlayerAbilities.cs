@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FishNet.Connection;
 using FishNet.Object;
 using FishNet.Object.Synchronizing;
+using MMO.Client;
 using MMO.Content;
 using MMO.Inventory;
 using UnityEngine;
@@ -227,6 +228,12 @@ namespace MMO.Gameplay
                 return;
 
             PlayerStats caster = GetStats();
+            Vector3 origin = AbilityEffects.ResolveOrigin(
+                ability.Logic, transform.position, cast.TargetPosition);
+
+            // Presentation only: the damage verdict below is already the server's. Observers
+            // decide locally whether an ally's effect is drawn, so a ZvZ toggle costs no traffic.
+            RpcPlayCastPresentation(ability.AbilityName, origin);
 
             if (ability.Logic == AbilityLogic.SelfHeal)
             {
@@ -247,7 +254,6 @@ namespace MMO.Gameplay
                 return;
             }
 
-            Vector3 origin = AbilityEffects.ResolveOrigin(ability.Logic, transform.position, cast.TargetPosition);
             CollectSpawned(_playerBuffer);
             List<PlayerStats> victims = AbilityEffects.SelectVictims(
                 origin, ability.EffectRadius, caster, _playerBuffer);
@@ -370,6 +376,16 @@ namespace MMO.Gameplay
                 _stats = GetComponent<PlayerStats>();
 
             return _stats;
+        }
+
+        /// <summary>
+        /// Draws the resolved cast on every client. The server has already applied the effect;
+        /// this method only feeds the local VFX pool, so a client can never influence the hit.
+        /// </summary>
+        [ObserversRpc]
+        private void RpcPlayCastPresentation(string abilityName, Vector3 position)
+        {
+            ClientEffects.Instance?.Play(abilityName, position, IsOwner);
         }
 
         /// <summary>

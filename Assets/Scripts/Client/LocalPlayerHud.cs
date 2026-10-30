@@ -130,6 +130,10 @@ namespace MMO.Client
                 dialogue: GetComponent<PlayerDialogue>(),
                 createTradeFrame: true);
 
+            // Presentation for every accepted cast this client sees, built on the owner's player
+            // object so a dedicated server and remote copies never create a pool.
+            ClientEffects.Ensure(transform);
+
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
             _hud.BindTrade(GetComponent<PlayerTrade>(), GetComponent<PlayerInventory>());
 
