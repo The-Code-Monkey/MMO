@@ -14,9 +14,9 @@ using UnityEngine.SceneManagement;
 namespace MMO.Editor
 {
     /// <summary>
-    /// Turns the capsule built by <see cref="PlayerPrefabFactory"/> into a real prefab asset and
-    /// deletes the scene copy it was built from — so the only player object in the project is the
-    /// reusable template, never a scene instance.
+    /// Turns the capsule built by <see cref="PlayerPrefabFactory"/> into a real prefab asset,
+    /// nests the rigged cosmetic model under it, and deletes the scene copy it was built from — so
+    /// the only player object in the project is the reusable template, never a scene instance.
     ///
     /// The asset is what the scene's NetworkManager registers as a spawnable and hands to FishNet's
     /// <see cref="FishNet.Component.Spawning.PlayerSpawner"/>.
@@ -76,6 +76,7 @@ namespace MMO.Editor
             try
             {
                 PlayerPrefabAuthoring.EquipDefaultWeapon(built);
+                PlayerPrefabAuthoring.AttachCharacterVisual(built);
                 PlayerPrefabAuthoring.MakeNetworkTransformServerAuthoritative(built);
 
                 // SaveAsPrefabAsset overwrites any asset already at this path, keeping its GUID —

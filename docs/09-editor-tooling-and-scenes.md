@@ -18,11 +18,13 @@ again reuses or overwrites its output instead of duplicating it.
 
 | Menu item | Class | What it does |
 |---|---|---|
+| `Tools > MMO > Bake All (Prefabs + Scenes)` | `BakeAll` | Runs every prefab baker, rebuilds the main menu and all four zone scenes, then does one FishNet default-prefab refresh. |
 | `Tools > MMO > Configure URP` | `UrpSetupBaker` | Creates/assigns the URP pipeline and renderer assets. |
 | `Tools > MMO > Rebuild Ground Grass Assets` | `GroundAssetBaker` | Imports the grass maps and builds the `Ground_Grass` material and 2 m prefab. |
 | `Tools > MMO > Rebuild Ground Cobblestone Assets` | `GroundAssetBaker` | Imports the cobblestone maps and builds the `Ground_Cobblestone` material and 2 m prefab. |
 | `Tools > MMO > Rebuild Ground Worn Cobblestone Assets` | `GroundAssetBaker` | Imports the worn maps and builds the `Path_Cobblestone_Worn` overlay prefab. |
 | `Tools > MMO > Rebuild Building Assets` | `BuildingAssetBaker` | Imports the generic wall and roof-tile maps and builds their materials. |
+| `Tools > MMO > Rebuild Player Character Assets` | `PlayerCharacterAssetBaker` | Imports the rigged character FBX, builds its material, AnimatorController and visual prefab. |
 | `Tools > MMO > Create Player Prefab` | `PlayerPrefabBaker` | Builds and saves the networked player prefab. |
 | `Tools > MMO > Create Player Prefab And Wire Scene` | `PlayerPrefabBaker` | The above, then wires a `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Target Dummy Prefab` | `TargetDummyBaker` | Builds the training-dummy prefab and wires its spawner. |
@@ -48,6 +50,14 @@ Each prefab baker follows the same shape: build the object via the matching **ru
 save it with `PrefabUtility.SaveAsPrefabAsset`, and destroy the in-scene copy afterwards. The
 runtime factories live in `Assets/Scripts/Net` (see [04](04-networking-and-the-join-flow.md)).
 
+A `NetworkObject` built by a factory carries `AssetPathHash = 0`. Saving it that way makes FishNet
+log a hash collision against every other prefab still at zero, because its incremental
+`AssetPostprocessor` does not rehash a prefab that was overwritten in place. Bakers that rebuild a
+prefab which already exists therefore copy the old hash onto the new object before saving
+(`ResourceNodeAssetBaker.PreserveAssetPathHash`). `BakeAll` finishes with one
+`FishNetPrefabCollectionRefresher.Refresh()` so the default prefab collection is regenerated from
+the final assets, in sorted order, and genuinely new prefabs get their hash.
+
 ### PlayerPrefabBaker
 
 `Assets/Editor/PlayerPrefabBaker.cs:24`. Saves to `Assets/Prefabs/Player.prefab`
@@ -60,6 +70,14 @@ scene references stay valid. `EquipDefaultWeapon` (`:231`) equips
 `SerializedObject`, and `MakeNetworkTransformServerAuthoritative` clears the private
 `_clientAuthoritative` flag the same way. `WirePlayerPrefab` (`:168`) registers the
 prefab in the spawnable collection and attaches a `PlayerSpawner`.
+
+The baked prefab also nests the cosmetic character under `Visuals/`. The networked root keeps its
+capsule collider and mesh; only its `MeshRenderer` is disabled. `PlayerCharacterAssetBaker` imports
+`Assets/Models/Player/Base.fbx` as a Humanoid rig, extracts the `Idle`, `Walk`, `Run` and `Dying`
+clips, builds `Assets/Animations/Player/Player.controller` and saves
+`Assets/Prefabs/PlayerVisual.prefab`. The visual is a plain `MonoBehaviour`
+(`MMO.Client.PlayerCharacterVisual`) driven by the replicated root movement, so it adds no
+NetworkBehaviour index and never becomes authoritative state.
 
 ### TargetDummyBaker
 
@@ -341,6 +359,9 @@ scenes and registers them in Build Settings.
 - **Scene is missing its NetworkManager.** Run `Tools > MMO > Create NetworkManager In Scene`.
 - **Player prefab is missing or out of date.** Run `Tools > MMO > Create Player Prefab`. If you
   changed the player component list, this picks it up because it calls `PlayerPrefabFactory.Create`.
+- **The player has no model or animation.** Run `Tools > MMO > Rebuild Player Character Assets`, then
+  `Tools > MMO > Create Player Prefab` (or `Bake All`). Rebuilding the player prefab alone reuses the
+  existing visual asset.
 - **Build refuses to start.** Read the `BuildFailedException`: it names the enabled scene(s) that
   are missing a `NetworkManager`, hold a null spawnable-prefab entry, or have a `PlayerSpawner`
   with no prefab. Either fix the scene (re-bake it) or disable it in Build Settings.

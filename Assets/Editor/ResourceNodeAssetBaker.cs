@@ -181,6 +181,10 @@ namespace MMO.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
+            // Freshly saved prefabs have no AssetPathHash yet; FishNet's generator assigns and
+            // sorts them. Without this the resource variants all collide at hash 0.
+            FishNetPrefabCollectionRefresher.Refresh();
+
             Debug.Log(prefab != null
                 ? $"Rebuilt resource node assets: {ResourceNodeBaker.PrefabAssetPath}, {LargePrefabPath}, " +
                   $"{CopperPrefabPath}, {CopperLargePrefabPath}, {TinPrefabPath}, {TinLargePrefabPath}, " +
@@ -339,6 +343,18 @@ namespace MMO.Editor
             return registered;
         }
 
+        /// <summary>
+        /// Keeps the FishNet AssetPathHash of the prefab being overwritten. A factory-built
+        /// NetworkObject starts at zero; saving it that way makes FishNet log a hash collision
+        /// against every other freshly rebuilt node until the next full prefab refresh.
+        /// </summary>
+        private static void PreserveAssetPathHash(NetworkObject built, string path)
+        {
+            NetworkObject existing = AssetDatabase.LoadAssetAtPath<NetworkObject>(path);
+            if (existing != null)
+                built.SetAssetPathHash(existing.AssetPathHash);
+        }
+
         private static void RebuildVariant(NodeVariant variant, Material empty, Material largeEmpty)
         {
             ItemDefinition item = EnsureItem(variant.ItemPath, variant.ItemName);
@@ -350,6 +366,7 @@ namespace MMO.Editor
 
             NetworkObject built = ResourceNodePrefabFactory.Create(definition);
             built.name = Path.GetFileNameWithoutExtension(variant.PrefabPath);
+            PreserveAssetPathHash(built, variant.PrefabPath);
             try
             {
                 RemoveComponent<MeshFilter>(built.gameObject);
@@ -716,6 +733,7 @@ namespace MMO.Editor
         {
             NetworkObject built = ResourceNodePrefabFactory.Create(definition);
             built.name = "ResourceNode_Large";
+            PreserveAssetPathHash(built, LargePrefabPath);
             try
             {
                 RemoveComponent<MeshFilter>(built.gameObject);
