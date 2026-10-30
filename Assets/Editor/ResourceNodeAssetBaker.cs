@@ -50,6 +50,7 @@ namespace MMO.Editor
         public const string LargePrefabPath = "Assets/Prefabs/ResourceNode_Large.prefab";
 
         private const float OreTargetHeight = 1.6f;
+        private const float ModelYaw = 180f;
         private const float LargeTargetHeight = 2.4f;
         private const int LargeDropAmount = 15;
 
@@ -397,7 +398,7 @@ namespace MMO.Editor
             model.name = modelName;
             model.transform.localPosition = Vector3.zero;
             // Compose the yaw with the FBX axis-conversion rotation instead of replacing it.
-            model.transform.localRotation = Quaternion.Euler(0f, 0f, 0f) * model.transform.localRotation;
+            model.transform.localRotation = Quaternion.Euler(0f, ModelYaw, 0f) * model.transform.localRotation;
 
             foreach (Collider collider in model.GetComponentsInChildren<Collider>(true))
                 Object.DestroyImmediate(collider);
