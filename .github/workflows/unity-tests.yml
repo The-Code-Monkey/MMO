@@ -48,8 +48,6 @@ jobs:
           artifactsPath: test-results
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           checkName: Unity Test Results
-          # Coverage instrumentation crashes some Unity versions; enable if needed.
-          coverageEnabled: false
 
       - name: Upload test results
         if: always()
