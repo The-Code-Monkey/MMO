@@ -35,7 +35,8 @@ jobs:
           restore-keys: |
             Library-${{ runner.os }}-
 
-      # Runs both the EditMode and PlayMode suites (testMode: all).
+      # Only an EditMode suite exists (Assets/Tests/EditMode); running
+      # PlayMode too just builds an empty test player and hits the scene guard.
       # Licensing (GameCI): Unity Personal authenticates with the Unity account, so
       # set repo secrets UNITY_EMAIL + UNITY_PASSWORD. Unity Pro/Plus also needs
       # UNITY_SERIAL. (A UNITY_LICENSE .ulf is Enterprise/Industry-only now.)
@@ -53,7 +54,7 @@ jobs:
           GAME_CI_COVERAGE_ENABLED: "false"
         with:
           unityVersion: auto # reads ProjectSettings/ProjectVersion.txt (6000.6.5f1)
-          testMode: all
+          testMode: editmode
           artifactsPath: test-results
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           checkName: Unity Test Results
