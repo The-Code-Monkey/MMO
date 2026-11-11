@@ -132,6 +132,32 @@ namespace MMO.Auction
             return result;
         }
 
+        public async Task<MarketSearchIndex> LoadSearchIndexAsync(CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(
+                MarketSearchIndex.Collection, MarketSearchIndex.RealmKey, ct);
+            MarketSearchIndex index = Deserialize<MarketSearchIndex>(obj);
+            if (index != null && index.Rows == null)
+                index.Rows = new List<SearchRow>();
+            return index;
+        }
+
+        public async Task SaveSearchIndexAsync(MarketSearchIndex index, CancellationToken ct = default)
+        {
+            if (index == null)
+                throw new ArgumentNullException(nameof(index));
+
+            if (index.Rows == null)
+                index.Rows = new List<SearchRow>();
+
+            index.StorageVersion = await _rest.WriteObjectAsync(
+                MarketSearchIndex.Collection,
+                MarketSearchIndex.RealmKey,
+                JsonUtility.ToJson(index),
+                index.StorageVersion,
+                ct);
+        }
+
         // Buy Orders
         public async Task<AuctionBuyOrderRecord> LoadBuyOrderAsync(string buyOrderId, CancellationToken ct = default)
         {
@@ -290,6 +316,8 @@ namespace MMO.Auction
                 index.StorageVersion = obj.Version;
             else if (record is AuctionTransactionRecord tx)
                 tx.StorageVersion = obj.Version;
+            else if (record is MarketSearchIndex searchIndex)
+                searchIndex.StorageVersion = obj.Version;
 
             return record;
         }

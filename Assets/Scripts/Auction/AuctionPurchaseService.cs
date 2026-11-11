@@ -16,6 +16,7 @@ namespace MMO.Auction
         private readonly NakamaRestClient _rest;
         private readonly SocialHubService _socialHub;
         private readonly AuctionDeliveryService _delivery;
+        private readonly MarketIndexService _marketIndex;
         private readonly Func<string, PlayerWallet> _getWallet;
         private readonly Func<bool> _hasAuctionHouse;
 
@@ -24,6 +25,7 @@ namespace MMO.Auction
             NakamaRestClient rest,
             SocialHubService socialHub,
             AuctionDeliveryService delivery,
+            MarketIndexService marketIndex,
             Func<string, PlayerWallet> getWallet,
             Func<bool> hasAuctionHouse)
         {
@@ -31,6 +33,7 @@ namespace MMO.Auction
             _rest = rest;
             _socialHub = socialHub;
             _delivery = delivery;
+            _marketIndex = marketIndex;
             _getWallet = getWallet;
             _hasAuctionHouse = hasAuctionHouse;
         }
@@ -161,6 +164,9 @@ namespace MMO.Auction
                 _socialHub.NotifyAuctionListingSold(buyerAccountId, listing.SellerAccountId, updatedListing, transaction);
                 _socialHub.NotifyAuctionPurchaseCompleted(buyerAccountId, transaction);
 
+                await _marketIndex.RemoveAsync(listingId, ct);
+                _socialHub.NotifyMarketChanged(listingId);
+
                 await _delivery.CreditSellerAsync(listing.SellerAccountId, totalPrice, ct);
                 sellerCredited = true;
 
@@ -212,6 +218,9 @@ namespace MMO.Auction
                 await _socialHub.ClaimMailAsync(buyerAccountId, mailId, CancellationToken.None);
                 if (!sellerCredited)
                     await _delivery.CreditSellerAsync(sold.SellerAccountId, totalPrice, CancellationToken.None);
+
+                await _marketIndex.RemoveAsync(listingId, CancellationToken.None);
+                _socialHub.NotifyMarketChanged(listingId);
 
                 return AuctionResult.Ok(listingId: listingId, listing: sold);
             }

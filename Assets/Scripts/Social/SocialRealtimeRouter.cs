@@ -1,4 +1,5 @@
 using System;
+using MMO.Auction;
 
 namespace MMO.Social
 {
@@ -11,17 +12,20 @@ namespace MMO.Social
         private readonly LocalPlayerRegistry _players;
         private readonly Func<FriendService> _friends;
         private readonly Func<SocialReconciler> _reconciler;
+        private readonly Func<AuctionService> _auction;
         private ISocialBus _socket;
         private ChatService _chat;
 
         public SocialRealtimeRouter(
             LocalPlayerRegistry players,
             Func<FriendService> friends,
-            Func<SocialReconciler> reconciler)
+            Func<SocialReconciler> reconciler,
+            Func<AuctionService> auction = null)
         {
             _players = players;
             _friends = friends;
             _reconciler = reconciler;
+            _auction = auction;
         }
 
         public event Action<SocialBusEnvelope> EnvelopeReceived;
@@ -95,6 +99,10 @@ namespace MMO.Social
 
                 case SocialNotification.WireType:
                     _ = _reconciler()?.OnSocialNotification(SocialNotification.FromEnvelope(envelope));
+                    break;
+
+                case SocialNotification.MarketWireType:
+                    _ = _auction?.Invoke()?.RefreshSearchRowAsync(envelope.target);
                     break;
             }
         }
