@@ -172,6 +172,16 @@ The zone-side helper `DeliverItemAsync` remains only as a fallback for a backend
 atomic `deliveryMailId`; it uses `AuctionDeliveryRules` and a C# mail write that bypasses the inbox
 cap and retries a transient backend failure.
 
+### Auction search cache
+
+Realm-wide search reads `MarketSearchIndex` (`Assets/Scripts/Persistence/SearchIndex.cs`), one shared
+record in the `market_search_index` collection keyed `realm`. It is a cache: `auction_listings` stays
+the truth and expiry/price are re-checked on purchase. Creating, cancelling or selling a listing
+upserts or removes its `SearchRow`; a `MarketChanged` hint then tells peer auction zones to re-read
+that one row. When the cache is missing or older than five minutes, `MarketIndexService` rebuilds it
+from the authoritative listings. `MarketIndexRules` is the pure kernel, so the maintenance and
+reconcile paths are covered offline.
+
 ## Common tasks
 
 - **Tune trade range.** Edit `PlayerTrade.Range`. The client picker uses the same constant, but the

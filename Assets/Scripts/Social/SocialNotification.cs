@@ -8,6 +8,7 @@ namespace MMO.Social
     {
         RaidAllocated,
         RaidCompleted,
+        MarketChanged,
     }
 
     /// <summary>
@@ -22,7 +23,11 @@ namespace MMO.Social
         /// <summary>The bus <c>t</c> value every raid notification rides under.</summary>
         public const string WireType = "raid";
 
+        /// <summary>The bus <c>t</c> value a market-cache hint rides under.</summary>
+        public const string MarketWireType = "market";
+
         public SocialNotificationKind Kind;
+        public string ListingId;
         public string RaidId;
         public string PartyId;
         public string HostZoneId;
@@ -34,10 +39,11 @@ namespace MMO.Social
             if (notification == null)
                 return null;
 
+            bool market = notification.Kind == SocialNotificationKind.MarketChanged;
             return new SocialBusEnvelope
             {
-                t = WireType,
-                target = notification.RaidId,
+                t = market ? MarketWireType : WireType,
+                target = market ? notification.ListingId : notification.RaidId,
                 accounts = notification.AccountIds != null
                     ? notification.AccountIds.ToArray()
                     : Array.Empty<string>(),
@@ -54,10 +60,12 @@ namespace MMO.Social
             if (envelope == null)
                 return null;
 
+            bool market = envelope.t == MarketWireType;
             var notification = new SocialNotification
             {
-                Kind = SocialNotificationKind.RaidAllocated,
-                RaidId = envelope.target,
+                Kind = market ? SocialNotificationKind.MarketChanged : SocialNotificationKind.RaidAllocated,
+                RaidId = market ? null : envelope.target,
+                ListingId = market ? envelope.target : null,
             };
 
             if (envelope.accounts != null)

@@ -185,6 +185,7 @@ version check**:
 | Player save | `players` | the player's account id | the shared **game-server** account |
 | Last zone | `player_metadata` | `last_zone` | the **player's** own account |
 | Territory | `territories` | the territory id | the shared **game-server** account |
+| Market search cache | `market_search_index` | `realm` | the shared **game-server** account |
 
 The `players` collection is owned by a single shared service account. Every server process
 authenticates as that account (device id from `BackendSettings.ServerDeviceId`) so they all see the

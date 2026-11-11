@@ -48,6 +48,37 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void MarketChanged_UsesTheMarketBusTypeAndCarriesTheListingId()
+        {
+            var notification = new SocialNotification
+            {
+                Kind = SocialNotificationKind.MarketChanged,
+                ListingId = "listing-1",
+            };
+
+            SocialBusEnvelope envelope = SocialNotification.ToEnvelope(notification);
+
+            Assert.AreEqual(SocialNotification.MarketWireType, envelope.t);
+            Assert.AreEqual("listing-1", envelope.target);
+        }
+
+        [Test]
+        public void MarketChanged_RoundTrip_PreservesTheListingId()
+        {
+            var notification = new SocialNotification
+            {
+                Kind = SocialNotificationKind.MarketChanged,
+                ListingId = "listing-1",
+            };
+
+            string json = JsonUtility.ToJson(SocialNotification.ToEnvelope(notification));
+            SocialNotification restored = SocialNotification.FromEnvelope(JsonUtility.FromJson<SocialBusEnvelope>(json));
+
+            Assert.AreEqual(SocialNotificationKind.MarketChanged, restored.Kind);
+            Assert.AreEqual("listing-1", restored.ListingId);
+        }
+
+        [Test]
         public void FromEnvelope_Null_ReturnsNull()
         {
             Assert.IsNull(SocialNotification.FromEnvelope(null));
