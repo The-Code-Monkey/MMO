@@ -171,3 +171,17 @@ To increase processing speed, the primary agent may spawn sub-agents to handle p
 * **Compilation:** Only the primary agent may trigger the Roslyn compiler or Unity editor execution. 
 
 By keeping all write-operations locked to the primary agent's sequential loop, we avoid Git `index.lock` crashes and Unity `Library` corruption while still parallelizing the heavy context-gathering phases.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`The-Code-Monkey/MMO`), managed with `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles, label strings unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at repo root. See `docs/agents/domain.md`.
