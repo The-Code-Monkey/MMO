@@ -352,7 +352,7 @@ namespace MMO.Tests
 
             Assert.AreEqual(1, manager.gameObject.GetComponents<PlayerSpawner>().Length);
             Assert.AreEqual(0, manager.gameObject.GetComponents<TargetDummySpawner>().Length);
-            Assert.AreEqual(5, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
+            Assert.AreEqual(6, ((SinglePrefabObjects)manager.SpawnablePrefabs).Prefabs.Count);
         }
 
         [Test]

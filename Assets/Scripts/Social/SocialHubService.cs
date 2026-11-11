@@ -224,13 +224,7 @@ namespace MMO.Social
         private void Awake()
         {
             Instance = this;
-            _localPlayers = new LocalPlayerRegistry(() => _zoneId);
-            _hints = new SocialHintClient(() => _rest);
-            _connection = new SocialBackendConnection(() => _rest, _connectRetrySeconds);
-            _realtime = new SocialRealtimeRouter(_localPlayers, () => _friends, () => _reconciler);
-            _realtime.EnsureChat(this);
-            _localPlayers.Registered += OnLocalRegistered;
-            _localPlayers.Unregistered += OnLocalUnregistered;
+            EnsureInitialized();
             if (_repository == null)
             {
                 _rest = new NakamaRestClient(new BackendSettings());
@@ -251,6 +245,25 @@ namespace MMO.Social
         }
 
         /// <summary>
+        /// Builds the local state the hub needs. EditMode tests add the component without a
+        /// domain reload, so their <see cref="Awake"/> may not run; <see cref="Configure"/> calls
+        /// this too so the fakes behave exactly like production.
+        /// </summary>
+        private void EnsureInitialized()
+        {
+            if (_localPlayers != null)
+                return;
+
+            _localPlayers = new LocalPlayerRegistry(() => _zoneId);
+            _hints = new SocialHintClient(() => _rest);
+            _connection = new SocialBackendConnection(() => _rest, _connectRetrySeconds);
+            _realtime = new SocialRealtimeRouter(_localPlayers, () => _friends, () => _reconciler);
+            _realtime.EnsureChat(this);
+            _localPlayers.Registered += OnLocalRegistered;
+            _localPlayers.Unregistered += OnLocalUnregistered;
+        }
+
+        /// <summary>
         /// Points the service at a repository. Production reaches the Nakama-backed default in
         /// <see cref="Awake"/>; tests inject an in-memory fake here, which needs no connection.
         /// </summary>
@@ -259,6 +272,7 @@ namespace MMO.Social
             IRaidInstanceRepository raidRepository = null,
             IZoneRegistryRepository zoneRepository = null)
         {
+            EnsureInitialized();
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
             _accounts = new SocialAccountResolver(_repository, _localPlayers, () => _zoneId);
             _presence = new PresenceService(

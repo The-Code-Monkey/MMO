@@ -22,6 +22,7 @@ namespace MMO.Tests
             _directory = Path.Combine(Path.GetTempPath(), "mmo-bindings-tests-" + System.Guid.NewGuid().ToString("N"));
             _path = Path.Combine(_directory, InputBindingStore.FileName);
             _asset = GameInputActions.Create();
+            _asset.Enable();
         }
 
         [TearDown]
@@ -47,6 +48,7 @@ namespace MMO.Tests
             try
             {
                 store.LoadInto(reloaded);
+                reloaded.Enable();
 
                 Assert.AreEqual("<Keyboard>/q", reloaded.FindAction("Ability1").bindings[0].effectivePath);
             }
@@ -95,6 +97,7 @@ namespace MMO.Tests
             try
             {
                 InputBindingStore.LoadJson(reloaded, json);
+                reloaded.Enable();
 
                 Assert.AreEqual("<Keyboard>/q", reloaded.FindAction("Ability2").bindings[0].effectivePath);
                 Assert.AreEqual("<Keyboard>/1", reloaded.FindAction("Ability1").bindings[0].effectivePath);

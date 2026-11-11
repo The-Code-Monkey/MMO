@@ -15,13 +15,13 @@ namespace MMO.Social
         /// <summary>Fences a rate into [0, <see cref="MaxTaxRateBp"/>].</summary>
         public static int ClampTax(int bp) => Math.Max(0, Math.Min(MaxTaxRateBp, bp));
 
-        /// <summary>The tax on <paramref name="value"/> at <paramref name="bp"/> basis points, rounding down.</summary>
+        /// <summary>The tax on <paramref name="value"/> at <paramref name="bp"/> basis points, rounding up.</summary>
         public static long TaxOn(long value, int bp)
         {
             if (value <= 0 || bp <= 0)
                 return 0;
 
-            return value * bp / 10_000;
+            return (value * bp + 9_999) / 10_000;
         }
 
         /// <summary>What the payer keeps after the tax: value minus <see cref="TaxOn"/>.</summary>

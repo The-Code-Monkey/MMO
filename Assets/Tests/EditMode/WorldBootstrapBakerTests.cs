@@ -252,7 +252,9 @@ namespace MMO.Tests
             {
                 Transform markers = ChildOf(FindRoot(scene, ZoneSceneBaker.ZoneRootName), ZoneSceneBaker.MarkersName);
                 Assert.AreEqual(2, markers.GetComponentsInChildren<BankTellerMarker>().Length);
-                Assert.AreEqual(0, markers.GetComponentsInChildren<CraftingStationMarker>().Length);
+                CraftingStationMarker[] stations = markers.GetComponentsInChildren<CraftingStationMarker>();
+                Assert.AreEqual(1, stations.Length);
+                Assert.AreEqual(CraftingStationType.Furnace, stations[0].StationType);
                 Assert.AreEqual(0, markers.GetComponentsInChildren<ResourceNodeMarker>().Length);
                 Assert.AreEqual(0, markers.GetComponentsInChildren<EnemyMarker>().Length, "A safe town has no enemies.");
             });

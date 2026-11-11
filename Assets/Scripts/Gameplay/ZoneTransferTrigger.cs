@@ -42,7 +42,7 @@ namespace MMO.Gameplay
         [SerializeField] private string _targetHost = DefaultTargetHost;
         [SerializeField] private ushort _targetPort = DefaultTargetPort;
         [SerializeField] private string _targetServerId = "server-b";
-        [SerializeField] private string _targetZoneName = "Zone transition";
+        [SerializeField] private string _targetZoneName = string.Empty;
 
         [Header("Handoff")]
         [SerializeField] private string _sourceServerId = string.Empty;
