@@ -10,6 +10,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.2
+        with:
+          swap-storage: false
+
       - name: Checkout repository (with LFS)
         uses: actions/checkout@v7
         with:
