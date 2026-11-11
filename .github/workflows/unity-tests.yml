@@ -42,6 +42,10 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+          # game-ci CLI v0.1.73 ignores yargs' negation prefix, so the action's
+          # `coverageEnabled: false` input becomes the rejected
+          # `--no-coverageEnabled` flag. Set it via the CLI's env mapping instead.
+          GAME_CI_COVERAGE_ENABLED: "false"
         with:
           unityVersion: auto # reads ProjectSettings/ProjectVersion.txt (6000.6.5f1)
           testMode: all
