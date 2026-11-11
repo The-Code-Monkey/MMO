@@ -2,6 +2,7 @@ using System.Linq;
 using FishNet.Managing;
 using FishNet.Managing.Object;
 using FishNet.Object;
+using MMO.Crafting;
 using MMO.Editor;
 using MMO.Gameplay;
 using MMO.Net;
