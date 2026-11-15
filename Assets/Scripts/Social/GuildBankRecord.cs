@@ -108,6 +108,16 @@ namespace MMO.Social
 
         public List<GuildBankPermission> Permissions = new List<GuildBankPermission>();
 
+        /// <summary>
+        /// Entry ids already paid into <see cref="Vault"/> by territory revenue settlement. The bank
+        /// record is the idempotence marker: a retry after a lost ledger write sees the id here and
+        /// pays nothing again.
+        /// </summary>
+        public List<string> SettledTerritoryEntries = new List<string>();
+
+        /// <summary>Total territory tax settled into this vault, for the guild panel's read-only view.</summary>
+        public long TerritoryRevenue;
+
         /// <summary>The backend's revision hash for optimistic concurrency; not bank data.</summary>
         public string StorageVersion;
     }

@@ -84,6 +84,23 @@ load the territory, run `TerritoryRules.CanCapture`, write the owner and raise
 On server spawn the shell broadcasts every flag's owner so late joiners are current; a capture
 broadcasts the changed flag to every client, and each local `ClaimFlag` updates its cached owner.
 
+### Tax and treasury settlement
+
+A claimed territory can charge a tax on auction sales made inside it. The zone's
+`SocialHubService.TerritoryId` names the territory its auction house stands in (empty means
+untaxed); the owner guild and rate are read from the durable `TerritoryRecord` on each sale, never
+cached. `ApplyTerritoryTaxAsync` withholds `TaxationRules.TaxOn(gross, rate)` from the seller's side
+and returns the net, which `AuctionDeliveryService.CreditSellerAsync` credits instead of the gross.
+A sale whose seller is listed in another zone is not taxed by this zone's auction house.
+
+The withheld amount becomes a `GuildBankLedgerEntry` with `Action = Tax` and a stable `EntryId`.
+`SettleTerritoryRevenueAsync` pays every due entry into `GuildBankRecord.Vault` through
+`GuildBankRules.DepositCurrency`, and records the entry id on the bank's
+`SettledTerritoryEntries`. That id list is the idempotence marker: a retry after a lost ledger write,
+or a second zone running the same pass, sees the id and pays nothing again. The bank's
+`TerritoryRevenue` total is shown read-only on the guild bank frame. Direct trade still carries no
+gold, so only auctions — the one real-money flow inside a territory — are taxed.
+
 ## 3. Wallet and bank vaults
 
 Currency is a first-class wallet, not a stat on the player. `WalletAccount`

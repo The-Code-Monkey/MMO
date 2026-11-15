@@ -363,6 +363,135 @@ namespace MMO.Social
             await PushBankAsync(guildId);
         }
 
+        /// <summary>
+        /// Appends an unsettled territory-tax movement for <paramref name="guildId"/>. Returns false
+        /// when the ledger could not be written, so the caller can fail open and leave the seller's
+        /// proceeds untouched rather than withholding gold nobody recorded.
+        /// </summary>
+        public async Task<bool> AppendTerritoryTaxAsync(
+            string guildId,
+            string sellerAccountId,
+            string currencyId,
+            long amount,
+            long nowTicks)
+        {
+            if (string.IsNullOrEmpty(guildId) || string.IsNullOrEmpty(currencyId) || amount <= 0)
+                return false;
+
+            try
+            {
+                GuildBankLedgerRecord ledger = await _repository.LoadGuildBankLedgerAsync(
+                    guildId, CancellationToken.None)
+                    ?? new GuildBankLedgerRecord
+                    {
+                        GuildId = guildId,
+                        Entries = new List<GuildBankLedgerEntry>(),
+                    };
+
+                ledger.Entries ??= new List<GuildBankLedgerEntry>();
+                ledger.Entries.Add(new GuildBankLedgerEntry
+                {
+                    EntryId = Guid.NewGuid().ToString("N"),
+                    GuildId = guildId,
+                    ActorAccountId = sellerAccountId,
+                    Action = GuildBankLedgerAction.Tax,
+                    TabIndex = -1,
+                    ItemName = currencyId,
+                    Width = 0,
+                    Height = 0,
+                    GridX = 0,
+                    GridY = 0,
+                    StackCount = 0,
+                    ValuePerUnit = 1,
+                    TotalValue = amount,
+                    TimestampTicks = nowTicks,
+                    AffectedCells = new List<int>(),
+                    Settled = false,
+                });
+
+                await _repository.SaveGuildBankLedgerAsync(ledger, CancellationToken.None);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Territory tax ledger append failed: {e.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Pays every due tax entry into the guild vault. The bank write records each entry id as it
+        /// pays, so a retry after a lost ledger write (or a second zone racing this pass) can never
+        /// credit the same entry twice. Only when the bank write wins are the ledger rows marked
+        /// settled, and that marking is best-effort audit state — the bank ids are the truth.
+        /// </summary>
+        public async Task SettleTerritoryRevenueAsync(string guildId, long nowTicks)
+        {
+            if (string.IsNullOrEmpty(guildId))
+                return;
+
+            GuildBankLedgerRecord ledger;
+            try
+            {
+                ledger = await _repository.LoadGuildBankLedgerAsync(guildId, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Social] Could not load tax ledger for {guildId}: {e.Message}");
+                return;
+            }
+
+            if (ledger?.Entries == null)
+                return;
+
+            List<GuildBankLedgerEntry> due = TerritoryRevenueRules.DueEntries(ledger.Entries, null);
+            if (due.Count == 0)
+                return;
+
+            GuildBankResult result = await RetryBankAsync(async () =>
+            {
+                GuildBankRecord bank = await LoadOrCreateBankAsync(guildId);
+                bank.SettledTerritoryEntries ??= new List<string>();
+
+                for (int i = 0; i < due.Count; i++)
+                {
+                    GuildBankLedgerEntry entry = due[i];
+                    if (TerritoryRevenueRules.IsSettled(bank, entry))
+                        continue;
+
+                    if (!GuildBankRules.DepositCurrency(
+                            bank, entry.ItemName, entry.TotalValue, GuildRank.None, DateTimeOffset.UtcNow))
+                    {
+                        continue;
+                    }
+
+                    bank.SettledTerritoryEntries.Add(entry.EntryId);
+                    bank.TerritoryRevenue += entry.TotalValue;
+                }
+
+                await _repository.SaveGuildBankAsync(bank, CancellationToken.None);
+                return new GuildBankResult(GuildBankRule.Ok);
+            });
+
+            if (result.Rule != GuildBankRule.Ok)
+                return;
+
+            for (int i = 0; i < due.Count; i++)
+                due[i].Settled = true;
+
+            try
+            {
+                await _repository.SaveGuildBankLedgerAsync(ledger, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                // The ids on the bank already prevent a double payment; the flag is cosmetic.
+                Debug.LogWarning($"[Social] Could not mark settled tax entries for {guildId}: {e.Message}");
+            }
+
+            await PushBankAsync(guildId);
+        }
+
         private async Task AppendCurrencyLedgerAsync(
             string guildId, string actorAccountId, GuildBankLedgerAction action, string currencyId, long amount)
         {

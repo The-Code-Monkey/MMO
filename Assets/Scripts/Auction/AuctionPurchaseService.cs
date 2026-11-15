@@ -167,7 +167,7 @@ namespace MMO.Auction
                 await _marketIndex.RemoveAsync(listingId, ct);
                 _socialHub.NotifyMarketChanged(listingId);
 
-                await _delivery.CreditSellerAsync(listing.SellerAccountId, totalPrice, ct);
+                await _delivery.CreditSellerAsync(listing.SellerAccountId, totalPrice, ct, listing.SellerZoneId);
                 sellerCredited = true;
 
                 if (!string.IsNullOrEmpty(buyResponse.deliveryMailId))
@@ -217,7 +217,7 @@ namespace MMO.Auction
 
                 await _socialHub.ClaimMailAsync(buyerAccountId, mailId, CancellationToken.None);
                 if (!sellerCredited)
-                    await _delivery.CreditSellerAsync(sold.SellerAccountId, totalPrice, CancellationToken.None);
+                    await _delivery.CreditSellerAsync(sold.SellerAccountId, totalPrice, CancellationToken.None, sold.SellerZoneId);
 
                 await _marketIndex.RemoveAsync(listingId, CancellationToken.None);
                 _socialHub.NotifyMarketChanged(listingId);
