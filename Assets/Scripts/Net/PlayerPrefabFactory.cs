@@ -117,6 +117,10 @@ namespace MMO.Net
             go.AddComponent<PlayerQuestLog>();
             go.AddComponent<PlayerDialogue>();
 
+            // Achievements count server events (level, quest, gather, craft) and persist inside the
+            // player save. They read the stats, quest log, bag and wallet added above.
+            go.AddComponent<MMO.Progression.PlayerAchievements>();
+
             // Added last so its OnStartNetwork runs after the stats/inventory it applies a loaded
             // save through: it consumes the record the join gate fetched and subscribes the save
             // events only once that apply has settled.

@@ -4,6 +4,7 @@ using FishNet.Managing;
 using FishNet.Object;
 using MMO.Content;
 using MMO.Inventory;
+using MMO.Progression;
 using UnityEngine;
 
 namespace MMO.Gameplay
@@ -42,6 +43,7 @@ namespace MMO.Gameplay
         private double _nextTickAt;
 
         private PlayerInventory _inventory;
+        private PlayerAchievements _achievements;
         private AuraController _auras;
         private PlayerQuestLog _quests;
 
@@ -181,6 +183,10 @@ namespace MMO.Gameplay
                 return;
             }
 
+            // One server-validated harvest event; achievements count it, and nothing about the
+            // count is client-supplied.
+            Achievements?.Record(AchievementTrigger.Gather, 1);
+
             // TryGather said yes, so the node still had a harvest to give — but the one just
             // taken may have been the last, in which case the loop stops here rather than on
             // the next frame's availability check.
@@ -238,6 +244,9 @@ namespace MMO.Gameplay
         // Null-guarded lazy fetch so pure-logic tests can construct the component without a
         // sibling PlayerInventory and still exercise everything except the award itself.
         private PlayerInventory Inventory => _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
+
+        private PlayerAchievements Achievements
+            => _achievements != null ? _achievements : _achievements = GetComponent<PlayerAchievements>();
 
         private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
 

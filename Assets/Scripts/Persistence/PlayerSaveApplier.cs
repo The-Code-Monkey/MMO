@@ -4,6 +4,7 @@ using MMO.Banking;
 using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Progression;
 using UnityEngine;
 
 namespace MMO.Persistence
@@ -18,7 +19,8 @@ namespace MMO.Persistence
             PlayerInventory inventory,
             PlayerQuestLog quests,
             PlayerWallet wallet,
-            PlayerBank bank)
+            PlayerBank bank,
+            PlayerAchievements achievements)
         {
             PlayerSaveMapper.Apply(
                 record,
@@ -44,6 +46,7 @@ namespace MMO.Persistence
             quests?.Restore(completedQuestIds, questProgress);
             wallet?.InitializeFromSave(record);
             bank?.InitializeFromSave(record);
+            achievements?.Restore(record?.Achievements);
         }
     }
 }

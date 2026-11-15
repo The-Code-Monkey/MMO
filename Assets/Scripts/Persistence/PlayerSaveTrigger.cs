@@ -6,6 +6,7 @@ using MMO.Banking;
 using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Progression;
 using MMO.Social;
 using UnityEngine;
 
@@ -36,6 +37,7 @@ namespace MMO.Persistence
         private PlayerQuestLog _quests;
         private PlayerWallet _wallet;
         private PlayerBank _bank;
+        private PlayerAchievements _achievements;
         private string _accountId;
         private bool _subscribed;
         private readonly WalletReservationReconciler _walletReconciler = new WalletReservationReconciler();
@@ -70,6 +72,7 @@ namespace MMO.Persistence
             _quests = GetComponent<PlayerQuestLog>();
             _wallet = GetComponent<PlayerWallet>();
             _bank = GetComponent<PlayerBank>();
+            _achievements = GetComponent<PlayerAchievements>();
             if (_stats == null || _inventory == null)
             {
                 Debug.LogError($"{nameof(PlayerSaveTrigger)}: the player prefab is missing PlayerStats or PlayerInventory.", this);
@@ -94,7 +97,7 @@ namespace MMO.Persistence
                 return;
 
             PlayerSaveApplier.Apply(
-                record, _accountId, _stats, _inventory, _quests, _wallet, _bank);
+                record, _accountId, _stats, _inventory, _quests, _wallet, _bank, _achievements);
 
             service.RegisterLivePlayer(_accountId, Capture);
             _signals.Bind(
@@ -192,6 +195,6 @@ namespace MMO.Persistence
 
         private PlayerSaveRecord Capture()
             => PlayerSnapshotFactory.Capture(
-                _accountId, _stats, _inventory, _quests, _wallet, _bank, transform.position);
+                _accountId, _stats, _inventory, _quests, _wallet, _bank, _achievements, transform.position);
     }
 }

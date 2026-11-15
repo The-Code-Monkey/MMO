@@ -205,9 +205,9 @@ namespace MMO.Tests
 
 
         [Test]
-        public void SchemaVersion_IsFour()
+        public void SchemaVersion_IsFive()
         {
-            Assert.AreEqual(4, PlayerSaveRecord.CurrentSchemaVersion);
+            Assert.AreEqual(5, PlayerSaveRecord.CurrentSchemaVersion);
         }
 
         [Test]

@@ -3,6 +3,7 @@ using MMO.Banking;
 using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Progression;
 using UnityEngine;
 
 namespace MMO.Persistence
@@ -17,6 +18,7 @@ namespace MMO.Persistence
             PlayerQuestLog quests,
             PlayerWallet wallet,
             PlayerBank bank,
+            PlayerAchievements achievements,
             Vector3 position)
         {
             PlayerSaveRecord record = PlayerSaveMapper.Capture(
@@ -33,6 +35,9 @@ namespace MMO.Persistence
                 quests != null ? quests.Progress : null);
             wallet?.CaptureToSave(record);
             bank?.CaptureToSave(record);
+            record.Achievements = achievements != null
+                ? achievements.CaptureSave()
+                : new System.Collections.Generic.List<AchievementSaveData>();
             return record;
         }
     }
