@@ -9,14 +9,29 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: /home/andy/Documents/GitHub/MMO
     steps:
       - name: Checkout repository (with LFS)
         uses: actions/checkout@v7
         with:
           lfs: true
+
+      # The unityci editor image plus a Unity project does not fit on a stock hosted
+      # runner (~14 GB). Remove preinstalled toolchains the build never uses and prune
+      # Docker before the editor image is pulled.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      # The Unity MCP packages are a local editor tool: their NuGet DLLs live under
+      # Assets/Plugins/NuGet but are gitignored, so a clean CI checkout has none of them and
+      # the package fails to compile. They are not used by tests or builds; drop them here.
+      - name: Drop editor-only MCP packages
+        run: |
+          jq 'del(.dependencies["com.ivanmurzak.unity.mcp"], .dependencies["com.ivanmurzak.unity.mcp.navigation"], .dependencies["com.ivanmurzak.unity.mcp.terrain"])' \
+            Packages/manifest.json > Packages/manifest.ci.json
+          mv Packages/manifest.ci.json Packages/manifest.json
 
       - name: Cache Unity Library
         uses: actions/cache@v6
@@ -34,7 +49,8 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: StandaloneLinux64
-          projectPath: Assets
+          projectPath: .
+          cliVersion: v0.1.75
 
       - name: Build Client (Windows Standalone)
         uses: game-ci/unity-builder@v6
@@ -44,7 +60,8 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: StandaloneWindows64
-          projectPath: Assets
+          projectPath: .
+          cliVersion: v0.1.75
 
       - name: Build Client (Linux Standalone)
         uses: game-ci/unity-builder@v6
@@ -54,13 +71,14 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: StandaloneLinux64
-          projectPath: Assets
+          projectPath: .
+          cliVersion: v0.1.75
 
       - name: Upload server build artifact
         uses: actions/upload-artifact@v7
         with:
           name: mmo-server-build
-          path: build/StandaloneLinux64/MMO.exe
+          path: build/StandaloneLinux64/MMO.x86_64
           if-no-files-found: warn
 
       - name: Upload Windows client build artifact

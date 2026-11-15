@@ -22,6 +22,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # The unityci editor image plus a Unity project does not fit on a stock hosted
+      # runner (~14 GB). Remove preinstalled toolchains the build never uses and prune
+      # Docker before the editor image is pulled.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      # The Unity MCP packages are a local editor tool: their NuGet DLLs live under
+      # Assets/Plugins/NuGet but are gitignored, so a clean CI checkout has none of them and
+      # the package fails to compile. They are not used by tests or builds; drop them here.
+      - name: Drop editor-only MCP packages
+        run: |
+          jq 'del(.dependencies["com.ivanmurzak.unity.mcp"], .dependencies["com.ivanmurzak.unity.mcp.navigation"], .dependencies["com.ivanmurzak.unity.mcp.terrain"])' \
+            Packages/manifest.json > Packages/manifest.ci.json
+          mv Packages/manifest.ci.json Packages/manifest.json
+
       - name: Cache Unity Library
         uses: actions/cache@v6
         with:
@@ -48,13 +66,18 @@ jobs:
           artifactsPath: test-results
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           checkName: Unity Test Results
-          # Coverage instrumentation crashes some Unity versions; enable if needed.
-          coverageEnabled: false
+          # Pin the CLI instead of resolving "latest" through the GitHub API from inside the
+          # container: that lookup is rate-limited and returns 403 on hosted runners, which was
+          # failing the job before Unity ever started.
+          cliVersion: v0.1.75
+          # Do not pass coverageEnabled: false: game-ci CLI v0.1.75 rejects the generated
+          # --no-coverageEnabled flag and exits before Unity starts. The action's default
+          # (coverage on) is accepted by this CLI.
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: unity-test-results
-          path: ${{ steps.tests.outputs.artifactsPath }}
+          path: test-results
           if-no-files-found: warn
