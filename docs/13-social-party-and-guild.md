@@ -171,6 +171,24 @@ into the SyncVar.
 sessions; when a player spawns, the hub tells the shell their guild (if any) and the roster is
 replicated.
 
+### PlayerMail and the mailbox
+
+`PlayerMail` on the player prefab is the mailbox shell. `RequestInbox`, `RequestClaim`,
+`RequestClaimAll` and `RequestSend` are `[ServerRpc]` intents; the server resolves the account from
+the join cache, calls `SocialHubService.LoadInboxAsync` / `ClaimMailAsync` / `ClaimAllMailAsync` /
+`SendPlayerMailAsync`, and answers with the inbox as JSON through a `[TargetRpc]` (`MailInbox` is
+already serializable). Refusals come back as a `MailRule` code and nothing moves.
+
+Player-to-player send resolves the recipient through the name index
+(`ISocialRepository.ResolveNameAsync`), then applies `MailRules.CanSendPlayerMail`: a different,
+non-blank recipient, non-blank subject/body, and a five-second cooldown kept in server memory the
+same way `ChatService` throttles chat. The existing inbox cap and attachment cap still apply.
+
+`MailFrameFactory` builds the window in code — unread-badged title, scrolling list, detail pane,
+claim/claim-all — and `LocalPlayerHud` binds it to the local player's shell and toggles it with
+`MailFrameView.OpenKey` (M by default). `MailUiFormat` owns the unread count, state labels and
+contents summary, so the badge and the rows agree without a second formula.
+
 ## 7. A party invite, end to end
 
 ```

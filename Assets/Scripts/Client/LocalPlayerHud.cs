@@ -119,6 +119,10 @@ namespace MMO.Client
 
             if (tradePressed)
                 _hud.TradeFrame.OpenNearest();
+
+            // The mailbox window hides itself while closed, so the persistent HUD owns its key.
+            if (_hud.MailFrame != null && Input.GetKeyDown(_hud.MailFrame.OpenKey))
+                _hud.MailFrame.Toggle();
         }
 
         /// <summary>
@@ -163,6 +167,7 @@ namespace MMO.Client
 
             _hud.BindChat(GetComponent<PlayerChat>(), GetComponent<PlayerFriends>());
             _hud.BindTrade(GetComponent<PlayerTrade>(), GetComponent<PlayerInventory>());
+            _hud.MailFrame?.Bind(GetComponent<PlayerMail>());
 
             _bank = GetComponent<PlayerBank>();
             if (_bank != null)
@@ -221,6 +226,7 @@ namespace MMO.Client
             _bankSource = null;
 
             _settingsPanel = null;
+            _hud.MailFrame?.Unbind();
 
             if (_input != null)
             {

@@ -105,6 +105,7 @@ namespace MMO.UI
                 mountCastBar,
                 zoneTransferPrompt);
             hud.SetCraftingPanel(CraftingPanelFactory.Create(root.transform));
+            hud.SetMailFrame(MailFrameFactory.Create(root.transform));
             hud.SetDialogueView(DialogueView.Create(root.transform));
 
             if (createBankFrame)
