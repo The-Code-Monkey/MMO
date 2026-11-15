@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MMO.Net;
 using MMO.Social;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -64,11 +65,18 @@ namespace MMO.Persistence
 
         private readonly BackendSettings _settings;
         private readonly NakamaSession _session;
+        private readonly PinSet _pinSet;
 
-        public NakamaRestClient(BackendSettings settings = null)
+        /// <param name="settings">Backend connection details; null falls back to the defaults.</param>
+        /// <param name="pinSet">
+        /// Certificate pins for the backend. Null loads the shipped document
+        /// (<see cref="PinSetLoader"/>); a set that does not require pinning changes nothing.
+        /// </param>
+        public NakamaRestClient(BackendSettings settings = null, PinSet pinSet = null)
         {
             _settings = settings ?? new BackendSettings();
             _session = new NakamaSession(_settings, this);
+            _pinSet = pinSet ?? PinSetLoader.Load();
         }
 
         public bool IsConnected => _session.IsConnected;
@@ -304,6 +312,15 @@ namespace MMO.Persistence
 
             request.downloadHandler = new DownloadHandlerBuffer();
             request.timeout = RequestTimeoutSeconds;
+
+            // Pin the gateway when the build ships a pin set. The handler is a no-op unless the set
+            // requires pinning and the host is not loopback, so local development is untouched.
+            if (_pinSet != null)
+            {
+                request.certificateHandler = new CertificatePinHandler(_pinSet, PinTarget.Backend, _settings.Host);
+                request.disposeCertificateHandlerOnDispose = true;
+            }
+
             request.SetRequestHeader("Accept", "application/json");
 
             if (jsonBody != null)
