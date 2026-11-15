@@ -33,10 +33,12 @@ namespace MMO.Auction
         private readonly AuctionListingService _listings;
         private readonly AuctionBuyOrderService _buyOrders;
         private readonly AuctionPurchaseService _purchases;
+        private readonly int _casRetries;
 
         public AuctionService(IAuctionRepository repository, NakamaRestClient rest, SocialHubService socialHub, int casRetries = 5)
         {
             _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            _casRetries = Mathf.Max(1, casRetries);
             _rest = rest ?? throw new ArgumentNullException(nameof(rest));
             _socialHub = socialHub ?? throw new ArgumentNullException(nameof(socialHub));
             _delivery = new AuctionDeliveryService(_socialHub, GetPlayerBag);
@@ -50,6 +52,8 @@ namespace MMO.Auction
             _purchases = new AuctionPurchaseService(
                 _repository, _rest, _socialHub, _delivery, _marketIndex, GetPlayerWallet, HasAuctionHouse);
         }
+
+        private int CasRetries => _casRetries;
 
         /// <summary>Checks if the current zone has an auction house.</summary>
         private bool HasAuctionHouse()
@@ -103,6 +107,20 @@ namespace MMO.Auction
         /// </summary>
         public Task<List<SearchRow>> SearchAsync(AuctionQuery query, CancellationToken ct = default)
             => _queries.SearchAsync(query, ct);
+
+        /// <summary>The account's saved market queries, in save order.</summary>
+        public Task<List<AuctionQuery>> LoadSavedSearchesAsync(string accountId, CancellationToken ct = default)
+            => _queries.LoadSavedSearchesAsync(accountId, ct);
+
+        /// <summary>Saves a browse filter as a one-click chip, capped and de-duplicated.</summary>
+        public Task<SavedSearchRule> SaveSearchAsync(
+            string accountId, AuctionQuery query, CancellationToken ct = default)
+            => _queries.SaveSearchAsync(accountId, query, CasRetries, ct);
+
+        /// <summary>Deletes a saved chip by position.</summary>
+        public Task<SavedSearchRule> DeleteSavedSearchAsync(
+            string accountId, int index, CancellationToken ct = default)
+            => _queries.DeleteSavedSearchAsync(accountId, index, CasRetries, ct);
 
         /// <summary>Re-reads one listing after a MarketChanged hint from a peer zone.</summary>
         public Task RefreshSearchRowAsync(string listingId)

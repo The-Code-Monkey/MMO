@@ -263,6 +263,31 @@ namespace MMO.Auction
                 AuctionIndexRecord.Collection, record.AccountId, JsonUtility.ToJson(record), record.StorageVersion, ct);
         }
 
+        public async Task<AuctionSavedSearchRecord> LoadSavedSearchesAsync(
+            string accountId, CancellationToken ct = default)
+        {
+            StorageObjectData obj = await _rest.ReadObjectAsync(
+                AuctionSavedSearchRecord.Collection, accountId, ct);
+            AuctionSavedSearchRecord record = Deserialize<AuctionSavedSearchRecord>(obj);
+            if (record != null && string.IsNullOrEmpty(record.AccountId))
+                record.AccountId = accountId;
+            return record;
+        }
+
+        public async Task SaveSavedSearchesAsync(
+            AuctionSavedSearchRecord record, CancellationToken ct = default)
+        {
+            if (record == null)
+                throw new ArgumentNullException(nameof(record));
+
+            record.StorageVersion = await _rest.WriteObjectAsync(
+                AuctionSavedSearchRecord.Collection,
+                record.AccountId,
+                JsonUtility.ToJson(record),
+                record.StorageVersion,
+                ct);
+        }
+
         public async Task<AuctionTransactionRecord> LoadTransactionAsync(string transactionId, CancellationToken ct = default)
         {
             StorageObjectData obj = await _rest.ReadObjectAsync(AuctionTransactionRecord.Collection, transactionId, ct);
@@ -318,6 +343,8 @@ namespace MMO.Auction
                 tx.StorageVersion = obj.Version;
             else if (record is MarketSearchIndex searchIndex)
                 searchIndex.StorageVersion = obj.Version;
+            else if (record is AuctionSavedSearchRecord savedSearches)
+                savedSearches.StorageVersion = obj.Version;
 
             return record;
         }
