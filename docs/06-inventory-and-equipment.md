@@ -254,14 +254,27 @@ therefore never leave a saved item above its own ceiling.
 
 | Method | What it does | Line |
 |---|---|---|
-| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:532` |
-| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:562` |
-| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:574` |
-| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:604` |
-| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:506` |
-| `TryRemoveItem(string instanceId, out ItemInstance item)` | Removes by instance identity and releases its ownership entry; used by direct trade. | `:450` |
-| `RequestLoot(LootBag bag)` / `RpcRequestLoot` | Owner intent → `[ServerRpc]` → owner + range check → `bag.Loot(this)`. | `:247`, `:256` |
-| `RequestOpenChest(LootChest chest)` / `RpcRequestOpenChest` | Owner intent → `[ServerRpc]` → owner + range check → `chest.TryOpen(this)`. | `:274`, `:283` |
+| `ApplyDurabilityDamage(int amount)` | Wears every **equipped** destructible item, returning how many changed. | `:519` |
+| `LootableItems()` | The non-empty bag **and** worn items as one flat list — the drop snapshot. | `:549` |
+| `ClearAll()` | Empties both containers and re-derives the stat caps. | `:561` |
+| `CollectLootable(bag, equipment)` | The pure half of `LootableItems`, testable without a server. | `:591` |
+| `TryAddExistingItem(ItemInstance item)` | Adds an existing instance (not a freshly minted one) into free space, **preserving its durability**. | `:493` |
+| `TryRemoveItem(string instanceId, out ItemInstance item)` | Removes by instance identity and releases its ownership entry; used by direct trade. | `:437` |
+| `RequestLoot(LootBag bag)` / `RpcRequestLoot` | Owner intent → `[ServerRpc]` → owner + range check → `bag.Loot(this)`. | `:244`, `:253` |
+| `RequestOpenChest(LootChest chest)` / `RpcRequestOpenChest` | Owner intent → `[ServerRpc]` → owner + range check → `chest.TryOpen(this)`. | `:271`, `:280` |
+
+### Continuum wear
+
+A worn item does not lose all of its stats in one step at zero. `DegradationRules`
+(`Assets/Scripts/Inventory/DegradationRules.cs`) maps durability to an effectiveness fraction:
+`1.0` at full, `MinEffectiveness` (`0.7`) at the last point of durability, and `0` once broken. The
+curve is measured across the usable range, not from zero, so the floor lands exactly on the last
+point instead of near it. Two server consumers read it: `PlayerCombat.Attack` scales the equipped
+main-hand weapon's damage through `EffectiveItemStat`, and `EquipmentBonusCalculator`'s instance
+overloads scale each worn item's health/mana bonus, so a tired sword hits softer and a tired
+chestplate protects less *before* either stops working. A broken item is refused outright rather
+than given the floor value. `DurabilityUiFormat.Condition` prints the same condition and effect
+percentages on the equipment panel. See the EditMode `DegradationRulesTests` for the boundary cases.
 
 `LootBag` (`Assets/Scripts/Gameplay/LootBag.cs:23`) is the pile of dropped items. It is a
 **server-write** `SyncList<ItemInstance>` (`Fill` is `[Server]`) and is deliberately *unowned*:

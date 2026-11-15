@@ -97,9 +97,6 @@ namespace MMO.Inventory
         // Server-side staging list for "the bag minus one item" checks; never touches replication.
         private readonly List<ItemInstance> _scratch = new();
 
-        // Reused across recalculations so a recalc allocates nothing.
-        private readonly List<ItemDefinition> _equippedDefinitions = new();
-
         private PlayerStats _stats;
 
         /// <summary>Replicated bag contents (read-only view; mutation is server-only).</summary>
@@ -612,10 +609,11 @@ namespace MMO.Inventory
                 return;
             }
 
-            EquipmentBonusCalculator.Collect(_equipment, _equippedDefinitions);
+            // Sum from the instances, not their definitions: DegradationRules scales each worn
+            // item's bonus by its condition, so a nearly-broken chestplate protects less.
             stats.ApplyEquipmentBonuses(
-                EquipmentBonusCalculator.MaxHealthBonus(_equippedDefinitions),
-                EquipmentBonusCalculator.MaxManaBonus(_equippedDefinitions));
+                EquipmentBonusCalculator.MaxHealthBonus(_equipment),
+                EquipmentBonusCalculator.MaxManaBonus(_equipment));
         }
 
         /// <summary>Total <see cref="ItemDefinition.MaxHealthBonus"/> over a set of definitions.</summary>
