@@ -3,18 +3,54 @@ name: Server & Client Builds
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   push:
     branches: [main]
   workflow_dispatch:
 
+# Cancel superseded builds when new commits are pushed to the same PR.
+concurrency:
+  group: server-client-builds-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      # One platform failing must not cancel the other two: the artifacts are useful
+      # on their own and a red run should report every platform it broke.
+      fail-fast: false
+      matrix:
+        # The three targets used to run back to back (~27 minutes). They share nothing but
+        # the project, so each gets its own job and they finish in about the time of one.
+        include:
+          - name: server
+            targetPlatform: StandaloneLinux64
+            customParameters: -standaloneBuildSubtarget Server
+            buildPath: build/server
+            artifactName: mmo-server-build
+            artifactPath: build/server/MMO.x86_64
+          - name: client-windows
+            targetPlatform: StandaloneWindows64
+            customParameters: ''
+            buildPath: build/windows
+            artifactName: mmo-client-windows-build
+            artifactPath: build/windows/MMO.exe
+          - name: client-linux
+            targetPlatform: StandaloneLinux64
+            customParameters: ''
+            buildPath: build/linux
+            artifactName: mmo-client-linux-build
+            artifactPath: build/linux/MMO.x86_64
     steps:
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@v2.0.0
-        with:
-          swap-storage: false
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
 
       - name: Checkout repository (with LFS)
         uses: actions/checkout@v7
@@ -29,57 +65,24 @@ jobs:
           restore-keys: |
             Library-
 
-      - name: Build Server (Linux Dedicated Server)
+      - name: Build ${{ matrix.name }}
         uses: game-ci/unity-builder@v6
         env:
           # UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          targetPlatform: StandaloneLinux64
-          buildPath: build/server
-          customParameters: -standaloneBuildSubtarget Server
+          # Resolving the CLI release to install calls the GitHub API; with several runs in
+          # flight that call is rate limited (HTTP 403) and the build dies before Unity starts.
+          cliVersion: v0.1.76
+          targetPlatform: ${{ matrix.targetPlatform }}
+          buildPath: ${{ matrix.buildPath }}
+          customParameters: ${{ matrix.customParameters }}
           allowDirtyBuild: true
 
-      - name: Build Client (Windows Standalone)
-        uses: game-ci/unity-builder@v6
-        env:
-          # UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: StandaloneWindows64
-          buildPath: build/windows
-          allowDirtyBuild: true
-
-      - name: Build Client (Linux Standalone)
-        uses: game-ci/unity-builder@v6
-        env:
-          # UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: StandaloneLinux64
-          buildPath: build/linux
-          allowDirtyBuild: true
-
-      - name: Upload server build artifact
+      - name: Upload ${{ matrix.name }} build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: mmo-server-build
-          path: build/server/MMO.x86_64
-          if-no-files-found: warn
-
-      - name: Upload Windows client build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: mmo-client-windows-build
-          path: build/windows/MMO.exe
-          if-no-files-found: warn
-
-      - name: Upload Linux client build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: mmo-client-linux-build
-          path: build/linux/MMO.x86_64
+          name: ${{ matrix.artifactName }}
+          path: ${{ matrix.artifactPath }}
           if-no-files-found: warn

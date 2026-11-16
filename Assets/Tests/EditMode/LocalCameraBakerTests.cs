@@ -14,6 +14,10 @@ namespace MMO.Tests
     /// the child camera it is supposed to drive — both failures look fine in the hierarchy and
     /// then leave the client with nothing to look through.
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakeScene")]
     public sealed class LocalCameraBakerTests
     {
         private Scene _scene;

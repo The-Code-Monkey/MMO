@@ -143,11 +143,20 @@ select individual tests. This is the fastest feedback loop.
 
 ### In CI
 
-`.github/workflows/unity-tests.yml` runs both suites on every push using
-`game-ci/unity-test-runner@v4` with `testMode: all` and `unityVersion: auto` (which reads the
-project version). It uploads the results as an artifact. `coverageEnabled` is `false` — Unity
-coverage collection was found to be crash-prone in this project, so coverage is tracked by discipline
-rather than a gate.
+`.github/workflows/unity-tests.yml` runs the EditMode suite on every push (there is no PlayMode
+suite) using `game-ci/unity-test-runner@v4` with `testMode: editmode` and `unityVersion: auto`
+(which reads the project version). Results are uploaded as one artifact per shard.
+
+Eight fixtures bake assets and re-import them once per test, which costs 5–10s per test and used to
+be ~21 of the suite's 22 minutes. They carry `[Category("Bake")]` plus a shard category
+(`BakeScene`, `BakePrefab`, `BakeWorld`, `BakeContent`), and the workflow runs five jobs in parallel:
+those four shards, and `-testCategory !Bake` for the other ~1500 tests, which finish in seconds. A
+shard fails if it runs fewer tests than it expects, so a renamed category cannot silently skip
+coverage.
+
+`cliVersion` is pinned: resolving `latest` calls the GitHub API, which rate-limits (HTTP 403) when
+several runs overlap. `coverageEnabled` is `false` — Unity coverage collection was found to be
+crash-prone in this project, so coverage is tracked by discipline rather than a gate.
 
 ### Headless locally
 

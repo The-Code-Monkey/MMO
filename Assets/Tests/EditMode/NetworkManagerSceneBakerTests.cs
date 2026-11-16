@@ -21,6 +21,10 @@ namespace MMO.Tests
     /// These tests therefore assert what is inspectable without Awake (the saved scene
     /// content); Awake-dependent wiring is proven in the PlayMode factory tests.
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakeScene")]
     public sealed class NetworkManagerSceneBakerTests
     {
         private Scene _scene;

@@ -2,6 +2,9 @@ name: Unity Tests
 
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 # Required by game-ci to publish the test results as a check run on the PR.
@@ -16,13 +19,41 @@ concurrency:
 
 jobs:
   test:
-    name: EditMode + PlayMode
+    name: EditMode (${{ matrix.shard.name }})
     runs-on: ubuntu-latest
+    strategy:
+      # One failing shard must not hide the results of the others.
+      fail-fast: false
+      matrix:
+        # Eight editor-baker fixtures cost 5-10s per test and dominate the suite: ~21 of the
+        # 22 minutes the 1707 tests take, while the other 1500+ tests finish in seconds.
+        # They are therefore split across four shards (see the [Category] attributes on those
+        # fixtures) and everything else runs as `unit`. Shards run in parallel, so wall clock
+        # is the slowest shard plus the fixed ~6 minutes of image pull and asset import.
+        shard:
+          - name: scene
+            category: BakeScene
+            minTests: 35
+          - name: prefab
+            category: BakePrefab
+            minTests: 23
+          - name: world
+            category: BakeWorld
+            minTests: 31
+          - name: content
+            category: BakeContent
+            minTests: 45
+          - name: unit
+            category: '!Bake'
+            minTests: 1200
     steps:
+      # Only the Android SDK and a few toolchains are needed back: they free ~25GB in about
+      # 30s, where the generic disk-cleanup action took just over two minutes.
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@v2.0.0
-        with:
-          swap-storage: false
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -40,7 +71,7 @@ jobs:
       # Licensing (GameCI): Unity Personal authenticates with the Unity account, so
       # set repo secrets UNITY_EMAIL + UNITY_PASSWORD. Unity Pro/Plus also needs
       # UNITY_SERIAL. (A UNITY_LICENSE .ulf is Enterprise/Industry-only now.)
-      - name: Run Unity tests
+      - name: Run Unity tests (${{ matrix.shard.name }})
         id: tests
         uses: game-ci/unity-test-runner@v4
         env:
@@ -53,16 +84,36 @@ jobs:
           # `--no-coverageEnabled` flag. Set it via the CLI's env mapping instead.
           GAME_CI_COVERAGE_ENABLED: "false"
         with:
-          unityVersion: auto # reads ProjectSettings/ProjectVersion.txt (6000.6.5f1)
+          unityVersion: auto # reads ProjectSettings/ProjectVersion.txt
+          # Resolving the CLI release to install calls the GitHub API; with several runs in
+          # flight that call is rate limited (HTTP 403) and the job dies before Unity starts.
+          cliVersion: v0.1.76
           testMode: editmode
-          artifactsPath: test-results
+          customParameters: -testCategory ${{ matrix.shard.category }}
+          artifactsPath: test-results/${{ matrix.shard.name }}
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          checkName: Unity Test Results
+          checkName: Unity Test Results (${{ matrix.shard.name }})
+
+      # A shard that silently matches no tests (a renamed category, a typo in the filter)
+      # would otherwise report success while nothing ran. Fail loudly instead.
+      - name: Verify the shard ran its tests
+        if: always()
+        run: |
+          python3 -c "
+          import os, sys, xml.etree.ElementTree as ET
+          path, minimum = sys.argv[1], int(sys.argv[2])
+          if not os.path.exists(path):
+              print(f'{path}: no results file, the run never got far enough to write one')
+              sys.exit(1)
+          total = int(ET.parse(path).getroot().get('total'))
+          print(f'{path}: {total} tests, shard expects at least {minimum}')
+          sys.exit(0 if total >= minimum else 1)
+          " "test-results/${{ matrix.shard.name }}/editmode-results.xml" "${{ matrix.shard.minTests }}"
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: unity-test-results
-          path: ${{ steps.tests.outputs.artifactsPath }}
+          name: unity-test-results-${{ matrix.shard.name }}
+          path: test-results/${{ matrix.shard.name }}
           if-no-files-found: warn

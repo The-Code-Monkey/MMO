@@ -21,6 +21,10 @@ namespace MMO.Tests
     /// renamed GUID would quietly turn the tutorial vein into an inert rock.
     /// </para>
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakeContent")]
     public sealed class ResourceDefinitionContentTests
     {
         private const string ShippedDefinitionPath = "Assets/Resources/ResourceDefinitions/Iron_Ore.asset";

@@ -21,6 +21,10 @@ namespace MMO.Tests
     /// tutorial zone — the flat ground a brand-new player lands in — is asserted to be exactly
     /// that: a spawn point and a dummy, and nothing else.
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakeWorld")]
     public sealed class WorldBootstrapBakerTests
     {
         private EditorBuildSettingsScene[] _originalBuildScenes;
