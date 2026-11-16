@@ -377,8 +377,13 @@ namespace MMO.Tests
             NetworkObject nob = NewPlayerPrefab();
             Track(nob.gameObject);
 
-            // Without this a capsule in a URP project renders magenta.
-            Assert.AreSame(pipeline.defaultMaterial, nob.GetComponent<MeshRenderer>().sharedMaterial);
+            // Without this a capsule in a URP project renders magenta. Compare the shader, not
+            // the material instance: the pipeline can hand back a fresh instance per access in a
+            // batch-mode editor, so object identity is not a contract.
+            MeshRenderer renderer = nob.GetComponent<MeshRenderer>();
+            Assert.IsNotNull(renderer);
+            Assert.IsNotNull(renderer.sharedMaterial);
+            Assert.AreSame(pipeline.defaultMaterial.shader, renderer.sharedMaterial.shader);
         }
         #endregion
 

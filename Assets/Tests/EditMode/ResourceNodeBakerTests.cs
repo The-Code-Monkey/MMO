@@ -65,6 +65,45 @@ namespace MMO.Tests
             _scratch.Clear();
         }
 
+        /// <summary>
+        /// Copies the checked-in prefab — and its .meta, so the GUID survives — outside the project
+        /// so a test can delete it and put the exact bytes back afterwards. The prefab is authored
+        /// content, not a test fixture: without this, one delete test leaves every later test
+        /// looking at a bare factory bake instead of the shipped ore models.
+        /// </summary>
+        private static string StashShippedPrefab()
+        {
+            string prefab = ResourceNodeBaker.AbsolutePrefabPath;
+            if (!File.Exists(prefab))
+                return null;
+
+            string stash = Path.Combine(
+                Path.GetTempPath(), "mmo-resource-node-" + System.Guid.NewGuid().ToString("N") + ".prefab");
+            File.Copy(prefab, stash);
+            if (File.Exists(prefab + ".meta"))
+                File.Copy(prefab + ".meta", stash + ".meta");
+            return stash;
+        }
+
+        private static void RestoreShippedPrefab(string stash)
+        {
+            if (stash == null)
+                return;
+
+            string prefab = ResourceNodeBaker.AbsolutePrefabPath;
+            File.Copy(stash, prefab, overwrite: true);
+            if (File.Exists(stash + ".meta"))
+                File.Copy(stash + ".meta", prefab + ".meta", overwrite: true);
+
+            File.Delete(stash);
+            if (File.Exists(stash + ".meta"))
+                File.Delete(stash + ".meta");
+
+            AssetDatabase.ImportAsset(
+                ResourceNodeBaker.PrefabAssetPath,
+                ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+        }
+
         private int CountSceneObjectsNamed(string name)
         {
             int count = 0;
@@ -212,7 +251,16 @@ namespace MMO.Tests
         [Test]
         public void LoadResourceNodePrefab_ReturnsNullBeforeAnythingIsBaked()
         {
-            Assert.IsNull(ResourceNodeBaker.LoadResourceNodePrefab());
+            string stash = StashShippedPrefab();
+            ResourceNodeBaker.DeleteResourceNodePrefab();
+            try
+            {
+                Assert.IsNull(ResourceNodeBaker.LoadResourceNodePrefab());
+            }
+            finally
+            {
+                RestoreShippedPrefab(stash);
+            }
         }
 
         [Test]
@@ -227,18 +275,34 @@ namespace MMO.Tests
         public void DeleteResourceNodePrefab_RemovesTheAsset()
         {
             ResourceNodeBaker.EnsureResourceNodePrefab();
+            string stash = StashShippedPrefab();
+            try
+            {
+                Assert.IsTrue(ResourceNodeBaker.DeleteResourceNodePrefab());
 
-            Assert.IsTrue(ResourceNodeBaker.DeleteResourceNodePrefab());
-
-            Assert.IsFalse(File.Exists(ResourceNodeBaker.AbsolutePrefabPath));
-            Assert.IsNull(ResourceNodeBaker.LoadResourceNodePrefab());
+                Assert.IsFalse(File.Exists(ResourceNodeBaker.AbsolutePrefabPath));
+                Assert.IsNull(ResourceNodeBaker.LoadResourceNodePrefab());
+            }
+            finally
+            {
+                RestoreShippedPrefab(stash);
+            }
         }
 
         [Test]
         public void DeleteResourceNodePrefab_ReportsNothingToDoWhenThereIsNoAsset()
         {
-            Assert.IsFalse(ResourceNodeBaker.DeleteResourceNodePrefab(),
-                "Deleting a prefab that was never baked is not a failure.");
+            string stash = StashShippedPrefab();
+            ResourceNodeBaker.DeleteResourceNodePrefab();
+            try
+            {
+                Assert.IsFalse(ResourceNodeBaker.DeleteResourceNodePrefab(),
+                    "Deleting a prefab that was never baked is not a failure.");
+            }
+            finally
+            {
+                RestoreShippedPrefab(stash);
+            }
         }
         #endregion
     }

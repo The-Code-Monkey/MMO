@@ -1,3 +1,6 @@
+using System;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -35,9 +38,30 @@ namespace MMO.Client
             return asset;
         }
 
+        /// <summary>
+        /// Adds one button action. The binding id is derived from the map, action and default path
+        /// instead of being generated: persisted overrides are matched by binding id, so a
+        /// code-built map has to hand out the same ids on every run or every rebind a player saved
+        /// is silently dropped at startup.
+        /// </summary>
         private static void AddButton(InputActionMap map, GameAction action, string path)
         {
-            map.AddAction(action.ToString(), InputActionType.Button, path);
+            InputAction added = map.AddAction(action.ToString(), InputActionType.Button);
+            added.AddBinding(new InputBinding
+            {
+                path = path,
+                id = StableBindingId(added.name, path),
+            });
+        }
+
+        /// <summary>The same id in every process that builds the same map.</summary>
+        private static Guid StableBindingId(string action, string path)
+        {
+            using (MD5 md5 = MD5.Create())
+            {
+                byte[] hash = md5.ComputeHash(Encoding.UTF8.GetBytes(MapName + "/" + action + "/" + path));
+                return new Guid(hash);
+            }
         }
     }
 }

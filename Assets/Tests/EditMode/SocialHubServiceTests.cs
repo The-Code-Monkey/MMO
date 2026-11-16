@@ -628,11 +628,20 @@ namespace MMO.Tests
 
             var rest = new NakamaRestClient();
             var auction = new AuctionService(new NakamaAuctionRepository(rest), rest, _hub);
-            MethodInfo creditSeller = typeof(AuctionService).GetMethod(
-                "CreditSellerAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            // The credit lives on the delivery service the auction house delegates post-commit
+            // work to; reach it through the field so the test pins the real path.
+            FieldInfo deliveryField = typeof(AuctionService).GetField(
+                "_delivery", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(deliveryField);
+            object delivery = deliveryField.GetValue(auction);
+            Assert.IsNotNull(delivery);
+
+            MethodInfo creditSeller = delivery.GetType().GetMethod(
+                "CreditSellerAsync", BindingFlags.Instance | BindingFlags.Public);
             Assert.IsNotNull(creditSeller);
 
-            await (Task)creditSeller.Invoke(auction, new object[] { "seller", 125L, CancellationToken.None });
+            await (Task)creditSeller.Invoke(delivery, new object[] { "seller", 125L, CancellationToken.None });
 
             MailInbox saved = _repo.Inboxes["seller"];
             Assert.AreEqual(MailRules.MaxInbox + 1, saved.Messages.Count);

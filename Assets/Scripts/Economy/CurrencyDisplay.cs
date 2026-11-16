@@ -63,10 +63,14 @@ namespace MMO.Economy
             if (data != null && !string.IsNullOrEmpty(data.DisplayName))
                 return data.DisplayName;
 
-            string humanised = currencyId.Replace('_', ' ');
-            return humanised.Length > 0
-                ? char.ToUpperInvariant(humanised[0]) + humanised.Substring(1)
-                : humanised;
+            string[] words = currencyId.Split('_', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < words.Length; i++)
+            {
+                if (words[i].Length > 0)
+                    words[i] = char.ToUpperInvariant(words[i][0]) + words[i].Substring(1);
+            }
+
+            return string.Join(" ", words);
         }
 
         private static void Append(StringBuilder builder, string currencyId, long amount)

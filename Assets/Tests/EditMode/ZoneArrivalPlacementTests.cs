@@ -25,6 +25,7 @@ namespace MMO.Tests
         {
             var go = new GameObject("Gate");
             go.transform.position = position;
+            go.AddComponent<BoxCollider>();
             var gate = go.AddComponent<ZoneTransferTrigger>();
             var serialized = new SerializedObject(gate);
             serialized.FindProperty("_targetServerId").stringValue = targetServerId;
