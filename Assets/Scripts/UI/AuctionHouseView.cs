@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using MMO.Auction;
 using MMO.Inventory;
+using MMO.Persistence;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -87,6 +88,7 @@ namespace MMO.UI
         private int _pendingBagX = -1;
         private int _pendingBagY = -1;
         private ItemInstance _pendingItem;
+        private AuctionFilterBar _filterBar;
 
         public enum AuctionHouseTab
         {
@@ -103,6 +105,8 @@ namespace MMO.UI
             _inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
 
             _auctionHouse.OnSearchResultsReceived += OnSearchResultsReceived;
+            _auctionHouse.OnSearchRowsReceived += OnSearchRowsReceived;
+            _auctionHouse.OnSavedSearchesReceived += OnSavedSearchesReceived;
             _auctionHouse.OnSearchBuyOrdersReceived += OnSearchBuyOrdersReceived;
             _auctionHouse.OnMyListingsReceived += OnMyListingsReceived;
             _auctionHouse.OnMyBuyOrdersReceived += OnMyBuyOrdersReceived;
@@ -114,6 +118,8 @@ namespace MMO.UI
             _auctionHouse.OnBuyOrderFulfilled += OnBuyOrderFulfilled;
             _auctionHouse.OnBuyOrderCancelled += OnBuyOrderCancelled;
             _auctionHouse.OnPurchaseCompleted += OnPurchaseCompleted;
+
+            BindFilterBar();
 
             _browseTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.Browse));
             _buyOrdersTabButton.onClick.AddListener(() => SwitchTab(AuctionHouseTab.BuyOrders));
@@ -141,6 +147,7 @@ namespace MMO.UI
 
             SwitchTab(AuctionHouseTab.Browse);
             RequestSearch();
+            _auctionHouse.RequestSavedSearches();
             RequestMyListings();
             RequestMyBuyOrders();
             RequestHistory();
@@ -151,6 +158,8 @@ namespace MMO.UI
             if (_auctionHouse != null)
             {
                 _auctionHouse.OnSearchResultsReceived -= OnSearchResultsReceived;
+                _auctionHouse.OnSearchRowsReceived -= OnSearchRowsReceived;
+                _auctionHouse.OnSavedSearchesReceived -= OnSavedSearchesReceived;
                 _auctionHouse.OnSearchBuyOrdersReceived -= OnSearchBuyOrdersReceived;
                 _auctionHouse.OnMyListingsReceived -= OnMyListingsReceived;
                 _auctionHouse.OnMyBuyOrdersReceived -= OnMyBuyOrdersReceived;
@@ -163,6 +172,22 @@ namespace MMO.UI
                 _auctionHouse.OnBuyOrderCancelled -= OnBuyOrderCancelled;
                 _auctionHouse.OnPurchaseCompleted -= OnPurchaseCompleted;
             }
+
+            UnbindFilterBar();
+        }
+
+        /// <summary>
+        /// Attaches the optional filter strip. Without one, browse keeps the legacy text/max-price
+        /// fields; with one, every search runs the full <see cref="Auction.AuctionQuery"/>.
+        /// </summary>
+        public void SetFilterBar(AuctionFilterBar filterBar)
+        {
+            if (_filterBar == filterBar)
+                return;
+
+            UnbindFilterBar();
+            _filterBar = filterBar;
+            BindFilterBar();
         }
 
         public void OpenCreateListing(int bagX, int bagY)
@@ -285,6 +310,12 @@ namespace MMO.UI
 
         private void RequestSearch()
         {
+            if (_filterBar != null)
+            {
+                _auctionHouse.RequestSearch(_filterBar.BuildQuery(_currentPage));
+                return;
+            }
+
             string filter = _searchInput != null ? _searchInput.text : null;
             long maxPrice = 0;
             if (_maxPriceInput != null && long.TryParse(_maxPriceInput.text, out long mp))
@@ -292,6 +323,36 @@ namespace MMO.UI
 
             _auctionHouse.RequestSearch(filter, maxPrice, _currentPage, 20);
         }
+
+        private void BindFilterBar()
+        {
+            if (_filterBar == null)
+                return;
+
+            _filterBar.SearchRequested += OnFilterSearch;
+            _filterBar.SaveRequested += OnFilterSave;
+        }
+
+        private void UnbindFilterBar()
+        {
+            if (_filterBar == null)
+                return;
+
+            _filterBar.SearchRequested -= OnFilterSearch;
+            _filterBar.SaveRequested -= OnFilterSave;
+        }
+
+        private void OnFilterSearch(AuctionQuery query)
+        {
+            _currentPage = 0;
+            _auctionHouse.RequestSearch(query);
+        }
+
+        private void OnFilterSave(AuctionQuery query)
+            => _auctionHouse.RequestSaveSearch(query);
+
+        private void OnSavedSearchesReceived(List<AuctionQuery> queries)
+            => _filterBar?.SetSavedSearches(queries);
 
         private void OnSearchClicked()
         {
@@ -343,9 +404,31 @@ namespace MMO.UI
         }
 
         private void OnSearchResultsReceived(List<AuctionListingRecord> listings)
+            => RenderBrowse(listings);
+
+        private void OnSearchRowsReceived(List<SearchRow> rows)
+        {
+            var listings = new List<AuctionListingRecord>(rows != null ? rows.Count : 0);
+            if (rows != null)
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    AuctionListingRecord listing = AuctionQueryMapper.ToListingRecord(rows[i]);
+                    if (listing != null)
+                        listings.Add(listing);
+                }
+            }
+
+            RenderBrowse(listings);
+        }
+
+        private void RenderBrowse(List<AuctionListingRecord> listings)
         {
             ClearList(_browseListContent);
             _pageText.text = $"Page {_currentPage + 1}";
+
+            if (listings == null)
+                return;
 
             foreach (AuctionListingRecord listing in listings)
             {

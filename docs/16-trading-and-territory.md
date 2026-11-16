@@ -182,6 +182,14 @@ that one row. When the cache is missing or older than five minutes, `MarketIndex
 from the authoritative listings. `MarketIndexRules` is the pure kernel, so the maintenance and
 reconcile paths are covered offline.
 
+The browse UI is a thin client over that kernel. `AuctionFilterBar` cycles the category and sort,
+takes text/seller/tier/price boxes, and builds an `AuctionQuery` through `AuctionQueryMapper`; blank
+boxes mean "no bound", never zero. `AuctionHouseView` sends the query through
+`PlayerAuctionHouse.RequestSearch(AuctionQuery)`, maps the returned `SearchRow`s onto the existing
+listing row binder, and never filters locally. Saved searches are a per-account
+`AuctionSavedSearchRecord` in `auction_saved_searches`, capped at ten and de-duplicated by
+`AuctionSavedSearchRules` (paging is normalised away), with one-click chips in the bar.
+
 ## Common tasks
 
 - **Tune trade range.** Edit `PlayerTrade.Range`. The client picker uses the same constant, but the

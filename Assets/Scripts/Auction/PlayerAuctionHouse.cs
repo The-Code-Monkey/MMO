@@ -4,6 +4,7 @@ using FishNet.Connection;
 using FishNet.Object;
 using MMO.Auction;
 using MMO.Inventory;
+using MMO.Persistence;
 using MMO.Social;
 using UnityEngine;
 
@@ -413,6 +414,163 @@ namespace MMO.Auction
             TargetRpcSearchResults(sender, json);
         }
 
+        /// <summary>
+        /// Owner-side intent: run a full <see cref="AuctionQuery"/> (category, tier, seller, price
+        /// band, text and sort) through the realm-wide search kernel. The legacy string/max-price
+        /// overload stays for callers that only need a text filter.
+        /// </summary>
+        public void RequestSearch(AuctionQuery query)
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+            {
+                Debug.LogWarning("[AuctionHouse] This zone does not have an auction house.");
+                return;
+            }
+
+            RpcRequestSearchQuery(JsonUtility.ToJson(query ?? new AuctionQuery()));
+        }
+
+        [ServerRpc]
+        private void RpcRequestSearchQuery(string queryJson, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null)
+                return;
+
+            if (!SocialHubService.Instance.HasAuctionHouse)
+                return;
+
+            string accountId = GetAccountId(sender);
+            if (string.IsNullOrEmpty(accountId))
+                return;
+
+            _ = SearchQueryAndRespondAsync(queryJson, sender);
+        }
+
+        private async System.Threading.Tasks.Task SearchQueryAndRespondAsync(string queryJson, NetworkConnection sender)
+        {
+            AuctionQuery query = AuctionClientProtocol.DecodeQuery(queryJson);
+            List<SearchRow> rows = await SocialHubService.Instance.Auction.SearchAsync(query);
+            TargetRpcSearchQueryResults(sender, AuctionClientProtocol.EncodeSearchRows(rows));
+        }
+
+        /// <summary>Owner-side intent: list this account's saved filter chips.</summary>
+        public void RequestSavedSearches()
+        {
+            if (!IsOwner)
+                return;
+
+            if (!CanAccessAuctionHouse())
+                return;
+
+            RpcRequestSavedSearches();
+        }
+
+        [ServerRpc]
+        private void RpcRequestSavedSearches(NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null
+                || !SocialHubService.Instance.HasAuctionHouse)
+            {
+                return;
+            }
+
+            string accountId = GetAccountId(sender);
+            if (!string.IsNullOrEmpty(accountId))
+                _ = SavedSearchesAndRespondAsync(accountId, sender);
+        }
+
+        /// <summary>Owner-side intent: save the current filter as a one-click chip.</summary>
+        public void RequestSaveSearch(AuctionQuery query)
+        {
+            if (!IsOwner || query == null)
+                return;
+
+            if (!CanAccessAuctionHouse())
+                return;
+
+            RpcSaveSearch(JsonUtility.ToJson(query));
+        }
+
+        [ServerRpc]
+        private void RpcSaveSearch(string queryJson, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null
+                || !SocialHubService.Instance.HasAuctionHouse)
+            {
+                return;
+            }
+
+            string accountId = GetAccountId(sender);
+            if (!string.IsNullOrEmpty(accountId))
+                _ = SaveSearchAndRespondAsync(accountId, queryJson, sender);
+        }
+
+        /// <summary>Owner-side intent: delete the saved chip at <paramref name="index"/>.</summary>
+        public void RequestDeleteSavedSearch(int index)
+        {
+            if (!IsOwner || index < 0)
+                return;
+
+            if (!CanAccessAuctionHouse())
+                return;
+
+            RpcDeleteSavedSearch(index);
+        }
+
+        [ServerRpc]
+        private void RpcDeleteSavedSearch(int index, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            if (SocialHubService.Instance == null || SocialHubService.Instance.Auction == null
+                || !SocialHubService.Instance.HasAuctionHouse)
+            {
+                return;
+            }
+
+            string accountId = GetAccountId(sender);
+            if (!string.IsNullOrEmpty(accountId))
+                _ = DeleteSearchAndRespondAsync(accountId, index, sender);
+        }
+
+        private async System.Threading.Tasks.Task SavedSearchesAndRespondAsync(string accountId, NetworkConnection sender)
+        {
+            List<AuctionQuery> queries = await SocialHubService.Instance.Auction.LoadSavedSearchesAsync(accountId);
+            TargetRpcSavedSearches(sender, AuctionClientProtocol.EncodeSavedSearches(queries));
+        }
+
+        private async System.Threading.Tasks.Task SaveSearchAndRespondAsync(
+            string accountId, string queryJson, NetworkConnection sender)
+        {
+            SavedSearchRule rule = await SocialHubService.Instance.Auction.SaveSearchAsync(
+                accountId, AuctionClientProtocol.DecodeQuery(queryJson));
+
+            TargetRpcSavedSearchRule(sender, (int)rule);
+            await SavedSearchesAndRespondAsync(accountId, sender);
+        }
+
+        private async System.Threading.Tasks.Task DeleteSearchAndRespondAsync(
+            string accountId, int index, NetworkConnection sender)
+        {
+            SavedSearchRule rule = await SocialHubService.Instance.Auction.DeleteSavedSearchAsync(accountId, index);
+
+            TargetRpcSavedSearchRule(sender, (int)rule);
+            await SavedSearchesAndRespondAsync(accountId, sender);
+        }
+
         private async System.Threading.Tasks.Task MyListingsAndRespondAsync(string accountId, NetworkConnection sender)
         {
             List<AuctionListingRecord> results = await SocialHubService.Instance.Auction.GetMyListingsAsync(accountId);
@@ -449,6 +607,33 @@ namespace MMO.Auction
 
             List<AuctionListingRecord> results = AuctionClientProtocol.DecodeListings(json);
             OnSearchResultsReceived?.Invoke(results);
+        }
+
+        [TargetRpc]
+        private void TargetRpcSearchQueryResults(NetworkConnection target, string json)
+        {
+            if (!IsOwner)
+                return;
+
+            OnSearchRowsReceived?.Invoke(AuctionClientProtocol.DecodeSearchRows(json));
+        }
+
+        [TargetRpc]
+        private void TargetRpcSavedSearches(NetworkConnection target, string json)
+        {
+            if (!IsOwner)
+                return;
+
+            OnSavedSearchesReceived?.Invoke(AuctionClientProtocol.DecodeSavedSearches(json));
+        }
+
+        [TargetRpc]
+        private void TargetRpcSavedSearchRule(NetworkConnection target, int rule)
+        {
+            if (!IsOwner)
+                return;
+
+            OnSavedSearchRule?.Invoke((SavedSearchRule)rule);
         }
 
         [TargetRpc]
@@ -501,6 +686,9 @@ namespace MMO.Auction
 
         // Events for UI to subscribe to
         public event Action<List<AuctionListingRecord>> OnSearchResultsReceived;
+        public event Action<List<SearchRow>> OnSearchRowsReceived;
+        public event Action<List<AuctionQuery>> OnSavedSearchesReceived;
+        public event Action<SavedSearchRule> OnSavedSearchRule;
         public event Action<List<AuctionListingRecord>> OnMyListingsReceived;
         public event Action<List<AuctionTransactionRecord>> OnPurchaseHistoryReceived;
         public event Action<List<AuctionBuyOrderRecord>> OnSearchBuyOrdersReceived;

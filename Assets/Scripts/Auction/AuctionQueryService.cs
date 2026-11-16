@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MMO.Persistence;
+using UnityEngine;
 
 namespace MMO.Auction
 {
@@ -52,6 +53,91 @@ namespace MMO.Auction
         /// <see cref="MarketSearchIndex"/> cache. The kernel filters, sorts and pages server-side;
         /// expiry is re-checked against the truth on purchase.
         /// </summary>
+        public async Task<List<AuctionQuery>> LoadSavedSearchesAsync(string accountId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(accountId))
+                return new List<AuctionQuery>();
+
+            AuctionSavedSearchRecord record = await _repository.LoadSavedSearchesAsync(accountId, ct);
+            return record?.Queries ?? new List<AuctionQuery>();
+        }
+
+        /// <summary>
+        /// Saves a filter template, capped and de-duplicated by the pure rules. The write is one
+        /// optimistic load-modify-save; a lost version check reloads and re-evaluates, so two zones
+        /// saving at once cannot silently drop one.
+        /// </summary>
+        public async Task<SavedSearchRule> SaveSearchAsync(
+            string accountId, AuctionQuery query, int casRetries, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(accountId) || query == null)
+                return SavedSearchRule.Invalid;
+
+            for (int attempt = 0; attempt < casRetries; attempt++)
+            {
+                try
+                {
+                    AuctionSavedSearchRecord record = await _repository.LoadSavedSearchesAsync(accountId, ct)
+                        ?? new AuctionSavedSearchRecord { AccountId = accountId };
+                    record.Queries ??= new List<AuctionQuery>();
+
+                    SavedSearchRule rule = AuctionSavedSearchRules.Add(record.Queries, query);
+                    if (rule != SavedSearchRule.Ok)
+                        return rule;
+
+                    await _repository.SaveSavedSearchesAsync(record, ct);
+                    return SavedSearchRule.Ok;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Task.Delay(20 * (attempt + 1), ct);
+                }
+                catch (Exception e) when (!(e is OperationCanceledException))
+                {
+                    Debug.LogError($"[Auction] Saving a search for {accountId} failed: {e.Message}");
+                    return SavedSearchRule.Conflict;
+                }
+            }
+
+            return SavedSearchRule.Conflict;
+        }
+
+        /// <summary>Removes the saved search at <paramref name="index"/> with the same CAS posture.</summary>
+        public async Task<SavedSearchRule> DeleteSavedSearchAsync(
+            string accountId, int index, int casRetries, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(accountId))
+                return SavedSearchRule.Invalid;
+
+            for (int attempt = 0; attempt < casRetries; attempt++)
+            {
+                try
+                {
+                    AuctionSavedSearchRecord record = await _repository.LoadSavedSearchesAsync(accountId, ct);
+                    if (record?.Queries == null)
+                        return SavedSearchRule.NotFound;
+
+                    SavedSearchRule rule = AuctionSavedSearchRules.RemoveAt(record.Queries, index);
+                    if (rule != SavedSearchRule.Ok)
+                        return rule;
+
+                    await _repository.SaveSavedSearchesAsync(record, ct);
+                    return SavedSearchRule.Ok;
+                }
+                catch (StorageVersionConflictException)
+                {
+                    await Task.Delay(20 * (attempt + 1), ct);
+                }
+                catch (Exception e) when (!(e is OperationCanceledException))
+                {
+                    Debug.LogError($"[Auction] Deleting a search for {accountId} failed: {e.Message}");
+                    return SavedSearchRule.Conflict;
+                }
+            }
+
+            return SavedSearchRule.Conflict;
+        }
+
         public async Task<List<SearchRow>> SearchAsync(AuctionQuery query, CancellationToken ct = default)
         {
             if (!_hasAuctionHouse())

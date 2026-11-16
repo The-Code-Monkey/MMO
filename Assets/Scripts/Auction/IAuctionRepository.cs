@@ -31,6 +31,10 @@ namespace MMO.Auction
         Task<AuctionIndexRecord> LoadIndexAsync(string accountId, CancellationToken ct = default);
         Task SaveIndexAsync(AuctionIndexRecord record, CancellationToken ct = default);
 
+        /// <summary>One account's saved market queries, or null when none were ever saved.</summary>
+        Task<AuctionSavedSearchRecord> LoadSavedSearchesAsync(string accountId, CancellationToken ct = default);
+        Task SaveSavedSearchesAsync(AuctionSavedSearchRecord record, CancellationToken ct = default);
+
         Task<AuctionTransactionRecord> LoadTransactionAsync(string transactionId, CancellationToken ct = default);
         Task SaveTransactionAsync(AuctionTransactionRecord record, CancellationToken ct = default);
         Task<List<AuctionTransactionRecord>> LoadTransactionHistoryAsync(string accountId, int limit = 20, CancellationToken ct = default);
