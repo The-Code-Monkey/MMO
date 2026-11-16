@@ -257,7 +257,8 @@ namespace MMO.Social
             _localPlayers = new LocalPlayerRegistry(() => _zoneId);
             _hints = new SocialHintClient(() => _rest);
             _connection = new SocialBackendConnection(() => _rest, _connectRetrySeconds);
-            _realtime = new SocialRealtimeRouter(_localPlayers, () => _friends, () => _reconciler);
+            _realtime = new SocialRealtimeRouter(
+                _localPlayers, () => _friends, () => _reconciler, () => _auctionService);
             _realtime.EnsureChat(this);
             _localPlayers.Registered += OnLocalRegistered;
             _localPlayers.Unregistered += OnLocalUnregistered;
@@ -830,6 +831,34 @@ namespace MMO.Social
         /// <summary>Notifies the buyer that their buy order was cancelled.</summary>
         internal void NotifyAuctionBuyOrderCancelled(string buyerAccountId, AuctionBuyOrderRecord buyOrder)
             => _auctionNotifier.RaiseBuyOrderCancelled(buyerAccountId, buyOrder);
+
+        /// <summary>
+        /// Best-effort MarketChanged hint so peer auction zones re-read the changed listing into
+        /// their search cache. A lost hint is repaired by the periodic reconcile pass.
+        /// </summary>
+        internal void NotifyMarketChanged(string listingId)
+        {
+            if (string.IsNullOrEmpty(listingId) || _repository == null)
+                return;
+
+            _ = NotifyMarketChangedAsync(listingId);
+        }
+
+        private async Task NotifyMarketChangedAsync(string listingId)
+        {
+            try
+            {
+                await _repository.NotifySocialAsync(new SocialNotification
+                {
+                    Kind = SocialNotificationKind.MarketChanged,
+                    ListingId = listingId,
+                }, CancellationToken.None);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Auction] MarketChanged notify failed for {listingId}: {e.Message}");
+            }
+        }
 
         #endregion
 

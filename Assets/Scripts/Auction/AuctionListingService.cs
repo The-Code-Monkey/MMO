@@ -14,6 +14,7 @@ namespace MMO.Auction
     {
         private readonly IAuctionRepository _repository;
         private readonly SocialHubService _socialHub;
+        private readonly MarketIndexService _marketIndex;
         private readonly Func<string, PlayerInventory> _getBag;
         private readonly Func<bool> _isConnected;
         private readonly Func<bool> _hasAuctionHouse;
@@ -22,6 +23,7 @@ namespace MMO.Auction
         public AuctionListingService(
             IAuctionRepository repository,
             SocialHubService socialHub,
+            MarketIndexService marketIndex,
             Func<string, PlayerInventory> getBag,
             Func<bool> isConnected,
             Func<bool> hasAuctionHouse,
@@ -29,6 +31,7 @@ namespace MMO.Auction
         {
             _repository = repository;
             _socialHub = socialHub;
+            _marketIndex = marketIndex;
             _getBag = getBag;
             _isConnected = isConnected;
             _hasAuctionHouse = hasAuctionHouse;
@@ -132,7 +135,9 @@ namespace MMO.Auction
                     bag.TryAddExistingItem(remaining, bagX, bagY);
                 }
 
+                await _marketIndex.UpsertAsync(result.Listing, ct);
                 _socialHub.NotifyAuctionListingCreated(sellerAccountId, result.Listing);
+                _socialHub.NotifyMarketChanged(result.ListingId);
             }
 
             return result;
@@ -179,7 +184,11 @@ namespace MMO.Auction
             }, ct);
 
             if (result.Rule == AuctionRule.Ok)
+            {
                 ReturnToSeller(sellerAccountId, listing);
+                await _marketIndex.RemoveAsync(listingId, ct);
+                _socialHub.NotifyMarketChanged(listingId);
+            }
 
             return result;
         }

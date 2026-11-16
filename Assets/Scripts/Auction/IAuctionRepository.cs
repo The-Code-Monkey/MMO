@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using MMO.Persistence;
 
 namespace MMO.Auction
 {
@@ -15,6 +16,11 @@ namespace MMO.Auction
 
         /// <summary>Every active, unexpired listing across all zones; the search kernel filters it.</summary>
         Task<List<AuctionListingRecord>> ListActiveListingsAsync(CancellationToken ct = default);
+
+        /// <summary>The realm-wide search cache, or null when it has never been built.</summary>
+        Task<MarketSearchIndex> LoadSearchIndexAsync(CancellationToken ct = default);
+
+        Task SaveSearchIndexAsync(MarketSearchIndex index, CancellationToken ct = default);
 
         Task<AuctionBuyOrderRecord> LoadBuyOrderAsync(string buyOrderId, CancellationToken ct = default);
         Task SaveBuyOrderAsync(AuctionBuyOrderRecord record, CancellationToken ct = default);

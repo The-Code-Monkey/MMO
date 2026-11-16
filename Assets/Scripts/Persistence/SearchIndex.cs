@@ -51,6 +51,9 @@ namespace MMO.Persistence
 
         public List<SearchRow> Rows = new List<SearchRow>();
 
+        /// <summary>When the last full rebuild from the authoritative listings ran; drives staleness.</summary>
+        public long ReconciledAtTicks;
+
         /// <summary>The backend's revision hash for optimistic concurrency; not index data.</summary>
         public string StorageVersion;
     }

@@ -28,6 +28,7 @@ namespace MMO.Auction
         private readonly SocialHubService _socialHub;
         private readonly AuctionDeliveryService _delivery;
         private readonly AuctionQueryService _queries;
+        private readonly MarketIndexService _marketIndex;
         private readonly AuctionWalletReservationService _reservations;
         private readonly AuctionListingService _listings;
         private readonly AuctionBuyOrderService _buyOrders;
@@ -39,14 +40,15 @@ namespace MMO.Auction
             _rest = rest ?? throw new ArgumentNullException(nameof(rest));
             _socialHub = socialHub ?? throw new ArgumentNullException(nameof(socialHub));
             _delivery = new AuctionDeliveryService(_socialHub, GetPlayerBag);
-            _queries = new AuctionQueryService(_repository, HasAuctionHouse);
+            _marketIndex = new MarketIndexService(_repository, () => _rest.IsConnected, casRetries);
+            _queries = new AuctionQueryService(_repository, _marketIndex, HasAuctionHouse);
             _reservations = new AuctionWalletReservationService(_repository, () => _rest.IsConnected);
             _listings = new AuctionListingService(
-                _repository, _socialHub, GetPlayerBag, () => _rest.IsConnected, HasAuctionHouse, casRetries);
+                _repository, _socialHub, _marketIndex, GetPlayerBag, () => _rest.IsConnected, HasAuctionHouse, casRetries);
             _buyOrders = new AuctionBuyOrderService(
                 _repository, _rest, _socialHub, _delivery, GetPlayerWallet, GetPlayerBag, HasAuctionHouse, casRetries);
             _purchases = new AuctionPurchaseService(
-                _repository, _rest, _socialHub, _delivery, GetPlayerWallet, HasAuctionHouse);
+                _repository, _rest, _socialHub, _delivery, _marketIndex, GetPlayerWallet, HasAuctionHouse);
         }
 
         /// <summary>Checks if the current zone has an auction house.</summary>
@@ -101,6 +103,16 @@ namespace MMO.Auction
         /// </summary>
         public Task<List<SearchRow>> SearchAsync(AuctionQuery query, CancellationToken ct = default)
             => _queries.SearchAsync(query, ct);
+
+        /// <summary>Re-reads one listing after a MarketChanged hint from a peer zone.</summary>
+        public Task RefreshSearchRowAsync(string listingId)
+            => HasAuctionHouse()
+                ? _marketIndex.RefreshAsync(listingId, CancellationToken.None)
+                : Task.CompletedTask;
+
+        /// <summary>Recomputes the whole search cache from the authoritative listings.</summary>
+        public Task<MarketSearchIndex> ReconcileSearchIndexAsync(CancellationToken ct = default)
+            => _marketIndex.ReconcileAsync(ct);
 
         /// <summary>Gets purchase history for a player.</summary>
         public Task<List<AuctionTransactionRecord>> GetPurchaseHistoryAsync(
