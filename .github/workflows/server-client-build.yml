@@ -37,6 +37,8 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: StandaloneLinux64
+          buildPath: build/server
+          customParameters: -standaloneBuildSubtarget Server
           allowDirtyBuild: true
 
       - name: Build Client (Windows Standalone)
@@ -47,6 +49,7 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: StandaloneWindows64
+          buildPath: build/windows
           allowDirtyBuild: true
 
       - name: Build Client (Linux Standalone)
@@ -57,25 +60,26 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: StandaloneLinux64
+          buildPath: build/linux
           allowDirtyBuild: true
 
       - name: Upload server build artifact
         uses: actions/upload-artifact@v7
         with:
           name: mmo-server-build
-          path: build/StandaloneLinux64/MMO.exe
+          path: build/server/MMO.x86_64
           if-no-files-found: warn
 
       - name: Upload Windows client build artifact
         uses: actions/upload-artifact@v7
         with:
           name: mmo-client-windows-build
-          path: build/StandaloneWindows64/MMO.exe
+          path: build/windows/MMO.exe
           if-no-files-found: warn
 
       - name: Upload Linux client build artifact
         uses: actions/upload-artifact@v7
         with:
           name: mmo-client-linux-build
-          path: build/StandaloneLinux64/MMO.x86_64
+          path: build/linux/MMO.x86_64
           if-no-files-found: warn
