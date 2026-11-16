@@ -136,21 +136,29 @@ namespace MMO.Tests
             var tracker = new AchievementTracker(new AchievementRecord(), new[]
             {
                 NewAchievement("level-2", AchievementTrigger.Level, threshold: 2, gold: 10),
+                NewAchievement("gather-9", AchievementTrigger.Gather, threshold: 9),
             });
 
-            tracker.RecordEvent(AchievementTrigger.Level, 1);
+            // One achievement completed and paid, one still part-way: a save has to carry both,
+            // or a reload either re-pays a reward or forgets where the player had got to.
+            tracker.RecordEvent(AchievementTrigger.Level, 2);
             tracker.MarkGranted("level-2");
+            tracker.RecordEvent(AchievementTrigger.Gather, 4);
 
             List<AchievementSaveData> saved = tracker.ToSave();
             var restored = new AchievementTracker(new AchievementRecord(), new[]
             {
                 NewAchievement("level-2", AchievementTrigger.Level, threshold: 2, gold: 10),
+                NewAchievement("gather-9", AchievementTrigger.Gather, threshold: 9),
             });
             restored.Load(saved);
 
-            Assert.AreEqual(1, restored.Record.CountOf("level-2"));
+            Assert.AreEqual(2, restored.Record.CountOf("level-2"));
             Assert.IsTrue(restored.IsCompleted("level-2"));
             Assert.IsTrue(restored.IsGranted("level-2"));
+            Assert.AreEqual(4, restored.Record.CountOf("gather-9"));
+            Assert.IsFalse(restored.IsCompleted("gather-9"),
+                "A half-done achievement must not come back completed.");
         }
 
         [Test]
