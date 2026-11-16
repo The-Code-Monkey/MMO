@@ -161,7 +161,10 @@ namespace MMO.Moderation
             if (string.IsNullOrEmpty(messageCode))
                 return "Your account was actioned by a moderator.";
 
-            int separator = messageCode.IndexOf('_');
+            // The category is the *last* segment: TempBan and PermanentBan codes carry the
+            // action in two words ("TEMP_BAN_SCAMMING"), so the first underscore is too early and
+            // would leave "BAN_SCAMMING", which matches no category.
+            int separator = messageCode.LastIndexOf('_');
             string category = separator >= 0 ? messageCode.Substring(separator + 1) : messageCode;
 
             switch (category)
