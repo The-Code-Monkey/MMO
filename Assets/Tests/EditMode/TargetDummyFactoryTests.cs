@@ -173,8 +173,13 @@ namespace MMO.Tests
             NetworkObject nob = NewDummyPrefab();
             Track(nob.gameObject);
 
-            // Without this a cube in a URP project renders magenta.
-            Assert.AreSame(pipeline.defaultMaterial, nob.GetComponent<MeshRenderer>().sharedMaterial);
+            // The dummy deliberately wears its own red material, so the contract is not "the
+            // pipeline's material" but "a material drawn by the pipeline's shader" — anything
+            // else and a cube in a URP project renders magenta.
+            MeshRenderer renderer = nob.GetComponent<MeshRenderer>();
+            Assert.IsNotNull(renderer);
+            Assert.IsNotNull(renderer.sharedMaterial);
+            Assert.AreSame(pipeline.defaultMaterial.shader, renderer.sharedMaterial.shader);
         }
         #endregion
 

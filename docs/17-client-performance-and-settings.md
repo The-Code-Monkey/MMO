@@ -66,7 +66,9 @@ is open, gameplay actions are blocked; only the settings key still reads through
 be closed.
 
 Overrides live at `Application.persistentDataPath/input-bindings.json`. A missing or corrupt file
-keeps the code defaults and never stops the client.
+keeps the code defaults and never stops the client. The Input System matches an override by binding
+id, so `GameInputActions` derives each id from the map, action and default path: a generated id
+would differ on every launch and silently drop the rebinds a player saved.
 
 ## 4. Settings
 

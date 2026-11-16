@@ -255,10 +255,10 @@ namespace MMO.Tests
 
             var single = manager.SpawnablePrefabs as SinglePrefabObjects;
             Assert.IsNotNull(single);
-            Assert.AreEqual(5, single.Prefabs.Count,
+            Assert.AreEqual(6, single.Prefabs.Count,
                 "FishNet derives prefab ids from list order, so duplicates shift ids on one end only. " +
                 "The order is player (0), target dummy (1), crafting station (2), loot bag (3), " +
-                "resource node (4).");
+                "resource node (4), bank teller (5).");
             Assert.AreSame(PlayerPrefabBaker.LoadPlayerPrefab(), single.Prefabs[0],
                 "The player must keep id 0 so connecting clients spawn the object they expect.");
             Assert.AreSame(TargetDummyBaker.LoadTargetDummyPrefab(), single.Prefabs[1],
@@ -267,6 +267,8 @@ namespace MMO.Tests
                 "The resource node is registered after the loot bag, on every end.");
             Assert.AreSame(LootBagBaker.LoadLootBagPrefab(), single.Prefabs[3],
                 "The loot bag keeps id 3 so a full-loot death has a prefab id both ends agree on.");
+            Assert.AreSame(BankTellerBaker.LoadBankTellerPrefab(), single.Prefabs[5],
+                "The bank teller is last, after every prefab authored before it keeps its id.");
         }
 
         [Test]
