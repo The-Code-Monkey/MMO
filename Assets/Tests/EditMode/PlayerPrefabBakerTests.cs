@@ -26,6 +26,10 @@ namespace MMO.Tests
     /// project, the copy that was built in the scene is gone, and the NetworkManager is told to
     /// spawn that prefab for every player that connects.
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakePrefab")]
     public sealed class PlayerPrefabBakerTests
     {
         private Scene _scene;

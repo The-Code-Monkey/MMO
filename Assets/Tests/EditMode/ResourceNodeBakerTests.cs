@@ -20,6 +20,10 @@ namespace MMO.Tests
     /// placed by a level or instantiated by a resource spawner, so the baker's only promises are
     /// the template staying a template and re-baking staying idempotent.
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakeContent")]
     public sealed class ResourceNodeBakerTests
     {
         private Scene _scene;

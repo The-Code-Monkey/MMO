@@ -27,6 +27,10 @@ namespace MMO.Tests
     /// <see cref="OneTimeTearDown"/> unless they already existed, so the suite exercises the real
     /// produced artifacts without leaving them behind on a clean checkout.
     /// </summary>
+    // These tests bake assets and re-import them per test, which costs seconds each; the
+    // Unity Tests workflow shards them by category so they run in parallel with the suite.
+    [Category("Bake")]
+    [Category("BakeContent")]
     public sealed class ZoneSceneBakerTests
     {
         private EditorBuildSettingsScene[] _originalBuildScenes;
