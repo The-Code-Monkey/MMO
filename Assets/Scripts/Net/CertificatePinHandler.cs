@@ -46,7 +46,7 @@ namespace MMO.Net
             _onRejected = onRejected;
         }
 
-        public override bool ValidateCertificate(byte[] certificateData)
+        protected override bool ValidateCertificate(byte[] certificateData)
         {
             if (!Enforced)
                 return true;
