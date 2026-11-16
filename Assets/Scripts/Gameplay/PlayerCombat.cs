@@ -144,10 +144,21 @@ namespace MMO.Gameplay
                 return;
             }
 
+            // Continuum wear: the authored weapon damage is scaled by the condition of the item
+            // actually worn in the main hand. A broken weapon reads as zero and is refused before
+            // any damage lands, while an unworn or indestructible weapon keeps its full value.
+            PlayerInventory inventory = GetComponent<PlayerInventory>();
+            int damage = weapon.AutoAttackDamage;
+            if (inventory != null)
+                damage = DegradationRules.EffectiveItemStat(damage, inventory.GetEquipped(EquipmentSlot.MainHand));
+
+            if (damage <= 0)
+                return;
+
             if (npc != null)
-                npc.ApplyDamage(weapon.AutoAttackDamage, GetComponent<PlayerInventory>());
+                npc.ApplyDamage(damage, inventory);
             else
-                dummy.TakeDamage(weapon.AutoAttackDamage);
+                dummy.TakeDamage(damage);
         }
 
         /// <summary>

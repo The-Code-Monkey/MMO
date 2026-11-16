@@ -40,7 +40,7 @@ screen.
    bags before the session is cancelled.
 6. Only after both bags moved does `TradeSession.Complete()` run.
 
-`TryRemoveItem` (`Assets/Scripts/Inventory/PlayerInventory.cs:450`) resolves by `InstanceId` rather
+`TryRemoveItem` (`Assets/Scripts/Inventory/PlayerInventory.cs:437`) resolves by `InstanceId` rather
 than by bag cell, and releases the item's `ItemOwnershipRegistry` entry — the same single-writer
 rule every other inventory mutation follows.
 

@@ -119,7 +119,12 @@ namespace MMO.UI
                 if (row.Label != null)
                 {
                     string slotName = SlotLabel(row.Slot);
-                    row.Label.text = occupied && icon == null ? $"{slotName}: {item.ItemName}" : slotName;
+                    string condition = occupied ? DurabilityUiFormat.Condition(item) : string.Empty;
+                    string suffix = string.IsNullOrEmpty(condition) ? string.Empty : $" ({condition})";
+
+                    row.Label.text = occupied && icon == null
+                        ? $"{slotName}: {item.ItemName}{suffix}"
+                        : $"{slotName}{suffix}";
                 }
             }
         }
