@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@v1.3.2
+        uses: jlumbroso/free-disk-space@v2.0.0
         with:
           swap-storage: false
 
