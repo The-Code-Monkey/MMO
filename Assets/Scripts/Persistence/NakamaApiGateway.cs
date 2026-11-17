@@ -42,10 +42,19 @@ namespace MMO.Persistence
         public const int RequestTimeoutSeconds = 10;
 
         private readonly BackendSettings _settings;
+        private readonly PinSet _pinSet;
         private string _baseUrl;
 
-        public NakamaApiGateway(BackendSettings settings = null)
-            => _settings = settings ?? new BackendSettings();
+        /// <param name="settings">Backend connection details; null falls back to the defaults.</param>
+        /// <param name="pinSet">
+        /// Certificate pins for the backend. Null loads the shipped document
+        /// (<see cref="PinSetLoader"/>); a set that does not require pinning changes nothing.
+        /// </param>
+        public NakamaApiGateway(BackendSettings settings = null, PinSet pinSet = null)
+        {
+            _settings = settings ?? new BackendSettings();
+            _pinSet = pinSet ?? PinSetLoader.Load();
+        }
 
         /// <summary>Scheme://host:port the REST calls are made against.</summary>
         public string BaseUrl => _baseUrl ??= $"{_settings.Scheme}://{_settings.Host}:{_settings.Port}";
@@ -250,6 +259,15 @@ namespace MMO.Persistence
 
             request.downloadHandler = new DownloadHandlerBuffer();
             request.timeout = RequestTimeoutSeconds;
+
+            // The login path is a client's first contact with the backend, so it enforces the same
+            // pins as the game server's repository connection.
+            if (_pinSet != null)
+            {
+                request.certificateHandler = new CertificatePinHandler(_pinSet, PinTarget.Backend, _settings.Host);
+                request.disposeCertificateHandlerOnDispose = true;
+            }
+
             request.SetRequestHeader("Accept", "application/json");
 
             if (!string.IsNullOrEmpty(basic))

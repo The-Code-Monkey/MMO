@@ -181,6 +181,31 @@ for the non-token parts. It checks, in order: maintenance mode, invalid capacity
 handshake, blocked name, missing name, allow-list membership, and finally "server full". It returns a
 `JoinDecision`. Keeping this pure means every rule has an EditMode test.
 
+## 3a. Transport trust and certificate pinning
+
+The backend and the game servers can present TLS certificates, but trusting a public CA is only as
+strong as the weakest CA in the client's trust store. A build may therefore ship a **pin set**:
+`PinSet` (`Assets/Scripts/Net/PinSet.cs`) holds the SPKI SHA-256 of the backend certificate and of
+each game-server certificate, each with a **primary** and a **backup** pin. Two pins are mandatory
+because a single pin turns a routine certificate rotation into a client-wide outage; the backup is
+the next certificate, shipped before the server rotates.
+
+The rules are pure (`PinRules`, `Assets/Scripts/Net/PinRules.cs`):
+
+- `IsWellFormed` requires two valid, different backend pins and a matched primary/backup pair for
+  every declared game-server pin.
+- `Verify` normalises hex (case, `:`, `-`, whitespace) and accepts the primary **or** backup.
+- `ShouldEnforce` is true only when the set requires pinning **and** the host is not loopback, so
+  local self-signed development is never bricked.
+
+`CertificatePinning.TrySpkiSha256` derives the presented hash from a certificate's DER bytes, and
+`CertificatePinHandler` plugs it into `UnityWebRequest` for both the login gateway
+(`NakamaApiGateway`) and the game server's backend client (`NakamaRestClient`). A mismatch refuses
+the connection; a dev loopback connection passes through untouched. The document is loaded from
+`Resources/Net/PinSet.json` by `PinSetLoader`; the release pipeline (#85) attaches the environment's
+set. `PinningBuildGuard` (`Assets/Editor/PinningBuildGuard.cs`) fails a build that ships a set
+marked `RequirePinning` but not well formed.
+
 ## 4. Building the server object graph
 
 `NetworkManagerFactory.Create` (`Assets/Scripts/Net/NetworkManagerFactory.cs:41`) is the single
