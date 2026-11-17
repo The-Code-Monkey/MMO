@@ -95,6 +95,27 @@ and no `Update`; it repaints only from `NodeShown`/`Closed`.
 
 There is intentionally no quest-log UI in this issue.
 
+## 2a. Achievements
+
+Achievement definitions are assets (`Create > MMO > Achievement Data`) resolved by
+`AchievementRegistry` from `Resources/Content/Achievements`, the same self-registering pattern as
+quests. Each declares an `AchievementTrigger` (level, gather, craft, raid clear, PvP kill, quest), a
+threshold, and a small one-shot reward: gold and/or one item.
+
+`AchievementRules` is the pure core: `Progress` adds a non-negative increment, clamps to
+`0..threshold` and reports completion; `ShouldGrant` is true only on the transition, so a duplicate
+or out-of-order event cannot double-pay. `AchievementTracker` applies events to an
+`AchievementRecord` (counters, completed ids, granted ids) and lists completed-but-unpaid rewards
+for retry — a full bag leaves the completion standing and the grant pending rather than deleting it.
+
+The server-only `PlayerAchievements` component subscribes to `PlayerStats.LevelChanged` and
+`PlayerQuestLog.QuestCompleted`, and `PlayerGathering`/`PlayerCrafting` call `Record` at their
+success points. Raid clears can call it when the encounter system lands. There is no client RPC that
+creates an event, so the counter can never be client-supplied. Progress is captured into
+`PlayerSaveRecord.Achievements` by `PlayerSnapshotFactory` and restored by `PlayerSaveApplier`, so it
+survives a zone handoff with the rest of the save. A completion is pushed to the owner over a
+`[TargetRpc]`; removing a definition from content leaves old record entries inert.
+
 ## 3. Master spawn controllers
 
 `EnemyMarker` is now a population point, not a one-shot spawner. It carries `MinAlive`, `MaxAlive`,

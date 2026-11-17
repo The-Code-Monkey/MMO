@@ -41,6 +41,19 @@ namespace MMO.Persistence
     }
 
     /// <summary>
+    /// One achievement's persisted progress. Flat, like <see cref="ItemSaveData"/>, because a
+    /// <c>Dictionary</c> does not survive <c>JsonUtility</c>.
+    /// </summary>
+    [Serializable]
+    public struct AchievementSaveData
+    {
+        public string AchievementId;
+        public int Progress;
+        public bool Completed;
+        public bool Granted;
+    }
+
+    /// <summary>
     /// The single "source of truth" a connected player's state is round-tripped through. Replaces
     /// the old write-only <c>PlayerSaveData</c>/<c>InventorySaveData</c> pair with one record that
     /// can actually be loaded back: vitals, level, experience, world position (reserved — no
@@ -60,7 +73,7 @@ namespace MMO.Persistence
     public class PlayerSaveRecord
     {
         /// <summary>Bump when the shape below stops round-tripping old saves.</summary>
-        public const int CurrentSchemaVersion = 4;
+        public const int CurrentSchemaVersion = 5;
 
         /// <summary>The player's stable account key; the storage key this record lives under.</summary>
         public string UserId;
@@ -115,5 +128,8 @@ namespace MMO.Persistence
 
         /// <summary>Active objective counters. Completed quests may still have rows here.</summary>
         public List<QuestProgressEntry> QuestProgress = new List<QuestProgressEntry>();
+
+        /// <summary>Achievement progress, including which completions have already paid out.</summary>
+        public List<AchievementSaveData> Achievements = new List<AchievementSaveData>();
 }
 }

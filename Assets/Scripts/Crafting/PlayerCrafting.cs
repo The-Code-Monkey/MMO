@@ -6,6 +6,7 @@ using FishNet.Object.Synchronizing;
 using MMO.Content;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Progression;
 using MMO.UI;
 using UnityEngine;
 
@@ -47,6 +48,7 @@ namespace MMO.Crafting
 
         private PlayerInventory _inventory;
         private PlayerQuestLog _quests;
+        private PlayerAchievements _achievements;
         private IReadOnlyList<RecipeOffer> _availableRecipes = Array.Empty<RecipeOffer>();
 
         public int CraftingXp => _craftingXp.Value;
@@ -202,6 +204,7 @@ namespace MMO.Crafting
                 return false;
 
             AwardCraftingXp(recipe.CraftingXp);
+            (_achievements ??= GetComponent<PlayerAchievements>())?.Record(AchievementTrigger.Craft, 1);
             return true;
         }
 
