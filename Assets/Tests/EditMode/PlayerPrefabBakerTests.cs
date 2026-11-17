@@ -187,11 +187,12 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void EnsurePlayerPrefab_ProducesACapsule()
+        public void EnsurePlayerPrefab_ProducesACharacterBody()
         {
             NetworkObject prefab = PlayerPrefabBaker.EnsurePlayerPrefab();
 
-            Assert.IsNotNull(prefab.GetComponent<CapsuleCollider>());
+            Assert.IsNotNull(prefab.GetComponent<CharacterController>());
+            Assert.IsNull(prefab.GetComponent<CapsuleCollider>());
             Assert.IsNotNull(prefab.GetComponent<MeshFilter>());
             Assert.AreEqual(PlayerPrefabFactory.PrefabName, prefab.name);
         }

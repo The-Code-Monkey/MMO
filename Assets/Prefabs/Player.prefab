@@ -10,8 +10,8 @@ GameObject:
   m_Component:
   - component: {fileID: 7180853787393874975}
   - component: {fileID: 1148538554138205060}
-  - component: {fileID: 1001006341497732593}
   - component: {fileID: 5112575869423899723}
+  - component: {fileID: 6655009502805053149}
   - component: {fileID: 5132567845639072608}
   - component: {fileID: 4820164432613515928}
   - component: {fileID: 5734589567415831533}
@@ -24,6 +24,7 @@ GameObject:
   - component: {fileID: 8764934208043423961}
   - component: {fileID: 2126643404709121916}
   - component: {fileID: 6788076321715848124}
+  - component: {fileID: 4426776467191380246}
   - component: {fileID: 3444770264703767655}
   - component: {fileID: 472327742383126554}
   - component: {fileID: 1954382737028923286}
@@ -73,29 +74,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1570343646677159205}
   m_Mesh: {fileID: 10208, guid: 0000000000000000e000000000000000, type: 0}
---- !u!136 &1001006341497732593
-CapsuleCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1570343646677159205}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Radius: 0.5
-  m_Height: 2
-  m_Direction: 1
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!23 &5112575869423899723
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -145,6 +123,31 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!143 &6655009502805053149
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &5132567845639072608
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -368,6 +371,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ee66a4fe0c31df5e598729b60cf7e0b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Content.PlayerDialogue
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &4426776467191380246
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f5b664f8d810d84ea3f418102e75b82, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Progression.PlayerAchievements
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}

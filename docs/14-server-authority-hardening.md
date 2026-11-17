@@ -54,9 +54,10 @@ so every behaviour before it keeps the NetworkBehaviour and RPC index it was ass
 | `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:125` |
 | `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:46` |
 
-The component works with or without a `CharacterController`: with one the move is collision-aware,
-without one the transform is moved directly, so the mover can be dropped on a bare capsule and
-tested. A direct `Transform` write by anything else would be a bug — the mover is the one door.
+The player object ships a `CharacterController`, so a move is collision-aware: the body is swept
+and a wall stops it. The mover still works without one — the transform is moved directly — which is
+what lets it be dropped on a bare capsule in a test. A direct `Transform` write by anything else
+would be a bug: the mover is the one door.
 
 ```
 client                                   server (PlayerMover)
