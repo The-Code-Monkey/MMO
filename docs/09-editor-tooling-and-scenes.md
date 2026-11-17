@@ -196,10 +196,11 @@ lands in — see [04](04-networking-and-the-join-flow.md).
 instantiates `Assets/Prefabs/Camera/CameraRig.prefab` (the single `PersistentCameraController` plus
 its child camera, tagged `MainCamera`), registers an undo step, and marks the scene dirty. The
 `CameraRig` is how a client sees the world: it is authored in the zone scenes by `ZoneSceneBaker`
-and deliberately **not** on the player prefab or in the main menu (the controller is
-`DontDestroyOnLoad` and re-finds the player by tag, so a second copy would race the singleton).
+and deliberately **not** on the player prefab or in the main menu (the controller is a
+`DontDestroyOnLoad` singleton and is bound to the local owner by `LocalPlayerCameraTarget`, so a
+second copy would race the singleton).
 `Validate` (`:97`) checks the rig exists, still has a child `Camera`, and that a camera is tagged
-`MainCamera` (what click-to-move raycasts through).
+`MainCamera` (the camera world-space raycasts are cast through).
 
 ### ZoneSceneBaker
 
