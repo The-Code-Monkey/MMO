@@ -641,7 +641,17 @@ namespace MMO.Tests
                 "CreditSellerAsync", BindingFlags.Instance | BindingFlags.Public);
             Assert.IsNotNull(creditSeller);
 
-            await (Task)creditSeller.Invoke(delivery, new object[] { "seller", 125L, CancellationToken.None });
+            // Build the argument list from the signature: the credit takes the seller's zone for
+            // the territory tax, and an optional context parameter must not break this test.
+            ParameterInfo[] parameters = creditSeller.GetParameters();
+            var args = new object[parameters.Length];
+            args[0] = "seller";
+            args[1] = 125L;
+            args[2] = CancellationToken.None;
+            for (int i = 3; i < args.Length; i++)
+                args[i] = null;
+
+            await (Task)creditSeller.Invoke(delivery, args);
 
             MailInbox saved = _repo.Inboxes["seller"];
             Assert.AreEqual(MailRules.MaxInbox + 1, saved.Messages.Count);

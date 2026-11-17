@@ -35,6 +35,10 @@ namespace MMO.UI
             Text title = CreateLabel(frame.transform, "Title", 200f, 26f, new Vector2(16f, -8f), 15);
             title.text = "Guild Bank";
 
+            // Read-only territory revenue, driven from the replicated bank record.
+            Text revenue = CreateLabel(frame.transform, "Revenue", 320f, 26f, new Vector2(260f, -8f), 13);
+            revenue.alignment = TextAnchor.MiddleRight;
+
             GuildBankFrameView view = frame.AddComponent<GuildBankFrameView>();
 
             Button close = CreateButton(
@@ -84,6 +88,7 @@ namespace MMO.UI
 
             GuildBankFrameView hud = frame.AddComponent<GuildBankFrameView>();
             view.SetHosts(strip, bankGrid, bagGrid, editor);
+            view.SetRevenueLabel(revenue);
             view.Conceal();
             return view;
         }

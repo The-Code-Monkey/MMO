@@ -80,6 +80,7 @@ namespace MMO.Social
             bank.Tabs ??= new List<GuildBankTab>();
             bank.Vault ??= new List<CurrencyBalance>();
             bank.Permissions ??= new List<GuildBankPermission>();
+            bank.SettledTerritoryEntries ??= new List<string>();
 
             for (int i = 0; i < DefaultTabCount; i++)
             {

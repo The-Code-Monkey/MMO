@@ -79,6 +79,7 @@ namespace MMO.UI
         private InventoryGridView _bankGrid;
         private InventoryGridView _bagGrid;
         private GuildRankPermissionEditor _editor;
+        private Text _revenueLabel;
 
         private readonly GuildBankTabSource _bankSource = new GuildBankTabSource();
         private DepositBagSource _bagSource;
@@ -106,6 +107,13 @@ namespace MMO.UI
             _bagGrid = bagGrid;
             _editor = editor;
         }
+
+        /// <summary>
+        /// The read-only revenue label the factory built, or null. It shows the durable
+        /// <see cref="GuildBankRecord.TerritoryRevenue"/> from the replicated bank record; the client
+        /// never computes a tax.
+        /// </summary>
+        public void SetRevenueLabel(Text label) => _revenueLabel = label;
 
         /// <summary>
         /// Opens the frame for a player: binds the tab strip, both grids and the editor, and shows
@@ -137,6 +145,7 @@ namespace MMO.UI
 
             _bankSource.SetBank(guild.Bank);
             RefreshTabStrip();
+            RefreshRevenue();
             SetVisible(true);
         }
 
@@ -183,6 +192,18 @@ namespace MMO.UI
         {
             _bankSource.SetBank(_guild?.Bank);
             RefreshTabStrip();
+            RefreshRevenue();
+        }
+
+        private void RefreshRevenue()
+        {
+            if (_revenueLabel == null)
+                return;
+
+            GuildBankRecord bank = _guild?.Bank;
+            _revenueLabel.text = bank != null
+                ? $"Territory revenue: {bank.TerritoryRevenue:N0} gold"
+                : string.Empty;
         }
 
         private void OnWithdrawRequested(int tabIndex, int gridX, int gridY)

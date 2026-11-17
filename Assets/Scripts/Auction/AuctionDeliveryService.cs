@@ -120,14 +120,36 @@ namespace MMO.Auction
             return false;
         }
 
-        public async Task CreditSellerAsync(string sellerAccountId, long gold, CancellationToken ct)
+        public async Task CreditSellerAsync(
+            string sellerAccountId,
+            long gold,
+            CancellationToken ct,
+            string sellerZoneId = null)
         {
             if (string.IsNullOrEmpty(sellerAccountId) || gold <= 0)
                 return;
 
+            // Territory tax comes off the seller's side, before the credit: the buyer paid the
+            // listing price and the owning guild's cut is withheld from what the seller receives.
+            // A tax failure must never block the sale: the seller is paid in full and the guild
+            // loses one fee, which is far better than a payer whose gold vanishes.
+            long proceeds = gold;
+            try
+            {
+                proceeds = await _socialHub.ApplyTerritoryTaxAsync(sellerAccountId, sellerZoneId, gold, ct);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Auction] Territory tax for {sellerAccountId} failed; paying gross: {e.Message}");
+                proceeds = gold;
+            }
+
+            if (proceeds <= 0)
+                return;
+
             if (_socialHub.TryGetWallet(sellerAccountId, out PlayerWallet sellerWallet))
             {
-                sellerWallet.AddGold(gold);
+                sellerWallet.AddGold(proceeds);
                 return;
             }
 
@@ -136,13 +158,13 @@ namespace MMO.Auction
                 "auction",
                 "Auction sale",
                 "Your auction sale was completed.",
-                currency: gold,
+                currency: proceeds,
                 attachments: null,
                 ignoreInboxCap: true,
                 ct: ct);
 
             if (result != MailRule.Ok)
-                Debug.LogError($"[Auction] Could not credit seller {sellerAccountId} with {gold} gold by mail: {result}.");
+                Debug.LogError($"[Auction] Could not credit seller {sellerAccountId} with {proceeds} gold by mail: {result}.");
         }
 
         private bool HasBagSpace(PlayerInventory bag, ItemInstance item)

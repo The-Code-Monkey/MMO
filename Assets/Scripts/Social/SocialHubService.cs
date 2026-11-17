@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FishNet.Managing;
 using MMO.Auction;
+using MMO.Economy;
 using MMO.Inventory;
 using MMO.Net;
 using MMO.Persistence;
@@ -46,6 +47,13 @@ namespace MMO.Social
         [SerializeField, Min(1f)] private float _mailSweepInterval = 5f;
 
         [SerializeField] private string _zoneId = "local";
+
+        /// <summary>
+        /// The territory this zone's auction house stands in, or empty when sales here are untaxed.
+        /// A zone sets this to the <c>ClaimFlag.TerritoryId</c> it contains; the tax rate and owner
+        /// are read from the durable <see cref="TerritoryRecord"/> at sale time, never cached.
+        /// </summary>
+        [SerializeField] private string _territoryId = string.Empty;
 
         /// <summary>Address the zone advertises as its raid instance host when it allocates one.</summary>
         [SerializeField] private string _instanceHostAddress = "127.0.0.1";
@@ -688,6 +696,66 @@ namespace MMO.Social
         /// <summary>Leader-only: sets a claimed territory's tax rate.</summary>
         public Task<TerritoryRule> SetTerritoryTaxAsync(string accountId, string territoryId, int taxRateBp)
             => _territory.SetTaxAsync(accountId, territoryId, taxRateBp);
+
+        /// <summary>The territory this zone's auction house belongs to; empty disables territory tax.</summary>
+        public string TerritoryId
+        {
+            get => _territoryId;
+            set => _territoryId = value;
+        }
+
+        /// <summary>
+        /// Withholds territory tax from an auction seller's gross proceeds and returns the net the
+        /// seller should actually receive. The tax is applied only for a sale in this zone's claimed
+        /// territory (<see cref="TerritoryId"/>), at the rate stored on its record, and it is
+        /// appended to the owning guild's ledger before the net is returned. If the ledger write
+        /// fails the seller is paid in full: an outage must not silently confiscate proceeds.
+        /// </summary>
+        /// <param name="sellerZoneId">The zone the sale was listed in; null means this zone.</param>
+        public async Task<long> ApplyTerritoryTaxAsync(
+            string sellerAccountId,
+            string sellerZoneId,
+            long gross,
+            CancellationToken ct = default)
+        {
+            if (gross <= 0)
+                return 0;
+
+            if (!string.IsNullOrEmpty(sellerZoneId) && sellerZoneId != _zoneId)
+                return gross;
+
+            if (string.IsNullOrEmpty(_territoryId) || _territory == null || _guildBank == null)
+                return gross;
+
+            TerritoryRecord territory = await _territory.LoadAsync(_territoryId);
+            if (territory == null
+                || string.IsNullOrEmpty(territory.OwnerGuildId)
+                || territory.TaxRateBp <= 0)
+            {
+                return gross;
+            }
+
+            long tax = TaxationRules.TaxOn(gross, territory.TaxRateBp);
+            if (tax <= 0 || tax >= gross)
+                return gross;
+
+            bool recorded = await _guildBank.AppendTerritoryTaxAsync(
+                territory.OwnerGuildId,
+                sellerAccountId,
+                CurrencyIds.Gold,
+                tax,
+                DateTimeOffset.UtcNow.UtcTicks);
+
+            if (!recorded)
+                return gross;
+
+            // Pay what was just recorded. Idempotent: the bank record remembers the entry id, so the
+            // same pass running twice (or from another zone) cannot credit it twice.
+            await _guildBank.SettleTerritoryRevenueAsync(
+                territory.OwnerGuildId, DateTimeOffset.UtcNow.UtcTicks);
+
+            return gross - tax;
+        }
 
         #endregion
 
