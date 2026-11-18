@@ -48,6 +48,7 @@ namespace MMO.Client
                 Axis(Held(GameAction.MoveForward), Held(GameAction.MoveBack)));
             int turn = Axis(Held(GameAction.TurnRight), Held(GameAction.TurnLeft));
             bool faceCamera = Held(GameAction.FaceCamera);
+            bool jump = Pressed(GameAction.Jump);
 
             // The classic shortcut: both buttons held runs forward.
             if (faceCamera && Held(GameAction.OrbitCamera))
@@ -59,16 +60,17 @@ namespace MMO.Client
             bool changed = (input - _lastInput).sqrMagnitude > 0.0001f
                            || turn != _lastTurn
                            || faceCamera != _lastFaceCamera
+                           || jump
                            || (faceCamera && Mathf.Abs(cameraYaw - _lastCameraYaw) > 0.1f);
 
-            // Idle stays quiet; the release that ends a walk is still sent, once.
-            if (!moving && !_wasMoving)
+            // Idle stays quiet; a release or a jump still has something to say.
+            if (!moving && !_wasMoving && !jump)
                 return;
 
             if (!changed && Time.unscaledTime < _nextSendTime)
                 return;
 
-            _mover?.RequestMoveIntent(input, turn, faceCamera, cameraYaw);
+            _mover?.RequestMoveIntent(input, turn, faceCamera, cameraYaw, jump);
             _lastInput = input;
             _lastTurn = turn;
             _lastFaceCamera = faceCamera;
@@ -79,6 +81,9 @@ namespace MMO.Client
 
         private static bool Held(GameAction action)
             => ClientInput.Current != null && ClientInput.Current.IsHeld(action);
+
+        private static bool Pressed(GameAction action)
+            => ClientInput.Current != null && ClientInput.Current.WasPressed(action);
 
         private static int Axis(bool positive, bool negative)
             => (positive ? 1 : 0) - (negative ? 1 : 0);
