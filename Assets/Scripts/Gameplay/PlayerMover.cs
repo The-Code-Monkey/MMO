@@ -45,7 +45,15 @@ namespace MMO.Gameplay
         private int _intentTurn;
         private bool _intentFacesCamera;
         private bool _hasIntent;
+        private bool _intentJump;
         private float _headingYaw;
+        private float _verticalVelocity;
+        private Vector3 _airVelocity;
+        private bool _airborne;
+        private bool _grounded = true;
+
+        /// <summary>Shared buffer for the ground probe, so the tick does not allocate a hit array.</summary>
+        private static readonly RaycastHit[] GroundHits = new RaycastHit[8];
         private float _speedMultiplier = 1f;
         private float _auraSpeedMultiplier = 1f;
         private bool _flying;
@@ -92,14 +100,16 @@ namespace MMO.Gameplay
         /// facing the camera). Only the server knows the heading, so only the server turns these
         /// into a world direction; no position ever leaves the client.
         /// </summary>
-        public void RequestMoveIntent(Vector2 input, int turnAxis, bool faceCamera, float cameraYaw)
+        public void RequestMoveIntent(
+            Vector2 input, int turnAxis, bool faceCamera, float cameraYaw, bool jump)
         {
             NetworkObject self = NetworkObject;
             if (self == null || !self.IsOwner)
                 return;
 
             RpcRequestMoveIntent(
-                input, turnAxis, faceCamera, cameraYaw, TimeManager != null ? TimeManager.Tick : 0u);
+                input, turnAxis, faceCamera, cameraYaw, jump,
+                TimeManager != null ? TimeManager.Tick : 0u);
         }
 
         /// <summary>
@@ -113,6 +123,7 @@ namespace MMO.Gameplay
             int turnAxis,
             bool faceCamera,
             float cameraYaw,
+            bool jump,
             uint clientTick,
             NetworkConnection sender = null)
         {
@@ -132,8 +143,93 @@ namespace MMO.Gameplay
             _intentCameraYaw = HeadingMath.Normalize(cameraYaw);
             _hasIntent = true;
 
+            // Latched until the next tick consumes it, so a jump is never swallowed by the intent
+            // that follows it in the same frame.
+            if (jump)
+                _intentJump = true;
+
             _moveTarget = null;
             _walk.Clear();
+        }
+
+        /// <summary>
+        /// Server: leave the ground if this character may. The horizontal velocity at takeoff is
+        /// kept and never steered, which is what makes a running jump land where momentum carries
+        /// it.
+        /// </summary>
+        private void TryJump()
+        {
+            if (_flying || !_grounded || _controller == null)
+                return;
+
+            _verticalVelocity = JumpMath.ImpulseSpeed(JumpMath.JumpHeight, JumpMath.Gravity);
+            _airVelocity = new Vector3(_worldInput.x, 0f, _worldInput.y) * MaxSpeed;
+            _grounded = false;
+            _airborne = true;
+        }
+
+        /// <summary>
+        /// Server: apply gravity and the ground probe for this tick. A body-less mover (a bare
+        /// capsule in a test) is treated as standing on the ground: there is no physics to fall
+        /// through and no jump to make.
+        /// </summary>
+        private void StepVertical(float deltaSeconds)
+        {
+            if (_controller == null)
+            {
+                _grounded = true;
+                _airborne = false;
+                _verticalVelocity = 0f;
+                return;
+            }
+
+            _verticalVelocity += JumpMath.Gravity * deltaSeconds;
+            MoveBy(Vector3.up * (_verticalVelocity * deltaSeconds));
+
+            if (CheckGrounded() && _verticalVelocity <= 0f)
+            {
+                // Press the body gently into the floor so the controller keeps reporting contact.
+                _verticalVelocity = -2f;
+
+                if (_airborne)
+                {
+                    _airborne = false;
+                    _airVelocity = Vector3.zero;
+                }
+
+                _grounded = true;
+                return;
+            }
+
+            _grounded = false;
+        }
+
+        /// <summary>
+        /// True when the body stands on something. `isGrounded` alone false-negatives on slopes and
+        /// stair lips, so a short downward spherecast backs it up; the character's own collider is
+        /// skipped by comparing roots.
+        /// </summary>
+        private bool CheckGrounded()
+        {
+            if (_controller.isGrounded)
+                return true;
+
+            float radius = _controller.radius * 0.9f;
+            Vector3 origin = transform.position
+                             + Vector3.up * (_controller.height * 0.5f - _controller.radius + 0.05f);
+            int count = Physics.SphereCastNonAlloc(
+                origin, radius, Vector3.down, GroundHits, 0.2f, ~0, QueryTriggerInteraction.Ignore);
+
+            for (int i = 0; i < count; i++)
+            {
+                if (GroundHits[i].collider != null
+                    && GroundHits[i].collider.transform.root != transform.root)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -229,6 +325,23 @@ namespace MMO.Gameplay
 
             if (_hasIntent && !_flying)
                 StepIntent(Time.deltaTime);
+
+            if (_intentJump)
+            {
+                TryJump();
+                _intentJump = false;
+            }
+
+            if (!_flying)
+                StepVertical(Time.deltaTime);
+
+            // Air momentum is un-steerable: the velocity at takeoff is what moves the body until it
+            // lands, whatever the player holds.
+            if (_airborne && !_flying)
+            {
+                MoveBy(_airVelocity * Time.deltaTime);
+                return;
+            }
 
             // A held key is the freshest description of this tick: integrate it before the route,
             // which an intent already cancelled.

@@ -45,16 +45,18 @@ NetworkBehaviour and RPC index it was assigned.
 
 | Member | Role | Line |
 |---|---|---|
-| `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:57` |
-| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:81` |
-| `RequestMoveIntent(input, turn, faceCamera, cameraYaw)` | Owner-side intent: the raw keys, re-stated while held. A non-owner gets no RPC. | `:95` |
-| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:169` |
-| `RpcRequestMoveIntent(input, turn, faceCamera, cameraYaw, tick, sender)` | The `[ServerRpc]` for the raw keys: re-checks the sender, clamps every axis, cancels any destination in flight. | `:111` |
-| `StepIntent(deltaSeconds)` | Server: turns the intent into a heading and a world direction — heading-relative normally, camera-relative while facing the camera. | `:144` |
-| `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:281` |
-| `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:334` |
-| `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:353` |
-| `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:66` |
+| `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:65` |
+| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:89` |
+| `RequestMoveIntent(input, turn, faceCamera, cameraYaw, jump)` | Owner-side intent: the raw keys, re-stated while held. A non-owner gets no RPC. | `:103` |
+| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:265` |
+| `RpcRequestMoveIntent(input, turn, faceCamera, cameraYaw, jump, tick, sender)` | The `[ServerRpc]` for the raw keys: re-checks the sender, clamps every axis, cancels any destination in flight, and latches a jump. | `:121` |
+| `StepIntent(deltaSeconds)` | Server: turns the intent into a heading and a world direction — heading-relative normally, camera-relative while facing the camera. | `:240` |
+| `TryJump()` | Server: leaves the ground if grounded, keeping the horizontal velocity at takeoff. | `:160` |
+| `StepVertical(deltaSeconds)` | Server: gravity, the vertical move and the ground probe. | `:176` |
+| `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:403` |
+| `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:456` |
+| `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:475` |
+| `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:74` |
 
 Two intents reach the mover: a destination and the raw keys. The keys are sent as local axes plus a
 turn axis and a face-camera flag, because only the server knows the heading — it alone decides
@@ -64,6 +66,13 @@ relative to it. The server scales backward and strafe, normalises, and integrate
 receiving any intent cancels a destination in flight, so the keyboard and a nav walk cannot fight
 over the next step. The heading is written only here and replicated by the `NetworkTransform`, which
 is what keeps the server-side attack cone and the player's view agreeing.
+
+Jumping is the one motion the client cannot describe: it is a request, and the server decides. A
+jump is only honoured while the body stands on something — `isGrounded` backed by a short downward
+spherecast, because the flag false-negatives on slopes and stair lips. The horizontal velocity at
+takeoff is captured and re-applied unchanged until landing, so air input cannot steer; gravity is
+`-20` m/s² and the impulse is derived from the declared apex, not typed in twice. A flying mount
+keeps its gravity-free path and cannot jump.
 
 The player object ships a `CharacterController`, so a move is collision-aware: the body is swept
 and a wall stops it. The mover still works without one — the transform is moved directly — which is
