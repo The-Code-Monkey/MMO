@@ -1,3 +1,4 @@
+using MMO.Client;
 using MMO.Editor;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
@@ -7,7 +8,7 @@ using UnityEngine.SceneManagement;
 namespace MMO.Tests
 {
     /// <summary>
-    /// The camera rig half of the editor tooling: the one <see cref="PersistentCameraController"/>
+    /// The camera rig half of the editor tooling: the one <see cref="ThirdPersonCameraRig"/>
     /// a client looks through, authored into a zone scene so it can be tuned like any other object.
     ///
     /// The tests are about the scene never ending up with two rigs or with a rig that is missing
@@ -54,7 +55,7 @@ namespace MMO.Tests
         [Test]
         public void EnsureInActiveScene_PutsARigInTheScene()
         {
-            PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig rig = LocalCameraBaker.EnsureInActiveScene();
 
             Assert.IsNotNull(rig);
             Assert.IsTrue(LocalCameraBaker.TryFind(_scene, out _));
@@ -63,7 +64,7 @@ namespace MMO.Tests
         [Test]
         public void EnsureInActiveScene_PutsTheRigAtTheSceneRoot()
         {
-            PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig rig = LocalCameraBaker.EnsureInActiveScene();
 
             Assert.IsNull(rig.transform.parent);
             Assert.AreEqual(_scene, rig.gameObject.scene);
@@ -80,8 +81,8 @@ namespace MMO.Tests
         [Test]
         public void EnsureInActiveScene_IsIdempotent()
         {
-            PersistentCameraController first = LocalCameraBaker.EnsureInActiveScene();
-            PersistentCameraController second = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig first = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig second = LocalCameraBaker.EnsureInActiveScene();
 
             Assert.AreSame(first, second,
                 "A second bake must reuse the rig rather than adding a second camera.");
@@ -90,7 +91,7 @@ namespace MMO.Tests
         [Test]
         public void EnsureInActiveScene_GivesTheRigACameraTaggedMainCamera()
         {
-            PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig rig = LocalCameraBaker.EnsureInActiveScene();
 
             // The world pointer raycasts through Camera.main; an untagged camera means clicks
             // silently do nothing.
@@ -103,7 +104,7 @@ namespace MMO.Tests
         [Test]
         public void EnsureInActiveScene_BakesTheBakedPrefabNotAHollowCopy()
         {
-            PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig rig = LocalCameraBaker.EnsureInActiveScene();
 
             // The prefab is the tuning surface: a bake that clones-and-unprefabs would let the
             // scene drift from the asset the zone baker ships.
@@ -118,7 +119,7 @@ namespace MMO.Tests
         [Test]
         public void TryFind_IsFalseInAnEmptyScene()
         {
-            Assert.IsFalse(LocalCameraBaker.TryFind(_scene, out PersistentCameraController rig));
+            Assert.IsFalse(LocalCameraBaker.TryFind(_scene, out ThirdPersonCameraRig rig));
             Assert.IsNull(rig);
         }
 
@@ -154,7 +155,7 @@ namespace MMO.Tests
         [Test]
         public void Validate_FailsWhenTheRigLostItsCamera()
         {
-            PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig rig = LocalCameraBaker.EnsureInActiveScene();
             foreach (Camera camera in rig.GetComponentsInChildren<Camera>(true))
                 Object.DestroyImmediate(camera.gameObject);
 
@@ -165,7 +166,7 @@ namespace MMO.Tests
         [Test]
         public void Validate_FailsWhenTheCameraIsNotTaggedMainCamera()
         {
-            PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
+            ThirdPersonCameraRig rig = LocalCameraBaker.EnsureInActiveScene();
             Camera camera = rig.GetComponentInChildren<Camera>();
             camera.gameObject.tag = "Untagged";
 

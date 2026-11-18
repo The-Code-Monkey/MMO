@@ -12,7 +12,7 @@ namespace MMO.Client
     /// do I control".
     ///
     /// <para>
-    /// The component registers itself with <see cref="PersistentCameraController"/> when it becomes
+    /// The component registers itself with <see cref="ThirdPersonCameraRig"/> when it becomes
     /// the local owner and clears that registration when ownership leaves or the object stops, so
     /// the camera follows the local player through zone loads and re-joins.
     /// </para>
@@ -46,12 +46,12 @@ namespace MMO.Client
             if (IsServerStarted && !IsClientStarted)
                 return;
 
-            PersistentCameraController.Instance?.SetLocalTarget(transform);
+            ThirdPersonCameraRig.Instance?.SetLocalTarget(transform);
         }
 
         private static void UnbindCamera()
         {
-            PersistentCameraController.Instance?.ClearLocalTarget();
+            ThirdPersonCameraRig.Instance?.ClearLocalTarget();
         }
     }
 }

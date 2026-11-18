@@ -35,7 +35,7 @@ again reuses or overwrites its output instead of duplicating it.
 | `Tools > MMO > Rebuild Resource Node Assets` | `ResourceNodeAssetBaker` | Imports the iron, copper, tin, cobalt and veridium maps, builds their materials, and mounts the full/depleted models on every node prefab. |
 | `Tools > MMO > Rebuild Item Icons` | `ItemIconBaker` | Imports `Assets/Textures/Items` as UI sprites and wires each `ItemDefinition` to the icon matching its item name. |
 | `Tools > MMO > Create Loot Bag Prefab` | `LootBagBaker` | Builds the loot-bag prefab a black-zone death drops. |
-| `Tools > MMO > Create Camera Rig` | `LocalCameraBaker` | Drops the scene's `PersistentCameraController` camera rig into the active scene. |
+| `Tools > MMO > Create Camera Rig` | `LocalCameraBaker` | Drops the scene's `ThirdPersonCameraRig` camera rig into the active scene. |
 | `Tools > MMO > Create NetworkManager In Scene` | `NetworkManagerSceneBaker` | Drops a fully wired `NetworkManager` into the current scene. |
 | `Tools > MMO > Create Main Menu Scene` | `MainMenuSceneBaker` | Rebuilds `Assets/Scenes/MainMenu.unity` with a token-auth manager and the bootstrap. |
 | `Tools > MMO > Wire Zone With World Bootstrap` | `WorldBootstrapBaker` | Connects an open scene to the server: adds `WorldBootstrap`, tags spawn points, registers marker prefabs. |
@@ -193,7 +193,7 @@ lands in — see [04](04-networking-and-the-join-flow.md).
 ### LocalCameraBaker
 
 `Assets/Editor/LocalCameraBaker.cs:28`. `EnsureInActiveScene` (`:51`) reuses an existing rig or
-instantiates `Assets/Prefabs/Camera/CameraRig.prefab` (the single `PersistentCameraController` plus
+instantiates `Assets/Prefabs/Camera/CameraRig.prefab` (the single `ThirdPersonCameraRig` plus
 its child camera, tagged `MainCamera`), registers an undo step, and marks the scene dirty. The
 `CameraRig` is how a client sees the world: it is authored in the zone scenes by `ZoneSceneBaker`
 and deliberately **not** on the player prefab or in the main menu (the controller is a
@@ -201,6 +201,13 @@ and deliberately **not** on the player prefab or in the main menu (the controlle
 second copy would race the singleton).
 `Validate` (`:116`) checks the rig exists, still has a child `Camera`, and that a camera is tagged
 `MainCamera` (the camera world-space raycasts are cast through).
+
+The rig is the third-person camera: a perspective eye on an orbit arm whose pivot sits at the
+character's neck (`CameraOrbitMath.NeckHeightAboveFeet`, measured from the feet, not the capsule's
+centre). Dragging either mouse button orbits — yaw around up, pitch between `-35°` and `+70°` — and
+never turns the character; the heading is the mover's business. The pointer is captured only while a
+button is held over the world, and released on release, on Esc, or when a modal takes the keyboard.
+The arm is a fixed length until the zoom ticket wires the wheel to it.
 
 ### ZoneSceneBaker
 
@@ -331,7 +338,7 @@ that make the next bind fail with "Address already in use", leaving the zone sil
 Tools > MMO > Configure URP
 Tools > MMO > Create Player Prefab
 Tools > MMO > Create Target Dummy Prefab
-Tools > MMO > Create Camera Rig                  ← the scene's PersistentCameraController rig
+Tools > MMO > Create Camera Rig                  ← the scene's ThirdPersonCameraRig
 Tools > MMO > Create NetworkManager In Scene   ← builds/wires the NetworkManager
 (place spawn points, markers, a ZoneTransferTrigger, terrain, lighting)
 Tools > MMO > Wire Zone With World Bootstrap   ← tags spawn points, attaches WorldBootstrap, registers marker prefabs
