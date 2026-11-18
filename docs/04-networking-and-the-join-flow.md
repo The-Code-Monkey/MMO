@@ -237,8 +237,10 @@ and [14](14-server-authority-hardening.md)); `PlayerClickToMove` is the owner-si
 submits movement intents to it, and the `NetworkTransform` (owner-authoritative **off**) ships the
 server's result to clients. The camera deliberately does **not** travel with the prefab — the scene's
 single `PersistentCameraController` rig is bound to whichever player this client **owns**, through
-`LocalPlayerCameraTarget`; a tag search remains only as the fallback for a scene with no local player
-yet (see [09](09-editor-tooling-and-scenes.md)).
+`LocalPlayerCameraTarget`. A tag search is only the fallback, but it is not confined to a scene with no
+local player: `OnStopNetwork` is not owner-guarded, so any player's teardown — a remote avatar leaving
+the zone — clears the shared binding, and the rig then follows whatever the tag search finds on this
+client until a local player binds again (see [09](09-editor-tooling-and-scenes.md)).
 `PlayerPrefabFactory.Attach` (`:187`) installs a FishNet `PlayerSpawner`, which is what actually
 instantiates the player when the gate admits a connection.
 

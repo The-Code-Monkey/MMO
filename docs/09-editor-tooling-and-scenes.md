@@ -199,7 +199,7 @@ its child camera, tagged `MainCamera`), registers an undo step, and marks the sc
 and deliberately **not** on the player prefab or in the main menu (the controller is a
 `DontDestroyOnLoad` singleton and is bound to the local owner by `LocalPlayerCameraTarget`, so a
 second copy would race the singleton).
-`Validate` (`:97`) checks the rig exists, still has a child `Camera`, and that a camera is tagged
+`Validate` (`:116`) checks the rig exists, still has a child `Camera`, and that a camera is tagged
 `MainCamera` (the camera world-space raycasts are cast through).
 
 ### ZoneSceneBaker
