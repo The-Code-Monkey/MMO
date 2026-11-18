@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace MMO.Client
+namespace MMO.Gameplay
 {
     /// <summary>
     /// Pure arithmetic for the walking intent: the keyboard's local axes become a camera-relative

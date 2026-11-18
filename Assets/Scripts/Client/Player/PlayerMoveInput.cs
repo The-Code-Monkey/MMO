@@ -5,15 +5,15 @@ using UnityEngine;
 namespace MMO.Client
 {
     /// <summary>
-    /// The owner-side walking driver: reads W/S/Q/E, turns them into a camera-relative direction
-    /// and streams that direction to the server as <em>intent</em>. It never moves the transform —
-    /// <see cref="PlayerMover"/> owns the position — so the client cannot walk further or faster
-    /// than the server integrates.
+    /// The owner-side walking driver: reads W/S/Q/E, A/D and the mouse buttons, and streams them to
+    /// the server as <em>intent</em>. It never moves or turns the transform — <see cref="PlayerMover"/>
+    /// owns the position and the heading — so the client cannot walk further, faster, or rounder than
+    /// the server integrates.
     ///
     /// <para>
-    /// Sends are rate-limited and edge-triggered: a held key is re-stated a few times a second so
-    /// the server keeps integrating after a packet, and a release goes out immediately as a zero so
-    /// the character stops even if the release is the only thing that changed.
+    /// The keys are sent raw (local axes, a turn axis and a face-camera flag) rather than as a world
+    /// direction: only the server knows the heading, so only the server can decide whether "forward"
+    /// means along the heading or along the camera.
     /// </para>
     /// </summary>
     [DisallowMultipleComponent]
@@ -24,7 +24,11 @@ namespace MMO.Client
         public const float SendIntervalSeconds = 0.05f;
 
         private PlayerMover _mover;
-        private Vector2 _lastSent;
+        private Vector2 _lastInput;
+        private int _lastTurn;
+        private bool _lastFaceCamera;
+        private float _lastCameraYaw;
+        private bool _wasMoving;
         private float _nextSendTime;
 
         private void Awake()
@@ -39,39 +43,45 @@ namespace MMO.Client
             if (!IsOwner || (IsServerStarted && !IsClientStarted))
                 return;
 
-            Vector2 local = MoveIntentMath.ApplyMultipliers(ReadInput());
-            Vector2 world = MoveIntentMath.ToWorld(local, CameraYaw());
+            Vector2 input = new Vector2(
+                Axis(Held(GameAction.StrafeRight), Held(GameAction.StrafeLeft)),
+                Axis(Held(GameAction.MoveForward), Held(GameAction.MoveBack)));
+            int turn = Axis(Held(GameAction.TurnRight), Held(GameAction.TurnLeft));
+            bool faceCamera = Held(GameAction.FaceCamera);
 
-            bool changed = (world - _lastSent).sqrMagnitude > 0.0001f;
-            bool due = Time.unscaledTime >= _nextSendTime;
-            if (!changed && !due)
+            // The classic shortcut: both buttons held runs forward.
+            if (faceCamera && Held(GameAction.OrbitCamera))
+                input.y = 1f;
+
+            float cameraYaw = CameraYaw();
+            bool moving = input.sqrMagnitude > 0f || turn != 0 || faceCamera;
+
+            bool changed = (input - _lastInput).sqrMagnitude > 0.0001f
+                           || turn != _lastTurn
+                           || faceCamera != _lastFaceCamera
+                           || (faceCamera && Mathf.Abs(cameraYaw - _lastCameraYaw) > 0.1f);
+
+            // Idle stays quiet; the release that ends a walk is still sent, once.
+            if (!moving && !_wasMoving)
                 return;
 
-            // Idle stays quiet: an unchanged zero has nothing to say to the server.
-            if (world.sqrMagnitude <= 0f && _lastSent.sqrMagnitude <= 0f)
+            if (!changed && Time.unscaledTime < _nextSendTime)
                 return;
 
-            _mover?.RequestMoveIntent(world);
-            _lastSent = world;
+            _mover?.RequestMoveIntent(input, turn, faceCamera, cameraYaw);
+            _lastInput = input;
+            _lastTurn = turn;
+            _lastFaceCamera = faceCamera;
+            _lastCameraYaw = cameraYaw;
+            _wasMoving = moving;
             _nextSendTime = Time.unscaledTime + SendIntervalSeconds;
         }
 
-        /// <summary>
-        /// The keyboard as local axes: +y forward, +x right. A blocked or rebinding input endpoint
-        /// reads as no input, so opening a panel stops the character instead of leaving it walking.
-        /// </summary>
-        private static Vector2 ReadInput()
-        {
-            ClientInput input = ClientInput.Current;
-            if (input == null)
-                return Vector2.zero;
+        private static bool Held(GameAction action)
+            => ClientInput.Current != null && ClientInput.Current.IsHeld(action);
 
-            float forward = (input.IsHeld(GameAction.MoveForward) ? 1f : 0f)
-                            - (input.IsHeld(GameAction.MoveBack) ? 1f : 0f);
-            float strafe = (input.IsHeld(GameAction.StrafeRight) ? 1f : 0f)
-                           - (input.IsHeld(GameAction.StrafeLeft) ? 1f : 0f);
-            return new Vector2(strafe, forward);
-        }
+        private static int Axis(bool positive, bool negative)
+            => (positive ? 1 : 0) - (negative ? 1 : 0);
 
         /// <summary>
         /// The camera's horizontal facing. Until the orbit rig exists this is the scene camera's own

@@ -39,7 +39,13 @@ namespace MMO.Gameplay
         private bool _hasAuthoritativePosition;
         private Vector3? _moveTarget;
         private readonly WalkPath _walk = new();
-        private Vector2 _directInput;
+        private Vector2 _worldInput;
+        private Vector2 _intentInput;
+        private float _intentCameraYaw;
+        private int _intentTurn;
+        private bool _intentFacesCamera;
+        private bool _hasIntent;
+        private float _headingYaw;
         private float _speedMultiplier = 1f;
         private float _auraSpeedMultiplier = 1f;
         private bool _flying;
@@ -63,6 +69,7 @@ namespace MMO.Gameplay
         public override void OnStartServer()
         {
             _controller = GetComponent<CharacterController>();
+            _headingYaw = HeadingMath.Normalize(transform.eulerAngles.y);
             CaptureAuthoritativePosition();
         }
 
@@ -81,25 +88,33 @@ namespace MMO.Gameplay
         }
 
         /// <summary>
-        /// Owner-side intent: keep walking in a camera-relative direction while the key is held.
-        /// The server integrates it at its own speed; no position ever leaves the client.
+        /// Owner-side intent: the raw keys (local axes, a turn axis and whether the player is
+        /// facing the camera). Only the server knows the heading, so only the server turns these
+        /// into a world direction; no position ever leaves the client.
         /// </summary>
-        public void RequestMoveIntent(Vector2 direction)
+        public void RequestMoveIntent(Vector2 input, int turnAxis, bool faceCamera, float cameraYaw)
         {
             NetworkObject self = NetworkObject;
             if (self == null || !self.IsOwner)
                 return;
 
-            RpcRequestMoveIntent(direction, TimeManager != null ? TimeManager.Tick : 0u);
+            RpcRequestMoveIntent(
+                input, turnAxis, faceCamera, cameraYaw, TimeManager != null ? TimeManager.Tick : 0u);
         }
 
         /// <summary>
         /// The direct-drive half of the input path. A held key supersedes a destination chosen
         /// earlier — otherwise the nav walk and the keyboard would fight over the next step — and
-        /// the direction is clamped so a diagonal cannot outrun a straight line.
+        /// every axis is clamped, so a doctored client cannot turn faster or walk wider than one.
         /// </summary>
         [ServerRpc]
-        private void RpcRequestMoveIntent(Vector2 direction, uint clientTick, NetworkConnection sender = null)
+        private void RpcRequestMoveIntent(
+            Vector2 input,
+            int turnAxis,
+            bool faceCamera,
+            float cameraYaw,
+            uint clientTick,
+            NetworkConnection sender = null)
         {
             if (sender == null || !OwnerMatches(sender))
                 return;
@@ -109,12 +124,45 @@ namespace MMO.Gameplay
             if (_flying)
                 return;
 
-            if (direction.sqrMagnitude > 1f)
-                direction.Normalize();
+            _intentInput = new Vector2(
+                Mathf.Clamp(input.x, -1f, 1f),
+                Mathf.Clamp(input.y, -1f, 1f));
+            _intentTurn = Mathf.Clamp(turnAxis, -1, 1);
+            _intentFacesCamera = faceCamera;
+            _intentCameraYaw = HeadingMath.Normalize(cameraYaw);
+            _hasIntent = true;
 
             _moveTarget = null;
             _walk.Clear();
-            _directInput = direction;
+        }
+
+        /// <summary>
+        /// Server: turn the raw intent into a heading and a world direction for this tick. Facing
+        /// the camera pins the heading to the camera and turns A/D into strafing; otherwise A/D
+        /// turn the character at a fixed rate and the keys are relative to the heading.
+        /// </summary>
+        private void StepIntent(float deltaSeconds)
+        {
+            float strafe = _intentInput.x;
+            float forward = _intentInput.y;
+            float turn = _intentTurn;
+
+            if (_intentFacesCamera)
+            {
+                _headingYaw = _intentCameraYaw;
+                strafe += turn;
+                turn = 0f;
+            }
+            else
+            {
+                _headingYaw = HeadingMath.NextYaw(_headingYaw, turn, deltaSeconds);
+            }
+
+            Vector2 local = MoveIntentMath.ApplyMultipliers(new Vector2(strafe, forward));
+            float frameYaw = _intentFacesCamera ? _intentCameraYaw : _headingYaw;
+            _worldInput = MoveIntentMath.ToWorld(local, frameYaw);
+
+            transform.rotation = Quaternion.Euler(0f, _headingYaw, 0f);
         }
 
         [ServerRpc]
@@ -179,11 +227,14 @@ namespace MMO.Gameplay
             if (!IsServer)
                 return;
 
+            if (_hasIntent && !_flying)
+                StepIntent(Time.deltaTime);
+
             // A held key is the freshest description of this tick: integrate it before the route,
             // which an intent already cancelled.
-            if (_directInput.sqrMagnitude > 0f && !_flying)
+            if (_worldInput.sqrMagnitude > 0f && !_flying)
             {
-                ApplyInput(_directInput, Time.deltaTime);
+                ApplyInput(_worldInput, Time.deltaTime);
                 return;
             }
 
@@ -194,6 +245,15 @@ namespace MMO.Gameplay
             Vector3 toWaypoint = waypoint - transform.position;
             if (!_flying)
                 toWaypoint.y = 0f;
+
+            // A nav walk faces where it goes. The keyboard sets the heading through the intent
+            // path instead; either way the root's forward is the heading combat reads.
+            if (!_flying && toWaypoint.sqrMagnitude > 0.0001f)
+            {
+                _headingYaw = HeadingMath.Normalize(
+                    Mathf.Atan2(toWaypoint.x, toWaypoint.z) * Mathf.Rad2Deg);
+                transform.rotation = Quaternion.Euler(0f, _headingYaw, 0f);
+            }
 
             float distance = toWaypoint.magnitude;
             if (distance <= 0.01f)
