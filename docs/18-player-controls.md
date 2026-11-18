@@ -142,7 +142,7 @@ The decisions in this chapter are pure and covered in EditMode:
   with the reach rule and the advisory. Do not add `OnMouseDown`: it fires on press, so the first
   pixel of an orbit drag would activate the object.
 - **The camera is following someone else.** Confirm the player registered through
-  `LocalPlayerCameraTarget`; note that a remote avatar's teardown currently clears the binding
-  (issue #239), after which the tag fallback can latch onto any player.
+  `LocalPlayerCameraTarget`. Unbinding is owner-scoped, so only the copy that bound the rig may clear
+  it; a remote avatar's teardown is a no-op for the camera.
 - **Run the tests.** `Assets/Tests/EditMode` holds the table above; CI runs them for every pull
   request into any branch (see [10](10-testing.md#in-ci)).
