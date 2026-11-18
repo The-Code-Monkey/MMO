@@ -118,17 +118,19 @@ provides. The weapon is a `WeaponData` assigned only by the server.
 - `Attack(NetworkObject target)` (`:105`) — the server's checks, in order:
   1. a weapon must be equipped,
   2. the target must be spawned,
-  3. the target must carry either `NPCStats` (every zone enemy) or the legacy `TargetDummy`,
+  3. the target must carry either `NPCStats` (every zone enemy), the legacy `TargetDummy`, or
+     another player — the one shape whose legality also depends on the zone tier and both players'
+     PvP flags (see [20](20-pvp-and-flagging.md)),
   4. the target must be **visible** — within `weapon.AttackRange`, inside the facing cone
      (`_attackHalfAngleDegrees`, default `60`), and with a clear line of sight (no wall between the
      attacker's eye, `_eyeHeight`, and the target),
-  5. then `npc.ApplyDamage(weapon.AutoAttackDamage, inventory)` or
-     `dummy.TakeDamage(weapon.AutoAttackDamage)`.
+  5. then `npc.ApplyDamage(weapon.AutoAttackDamage, inventory)`, `dummy.TakeDamage(...)`, or — for
+     a player target — `player.TakeDamage(...)` once `PlayerPvP.TryEngage` allows the hit.
 
-`IsWithinAttackRange` (`:176`) is a pure helper using strict `<` — a target exactly on the boundary
-is a miss. `IsVisibleToAttack` (`:158`) combines range, cone and the server's raycast into the one
+`IsWithinAttackRange` (`:217`) is a pure helper using strict `<` — a target exactly on the boundary
+is a miss. `IsVisibleToAttack` (`:199`) combines range, cone and the server's raycast into the one
 verdict (`SightRules.CanSee`); the raycast arrives through the injectable `Sight` property (`:44`,
-defaults to a real `PhysicsSight`). `FindLocal` (`:191`) finds the local player's `PlayerCombat` component on either the host
+defaults to a real `PhysicsSight`). `FindLocal` (`:232`) finds the local player's `PlayerCombat` component on either the host
 or client side, used by the mouse-click path. A stun blocks the attack before any of these checks.
 
 `TargetDummy` (`Assets/Scripts/Gameplay/TargetDummy.cs:18`) is the training punching bag. It has its
@@ -374,7 +376,9 @@ and max stacks. The pure rules live in `AuraRules`:
 `AuraController` (`Assets/Scripts/Content/AuraController.cs`) is the server-authoritative shell on
 players and enemies. It owns the active `AuraState` list, applies ticks through `PlayerStats` or
 `NPCStats`, credits DoT damage to the applier through `NPCStats.ApplyDamage`, clears on death, and
-replicates a `SyncList<AuraSnapshot>` for a future buff bar. Stat bonuses go into their own
+replicates a `SyncList<AuraSnapshot>` for a future buff bar. A DoT tick on a player is player damage
+like any other, so it is gated per tick by the same PvP verdict as a swing
+([20](20-pvp-and-flagging.md)); an NPC-applied aura is not PvP and is never gated. Stat bonuses go into their own
 `PlayerStats` cap fields (`ApplyAuraBonuses`), separate from equipment, so equipping gear cannot wipe
 a buff. A stun or root drives the mover's separate aura speed multiplier to zero.
 
