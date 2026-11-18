@@ -98,14 +98,15 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Create_MakesACapsule()
+        public void Create_MakesACharacterBody()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
 
-            var collider = nob.GetComponent<CapsuleCollider>();
-            Assert.IsNotNull(collider, "CreatePrimitive(Capsule) must leave a CapsuleCollider behind.");
-            Assert.AreEqual(1, collider.direction, "A capsule stands along the Y axis by default.");
+            Assert.IsNotNull(nob.GetComponent<CharacterController>(),
+                "The server-authoritative mover sweeps a CharacterController.");
+            Assert.IsNull(nob.GetComponent<CapsuleCollider>(),
+                "A CapsuleCollider welded to the same transform would be a second body.");
         }
 
         [Test]
@@ -114,9 +115,9 @@ namespace MMO.Tests
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
 
-            var collider = nob.GetComponent<CapsuleCollider>();
-            Assert.AreEqual(PlayerPrefabFactory.DefaultHeight, collider.height, 0.0001f);
-            Assert.AreEqual(PlayerPrefabFactory.DefaultRadius, collider.radius, 0.0001f);
+            var body = nob.GetComponent<CharacterController>();
+            Assert.AreEqual(PlayerPrefabFactory.DefaultHeight, body.height, 0.0001f);
+            Assert.AreEqual(PlayerPrefabFactory.DefaultRadius, body.radius, 0.0001f);
         }
 
         [Test]
@@ -153,20 +154,20 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Create_KeepsTheMeshAndTheColliderTheSameSize()
+        public void Create_KeepsTheMeshAndTheBodyTheSameSize()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
 
-            // A mesh and collider that disagree are how a player object ends up looking like it is
+            // A mesh and body that disagree are how a player object ends up looking like it is
             // somewhere it is not.
-            var collider = nob.GetComponent<CapsuleCollider>();
+            var body = nob.GetComponent<CharacterController>();
             Bounds mesh = nob.GetComponent<MeshFilter>().sharedMesh.bounds;
             const float tolerance = 0.05f;
 
-            Assert.AreEqual(collider.radius * 2f, mesh.size.x, tolerance);
-            Assert.AreEqual(collider.radius * 2f, mesh.size.z, tolerance);
-            Assert.AreEqual(collider.height, mesh.size.y, tolerance);
+            Assert.AreEqual(body.radius * 2f, mesh.size.x, tolerance);
+            Assert.AreEqual(body.radius * 2f, mesh.size.z, tolerance);
+            Assert.AreEqual(body.height, mesh.size.y, tolerance);
         }
 
         [Test]

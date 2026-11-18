@@ -47,9 +47,9 @@ namespace MMO.Net
 
         /// <summary>
         /// Transform scale that turns Unity's capsule primitive (0.5 radius, 2 tall) into
-        /// <see cref="DefaultRadius"/> / <see cref="DefaultHeight"/>. The primitive's
-        /// CapsuleCollider is authored in local units, so scaling scales collider and mesh together
-        /// and they cannot drift apart.
+        /// <see cref="DefaultRadius"/> / <see cref="DefaultHeight"/>. The primitive's mesh is
+        /// authored in local units, so scaling scales the mesh and the character body together and
+        /// they cannot drift apart.
         /// </summary>
         public static Vector3 DefaultScale => new Vector3(
             DefaultRadius * 2f,
@@ -79,12 +79,24 @@ namespace MMO.Net
         /// </remarks>
         public static NetworkObject Create()
         {
-            // CreatePrimitive is what supplies the capsule mesh, renderer and a CapsuleCollider
-            // whose dimensions already match the mesh.
+            // CreatePrimitive is what supplies the capsule mesh and a CapsuleCollider whose
+            // dimensions already match it. The collider goes: the player's body is a
+            // CharacterController, and a second collider welded to the same transform would be a
+            // body inside a body — the controller's own sweep would collide with it.
             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             go.name = PrefabName;
             go.tag = PlayerTag;
             go.transform.localScale = DefaultScale;
+
+            UnityEngine.Object.DestroyImmediate(go.GetComponent<CapsuleCollider>());
+
+            // The one body the server-authoritative mover sweeps through the world. It is authored
+            // in metres because the transform is unscaled, and it is what stops the mover putting
+            // a character inside a wall.
+            CharacterController body = go.AddComponent<CharacterController>();
+            body.height = DefaultHeight;
+            body.radius = DefaultRadius;
+            body.center = Vector3.zero;
 
             // NetworkObject before any NetworkBehaviour: behaviours resolve their owning
             // NetworkObject through it, and this is the order the FishNet editor tooling writes.
