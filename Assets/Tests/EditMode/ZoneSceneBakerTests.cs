@@ -190,9 +190,9 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Wilderness_DeclaresTheRedTier()
+        public void Wilderness_DeclaresTheYellowTier()
         {
-            Assert.AreEqual(ZoneRiskTier.Red, RiskTierOf(ZoneSceneBaker.WildernessZonePath));
+            Assert.AreEqual(ZoneRiskTier.Yellow, RiskTierOf(ZoneSceneBaker.WildernessZonePath));
         }
 
         [Test]
