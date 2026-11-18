@@ -30,6 +30,7 @@ If you only have ten minutes, read [01-architecture-overview](01-architecture-ov
 | 16 | [Direct trade and guild territory](16-trading-and-territory.md) | No-escrow player trade, the `ClaimFlag` scene volume, vulnerability windows and capture CAS. |
 | 17 | [Client performance and settings](17-client-performance-and-settings.md) | Pooled combat VFX, spatial audio with a voice cap, rebindable input, and local settings. |
 | 18 | [Player controls](18-player-controls.md) | WASD/QE/A-D and jump as server intent, the third-person orbit camera, world clicks and cursor capture. |
+| 19 | [World map and zone topology](19-world-map-and-zone-topology.md) | The macro map: risk tiers geographically, the tier adjacency matrix, choke points, and the topology asset the tools read. |
 
 ## The one idea to remember
 

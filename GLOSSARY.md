@@ -1,8 +1,9 @@
 # MMO
 
 A server-authoritative 3D MMO: clients express wishes, the server decides what happens, and every
-player sees the same world. This glossary fixes the words the project uses for movement, cameras and
-pointing at the world, so a design discussion cannot quietly mean two different things.
+player sees the same world. This glossary fixes the words the project uses for movement, cameras,
+pointing at the world and the shape of the world, so a design discussion cannot quietly mean two
+different things.
 
 ## Movement
 
@@ -82,3 +83,20 @@ _Avoid_: Mouse lock, pointer lock, focus mode
 A message telling the player that what they clicked is beyond reach. It is advice, not a refusal; the
 server still decides, and the request is still made.
 _Avoid_: Error, rejection, failure
+
+## Zones
+
+**Zone**:
+One server process running one scene, with its own `NetworkManager` and its own connected players.
+Players move between zones through portals, not by walking off the edge of the world.
+_Avoid_: Map, level, world (the whole game is the world, not a zone)
+
+**Zone risk tier**:
+The label on a zone that decides what dying there costs, from `Safe` through `Yellow` and `Red` to
+`Black`. It is about death consequences and PvP, never about resource rarity.
+_Avoid_: Zone difficulty, zone colour, tier (bare), blue zone (the genre word for `Yellow`)
+
+**Choke point**:
+A narrow zone — a canyon pass, a bridge, a mountain path — that a neighbouring zone's only portal
+runs through, so it can be fought over and held. It is a zone, not a flag on a portal.
+_Avoid_: Bottleneck marker, gate, portal flag
