@@ -204,9 +204,9 @@ namespace MMO.Client
         /// </summary>
         private Vector3 AimPoint()
         {
-            PlayerClickToMove clickToMove = GetComponent<PlayerClickToMove>();
-            return clickToMove != null
-                ? clickToMove.AimPoint()
+            PlayerWorldPointer pointer = GetComponent<PlayerWorldPointer>();
+            return pointer != null
+                ? pointer.AimPoint()
                 : transform.position + transform.forward * 5f;
         }
 

@@ -71,28 +71,22 @@ and `ApplyVisuals` shows the one matching the replicated type (with the furnace 
 `None`/`Alchemy`). The anvil is procedural; the furnace hosts the imported forge model. New station
 types add a model child and a case, not a separate prefab.
 
-### Clicking a station: walk first, then open
+### Clicking a station: in reach, or a word of advice
 
-A click on a station is not a request to open a panel from wherever the player happens to stand —
-the server refuses an open request from outside the crafting reach, so a far-away click has to
-become a walk. `PlayerClickToMove.BeginStationApproach` (`Assets/Scripts/Client/Player/PlayerClickToMove.cs:126`)
-does that in three steps:
+A click on a station is a request to open it, not a request to walk anywhere. The server refuses an
+open request from outside the crafting reach, so `PlayerWorldPointer` checks the same reach on the
+client and, when the player is too far away, writes "Out of range." to the chat log — then sends the
+request anyway. The check is advice, never a gate: a stale client position must not be able to block
+an interaction the server would allow.
 
-1. **Already in reach** — `PlayerCrafting.IsWithinReach` says yes, so the panel opens at once. No
-   walk, no marker.
-2. **Too far** — the station is remembered as the *pending* station and the player is asked to walk
-   to `CraftingStation.StandOffPosition` (`:52`): the anvil uses a 2 m stand-off, the large forge
-   5 m, both inside the 6 m craft reach. The player and the station do not share a pivot height, so
-   the reach is measured from pivots, not feet.
-3. **The walk ends** — the click-to-move marker clearing is the signal that the walk is over
-   (`UpdateMarker` → `OpenPendingStation`). The panel opens then, and only if the player really
-   ended up within reach: a walk that stopped short leaves the panel closed, because the server
-   would have refused anyway.
+There is no auto-walk and no destination marker. Walking to a station is the player's job — W/A/S/D
+— and a click made in reach opens the panel at once. `CraftingStation.StandOffPosition` (`:52`)
+still exists for callers that need a sensible place to stand (the anvil uses 2 m, the forge 5 m,
+both inside the 6 m craft reach), but the pointer does not use it.
 
-A click on the crafting panel is swallowed by the UI: `PlayerClickToMove` checks
-`EventSystem.current.IsPointerOverGameObject()` before turning a mouse click into a walk, so
-clicking a recipe row never sends the player moving. A click on the world while the panel is open
-closes it and starts a walk to the clicked point.
+A click on the crafting panel is swallowed by the UI: the pointer checks
+`EventSystem.current.IsPointerOverGameObject()` before resolving a world click, so clicking a recipe
+row never reaches a station. A click on the world while the panel is open closes it.
 
 
 The panel itself is still opened by the **server's** payload — the client never decides what a
@@ -100,9 +94,9 @@ station offers, it only asks. The client-side reach check exists to avoid asking
 not to bypass one.
 
 A station is also **solid ground**: the prefab carries a `NavMeshObstacle` that carves a hole in
-the zone NavMesh around the station's body, so a click-to-move route planned by the server bends
-around the workbench instead of running through it (see
-[14](14-server-authority-hardening.md#click-to-move--the-server-owns-the-route-not-just-the-direction)).
+the zone NavMesh around the station's body, so a server-planned route bends around the workbench
+instead of running through it (see
+[14](14-server-authority-hardening.md#destination-intent--the-server-owns-the-route-not-just-the-direction)).
 The obstacle's size is set in the station's **local** space (`CraftingStationPrefabFactory.BodyLocalSize`),
 because `NavMeshObstacle.size` is scaled by the transform. The station's root stays scaled to
 `DefaultScale` for placement, but the body and its carve match the visible model: the forge is
@@ -273,11 +267,9 @@ a **state change**, not a despawn: when depleted, `ApplyDepletedState` (`:275`) 
 collider and renderer, and a server timer respawns it when `ResetTime` is up (`Respawn`, `:297`).
 
 The prefab also carries a carving `NavMeshObstacle` sized to its body, exactly like the crafting
-station, so a route bends *around* a vein instead of through it. Clicking one from out of reach is a
-walk, not a gather attempt: `PlayerClickToMove.BeginNodeApproach` walks to the node's
-`StandOffPosition` (clear of the body, inside `InteractRange`) and sends the gather request when the
-walk ends — the same walk-then-act shape as a station, and the reason the destination marker lands
-on the floor beside the vein rather than on top of it.
+station, so a server-planned route bends *around* a vein instead of through it. A click outside the
+node's `InteractRange` is refused by the server and earns the same "Out of range." advice as a
+station: the intent is still sent, and the player walks closer and clicks again.
 
 `TryGather(PlayerInventory inventory)` (`:190`) is the server's harvest: if the node is available,
 `inventory.TryAddItem(definition)`, decrement `Remaining`, and deplete at zero.
@@ -352,11 +344,10 @@ walking away or dropping the tool stops the harvest.
 ## 9. A gathering tick, end to end
 
 ```
-CLIENT clicks a node
-  too far → PlayerClickToMove.BeginNodeApproach
-    → walk to StandOffPosition, marker on the floor
-    → walk ends within reach → RequestGatherFromLocalPlayer
-  within reach → ResourceNode.OnMouseDown → RequestGatherFromLocalPlayer
+CLIENT clicks a node with PlayerWorldPointer
+  the raycast finds ResourceNode
+  out of reach → chat advisory ("Out of range."), and the intent is still sent
+  → ResourceNode.RequestGatherFromLocalPlayer
     → PlayerGathering.FindLocal → RequestGather ── ServerRpc ──►
 SERVER
   PlayerGathering.RpcRequestGather → StartGathering

@@ -115,7 +115,7 @@ namespace MMO.Net
                 if (station != null)
                     station.Configure(marker.StationType);
 
-                // Ensure the BoxCollider is not a trigger so OnMouseDown() fires and
+                // Ensure the BoxCollider is not a trigger so the world click raycast finds it and
                 // players cannot walk through the crafting station.
                 if (spawned.TryGetComponent(out BoxCollider boxCollider))
                 {

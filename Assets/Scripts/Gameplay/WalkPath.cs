@@ -16,7 +16,7 @@ namespace MMO.Gameplay
     /// <para>
     /// Pure state and arithmetic over positions — no clock, no network, no scene — so an
     /// EditMode test can judge the whole life of a route in microseconds, exactly like
-    /// <see cref="MMO.Client.ClickToMoveMarkerTracker"/>.
+    /// the route a destination intent plans over the NavMesh.
     /// </para>
     /// </summary>
     public sealed class WalkPath

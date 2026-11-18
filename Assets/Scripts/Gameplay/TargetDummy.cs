@@ -53,20 +53,6 @@ namespace MMO.Gameplay
         }
 
         /// <summary>
-        /// Unity click message: a player pressed on this dummy's collider. The message can only
-        /// arrive on the listening process, so the owning client is the one acting here. This sends
-        /// intent through <see cref="PlayerCombat.RequestAttack"/> and decides nothing itself.
-        /// </summary>
-        /// <remarks>
-        /// Keep this thin and testable: the whole decision is on the server, and the click handler
-        /// is exactly the kind of UnityEngine message a unit test should not reach into.
-        /// </remarks>
-        private void OnMouseDown()
-        {
-            RequestAttackFromLocalPlayer();
-        }
-
-        /// <summary>
         /// The click's local effect: resolve the local player's combat handler and ask it to attack
         /// this dummy. Does nothing until a local player actually exists — e.g. on a dedicated
         /// server, or before spawn — which is exactly how a click on a scene-placed dummy behaves.

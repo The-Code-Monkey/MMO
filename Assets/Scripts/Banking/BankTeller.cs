@@ -38,8 +38,6 @@ namespace MMO.Banking
         public static bool IsWithinReach(Vector3 playerPosition, Vector3 tellerPosition)
             => Vector3.Distance(playerPosition, tellerPosition) <= InteractRange;
 
-        private void OnMouseDown() => RequestOpenFromLocalPlayer();
-
         /// <summary>Resolves the local player's bank shell and asks it to open this teller.</summary>
         public void RequestOpenFromLocalPlayer()
         {

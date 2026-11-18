@@ -229,14 +229,14 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void Create_CarriesTheClickToMoveDriver()
+        public void Create_CarriesTheWorldPointer()
         {
             NetworkObject nob = PlayerPrefabFactory.Create();
             Track(nob.gameObject);
 
-            Assert.IsNotNull(nob.GetComponent<PlayerClickToMove>(),
-                "The owning client drives the player with the mouse, and this is the only thing " +
-                "that turns a click into an intent the server will validate.");
+            Assert.IsNotNull(nob.GetComponent<PlayerWorldPointer>(),
+                "The owning client clicks the world, and the pointer is the only thing that turns "
+                + "that click into an intent the server will validate.");
         }
 
         [Test]
@@ -282,7 +282,8 @@ namespace MMO.Tests
             Assert.IsInstanceOf<PlayerMover>(behaviours[21]);
             Assert.IsInstanceOf<PlayerMount>(behaviours[22]);
             Assert.IsInstanceOf<AuraController>(behaviours[23]);
-            Assert.IsInstanceOf<PlayerClickToMove>(behaviours[24]);
+            Assert.IsInstanceOf<PlayerWorldPointer>(behaviours[24],
+                "The world pointer keeps the slot the click-to-move driver used.");
             Assert.IsInstanceOf<NetworkTransform>(behaviours[25]);
             Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[26],
                 "The local-camera binding rides the prefab so it registers by ownership, not by tag.");
