@@ -1,19 +1,13 @@
 name: Server & Client Builds
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, edited]
-    # Explicitly every base branch, so a PR stacked on another feature branch is still built.
-    branches: ['**']
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-  # A conflicting PR has no pull_request run; a branch push still builds it.
+  # Builds are expensive and only prove the merged tree compiles and links. Pull requests are
+  # covered by the Unity test suite instead; builds run once the change is on main.
   push:
-    branches: ['**']
+    branches: [main]
   workflow_dispatch:
 
-# Cancel superseded builds when new commits are pushed to the same PR.
+# Cancel superseded builds when new commits are pushed to main.
 concurrency:
   group: server-client-builds-${{ github.ref }}
   cancel-in-progress: true
