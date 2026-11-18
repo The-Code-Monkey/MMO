@@ -61,17 +61,33 @@ namespace MMO.Client
         /// <summary>True when <paramref name="action"/> was pressed this frame and gameplay is allowed.</summary>
         public bool WasPressed(GameAction action)
         {
+            InputAction input = Resolve(action);
+            return input != null && input.WasPressedThisFrame();
+        }
+
+        /// <summary>True while <paramref name="action"/> is held and gameplay is allowed.</summary>
+        public bool IsHeld(GameAction action)
+        {
+            InputAction input = Resolve(action);
+            return input != null && input.IsPressed();
+        }
+
+        /// <summary>
+        /// The action behind <paramref name="action"/>, or null when gameplay may not read it: while
+        /// a key is being captured, while a modal owns the keyboard, or while the player is typing.
+        /// </summary>
+        private InputAction Resolve(GameAction action)
+        {
             if (IsRebinding)
-                return false;
+                return null;
 
             if (GameplayBlocked && action != GameAction.OpenSettings)
-                return false;
+                return null;
 
             if (IsTypingInUi())
-                return false;
+                return null;
 
-            InputAction input = _map != null ? _map.FindAction(action.ToString()) : null;
-            return input != null && input.WasPressedThisFrame();
+            return _map != null ? _map.FindAction(action.ToString()) : null;
         }
 
         /// <summary>Human-readable current binding, e.g. "G" or "Unbound".</summary>

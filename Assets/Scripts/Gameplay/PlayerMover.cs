@@ -39,6 +39,7 @@ namespace MMO.Gameplay
         private bool _hasAuthoritativePosition;
         private Vector3? _moveTarget;
         private readonly WalkPath _walk = new();
+        private Vector2 _directInput;
         private float _speedMultiplier = 1f;
         private float _auraSpeedMultiplier = 1f;
         private bool _flying;
@@ -77,6 +78,43 @@ namespace MMO.Gameplay
                 return;
 
             RpcRequestMoveTo(destination);
+        }
+
+        /// <summary>
+        /// Owner-side intent: keep walking in a camera-relative direction while the key is held.
+        /// The server integrates it at its own speed; no position ever leaves the client.
+        /// </summary>
+        public void RequestMoveIntent(Vector2 direction)
+        {
+            NetworkObject self = NetworkObject;
+            if (self == null || !self.IsOwner)
+                return;
+
+            RpcRequestMoveIntent(direction, TimeManager != null ? TimeManager.Tick : 0u);
+        }
+
+        /// <summary>
+        /// The direct-drive half of the input path. A held key supersedes a destination chosen
+        /// earlier — otherwise the nav walk and the keyboard would fight over the next step — and
+        /// the direction is clamped so a diagonal cannot outrun a straight line.
+        /// </summary>
+        [ServerRpc]
+        private void RpcRequestMoveIntent(Vector2 direction, uint clientTick, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            // Flight paths by destination through the air; a ground walking intent has nothing to
+            // say about it.
+            if (_flying)
+                return;
+
+            if (direction.sqrMagnitude > 1f)
+                direction.Normalize();
+
+            _moveTarget = null;
+            _walk.Clear();
+            _directInput = direction;
         }
 
         [ServerRpc]
@@ -138,7 +176,18 @@ namespace MMO.Gameplay
 
         private void Update()
         {
-            if (!IsServer || !_moveTarget.HasValue)
+            if (!IsServer)
+                return;
+
+            // A held key is the freshest description of this tick: integrate it before the route,
+            // which an intent already cancelled.
+            if (_directInput.sqrMagnitude > 0f && !_flying)
+            {
+                ApplyInput(_directInput, Time.deltaTime);
+                return;
+            }
+
+            if (!_moveTarget.HasValue)
                 return;
 
             Vector3 waypoint = _walk.IsEmpty ? _moveTarget.Value : _walk.NextWaypoint(transform.position);

@@ -29,6 +29,10 @@ namespace MMO.Client
             AddButton(map, GameAction.Ability4, "<Keyboard>/4");
             AddButton(map, GameAction.Ability5, "<Keyboard>/5");
             AddButton(map, GameAction.Ability6, "<Keyboard>/6");
+            AddButton(map, GameAction.MoveForward, "<Keyboard>/w");
+            AddButton(map, GameAction.MoveBack, "<Keyboard>/s");
+            AddButton(map, GameAction.StrafeLeft, "<Keyboard>/q");
+            AddButton(map, GameAction.StrafeRight, "<Keyboard>/e");
             AddButton(map, GameAction.Mount, "<Keyboard>/g");
             AddButton(map, GameAction.Interact, "<Keyboard>/e");
             AddButton(map, GameAction.Trade, "<Keyboard>/t");

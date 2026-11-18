@@ -45,6 +45,7 @@ GameObject:
   - component: {fileID: 6163589725604260696}
   - component: {fileID: 4963669423176183348}
   - component: {fileID: 1223703715805312213}
+  - component: {fileID: 1504422232230056809}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -723,6 +724,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 50773868c7ed499b5b38cf8b4f4a56ea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Moderation.PlayerModeration
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &1504422232230056809
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 43c166a4a8090ab2ca2288eb88713b6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Client.PlayerMoveInput
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}

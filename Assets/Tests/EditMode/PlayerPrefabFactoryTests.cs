@@ -250,12 +250,13 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(32, behaviours.Length,
+            Assert.AreEqual(33, behaviours.Length,
                 "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
                 "death, the wallet and auction house, quests, dialogue and achievements, the save " +
                 "trigger, starter items, the party/guild/chat/friend/raid/trade/territory surfaces, " +
                 "the server-authoritative mover, mount, auras, click-to-move, the NetworkTransform, " +
-                "the HUD, the personal bank, the zone-transfer intent, the mailbox and moderation.");
+                "the HUD, the personal bank, the zone-transfer intent, the mailbox, moderation " +
+                "and the walking driver.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -294,7 +295,9 @@ namespace MMO.Tests
             Assert.IsInstanceOf<MMO.Social.PlayerMail>(behaviours[30],
                 "The mailbox is appended after the zone transfer so later arrivals keep their index.");
             Assert.IsInstanceOf<MMO.Moderation.PlayerModeration>(behaviours[31],
-                "Moderation is appended last for the same reason.");
+                "Moderation is appended after the mailbox for the same reason.");
+            Assert.IsInstanceOf<PlayerMoveInput>(behaviours[32],
+                "The walking driver is appended last so no earlier index moves.");
 
             foreach (NetworkBehaviour behaviour in behaviours)
             {

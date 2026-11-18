@@ -38,21 +38,27 @@ teleport of any meaningful size stays far outside the budget.
 
 ### PlayerMover — the networked shell
 
-`PlayerMover` (`Assets/Scripts/Gameplay/PlayerMover.cs:29`) is the **sole writer** of a player's
-position. It is a `NetworkBehaviour` added to the player prefab **last** (`PlayerPrefabFactory.cs:132`)
-so every behaviour before it keeps the NetworkBehaviour and RPC index it was assigned.
+`PlayerMover` (`Assets/Scripts/Gameplay/PlayerMover.cs:31`) is the **sole writer** of a player's
+position. It is a `NetworkBehaviour` on the player prefab (`PlayerPrefabFactory.cs:164`); behaviours
+added after it — the walking driver among them — are appended so every earlier behaviour keeps the
+NetworkBehaviour and RPC index it was assigned.
 
 | Member | Role | Line |
 |---|---|---|
-| `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:40` |
-| `RequestMove(Vector2)` | Owner-side intent: sends the input direction. A non-owner gets no RPC. | `:60` |
-| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:64` |
-| `RpcRequestMove(Vector2, sender)` | The `[ServerRpc]`; re-checks the sender owns the object. | `:74` |
-| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:74` |
-| `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:89` |
-| `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:106` |
-| `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:125` |
-| `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:46` |
+| `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:51` |
+| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:74` |
+| `RequestMoveIntent(Vector2)` | Owner-side intent: a held walking direction, re-stated while the key is down. A non-owner gets no RPC. | `:87` |
+| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:121` |
+| `RpcRequestMoveIntent(Vector2, tick, sender)` | The `[ServerRpc]` for a held direction: re-checks the sender, cancels any destination in flight, and replaces the last direction. | `:102` |
+| `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:230` |
+| `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:283` |
+| `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:302` |
+| `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:60` |
+
+Two intents reach the mover: a destination and a held direction. The direction is camera-relative
+and already scaled by the client (backward and strafe are slower), but the server normalises it and
+integrates it at its own speed, and receiving one cancels any destination in flight — otherwise the
+keyboard and a nav walk would fight over the next step.
 
 The player object ships a `CharacterController`, so a move is collision-aware: the body is swept
 and a wall stops it. The mover still works without one — the transform is moved directly — which is

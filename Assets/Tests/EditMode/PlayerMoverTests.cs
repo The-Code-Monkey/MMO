@@ -79,6 +79,17 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void RpcRequestMoveIntent_IsAServerRpc()
+        {
+            MethodInfo method = typeof(PlayerMover).GetMethod("RpcRequestMoveIntent",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+
+            Assert.IsNotNull(method, "The direct-drive intent must reach the server as an RPC.");
+            Assert.IsNotNull(method.GetCustomAttribute<ServerRpcAttribute>(),
+                "A walking intent is server input; a client that can call it locally moves itself.");
+        }
+
+        [Test]
         public void ApplyReportedPosition_IsPublicAndCarriesTheServerAttribute()
         {
             MethodInfo method = typeof(PlayerMover).GetMethod("ApplyReportedPosition",
