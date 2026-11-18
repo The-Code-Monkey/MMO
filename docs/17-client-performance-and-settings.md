@@ -56,9 +56,12 @@ test get identical defaults.
 | `InputRebindService` | `Assets/Scripts/Client/Input/InputRebindService.cs` | Runs one interactive rebind, applies the plan, saves. |
 | `ClientInput` | `Assets/Scripts/Client/Input/ClientInput.cs` | Owner-side façade: `WasPressed`, settings, rebind entry point. |
 
-Default bindings: `1`–`6` abilities, `G` mount, `E` interact, `T` trade, `B` auction, `F10`
-settings. Gameplay code asks `ClientInput.Current.WasPressed(GameAction.X)`; the old direct key
-checks remain only as a fallback when no `ClientInput` exists (tests and tools).
+Default bindings: `W`/`S`/`Q`/`E` movement, `A`/`D` turning, mouse buttons for orbiting and
+facing the camera, `Space` jump, `1`–`6` abilities, `G` mount, `E` interact, `T` trade, `B` auction,
+`M` mailbox, `F10` settings — see [18](18-player-controls.md) for what each one does. Gameplay code
+asks `ClientInput.Current.WasPressed(GameAction.X)` for an edge and
+`ClientInput.Current.IsHeld(GameAction.X)` for a held key; the old direct key checks remain only as
+a fallback when no `ClientInput` exists (tests and tools).
 
 One control belongs to one action. Rebinding a key that another action owns erases the other
 action's binding. `Escape` and `F1` are reserved. While a rebind is running, or the settings panel
