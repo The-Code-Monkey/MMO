@@ -62,7 +62,7 @@ namespace MMO.Net
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             CraftingStation station = go.AddComponent<CraftingStation>();
 
-            // The body collider is not a trigger so OnMouseDown() fires and players cannot walk
+            // The body collider is not a trigger so the world click raycast finds it and players cannot walk
             // through the station. The root has no mesh renderer; the visual parts live under
             // the Visuals child and are toggled by the replicated station type.
             BoxCollider boxCollider = go.AddComponent<BoxCollider>();

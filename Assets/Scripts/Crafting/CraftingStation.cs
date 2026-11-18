@@ -103,8 +103,6 @@ namespace MMO.Crafting
             }
         }
 
-        private void OnMouseDown() => RequestOpenFromLocalPlayer();
-
         public void RequestOpenFromLocalPlayer()
         {
             NetworkObject self = NetworkObject;

@@ -94,10 +94,13 @@ client                                   server (PlayerMover)
 carries a position (a correction, a buggy RPC) is still judged by `MovementRules`, so a rogue RPC
 cannot smuggle movement past the budget.
 
-### Click-to-move — the server owns the route, not just the direction
+### Destination intent — the server owns the route, not just the direction
 
-A click-to-move request carries a **destination**, not a direction, so the server has to decide
-*how* the player gets there. `RpcRequestMoveTo` samples the destination onto the zone NavMesh
+A destination request carries a **place to stand**, not a direction, so the server has to decide
+*how* the player gets there. The owner-side click driver no longer sends one — movement is keyboard
+intent and interactions are clicked where the player already stands — but the path is still the
+server's own vocabulary for walking to a point, and it is what the route tests exercise.
+`RpcRequestMoveTo` samples the destination onto the zone NavMesh
 (a destination off the mesh is refused) and then plans a route over that mesh with
 `NavMesh.CalculatePath`. The route's corners are walked one at a time by the same
 `ApplyInput`/`MoveBy` pair, so the movement rules above still apply to every step.
@@ -113,18 +116,17 @@ The route bookkeeping itself is pure arithmetic over positions and lives in `Wal
 (`Assets/Scripts/Gameplay/WalkPath.cs`), so it is unit-testable without an engine, a clock or a
 network.
 
-### Walking to a station before it can be used
+### Clicking something you cannot reach
 
-A click on a crafting station is a **destination request**, not a "open this now" request: the server
-refuses a station outside the crafting reach, so a far-away click has to become a walk.
-`PlayerClickToMove.BeginStationApproach` asks the server to walk to the station's stand-off point
-(two metres in front of it), remembers the station as pending, and opens it only once the walk is
-over — the click-to-move marker clearing is the "the walk ended" signal.
+A world click is an **interaction intent**, and the server decides whether it is allowed. The pointer
+checks the same reach rule the server applies (`PlayerCrafting.IsWithinReach` for a station,
+`GatheringRules.IsWithinReach` for a node, `LootBag.IsWithinRange` for an NPC or chest) but only to
+warn: an out-of-reach click writes "Out of range." to the chat log **and is still sent**. The client
+is never the gate — its position is an interpolation, and a stale one must not refuse an interaction
+the server would allow.
 
-The client checks the reach on its own side too (`PlayerCrafting.IsWithinReach`, the same rule the
-server applies), but only to avoid asking for a request the server would refuse. The panel still
-opens from the server's payload: the client cannot open a station it may not use, and the server
-re-checks the distance when it answers.
+The panel still opens from the server's payload: the client cannot open a station it may not use,
+and the server re-checks the distance when it answers.
 
 ## 2. Line of sight
 

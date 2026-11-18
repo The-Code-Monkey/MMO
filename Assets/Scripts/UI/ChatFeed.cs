@@ -133,6 +133,9 @@ namespace MMO.UI
             AppendSystem($"[{envelope.ch}] {envelope.name}: {envelope.body}");
         }
 
+        /// <summary>Adds a local line to the chat log, e.g. an interaction advisory.</summary>
+        public static void PushSystem(string line) => Instance?.AppendSystem(line);
+
         private void AppendSystem(string line)
         {
             if (string.IsNullOrEmpty(line))

@@ -274,17 +274,6 @@ namespace MMO.Gameplay
         }
 
         /// <summary>
-        /// Unity click message: a player pressed on this node's collider. The message can only
-        /// arrive on the listening process, so the owning client is the one acting here. This
-        /// sends intent through <see cref="PlayerGathering.RequestGather"/> and decides nothing
-        /// itself — the same shape as <see cref="TargetDummy.OnMouseDown"/>.
-        /// </summary>
-        private void OnMouseDown()
-        {
-            RequestGatherFromLocalPlayer();
-        }
-
-        /// <summary>
         /// The click's local effect: resolve the local player's gathering handler and ask it to
         /// gather from this node. Does nothing until a local player actually exists — e.g. on a
         /// dedicated server, before spawn, or while the node is depleted — which is exactly how

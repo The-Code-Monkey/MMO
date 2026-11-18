@@ -231,10 +231,11 @@ capsule and adds its components in a deliberate order: `NetworkObject`, then `Pl
 `PlayerCombat`, `PlayerInventory`, `PlayerAbilities`, `PlayerGathering`, `PlayerCrafting`,
 `PlayerDeath` (the risk-tier resolver — it must come after the stats and inventory it reads),
 `PlayerSaveTrigger`, `PlayerParty`, `PlayerGuild`, `PlayerRaid`, then `PlayerMover`,
-`PlayerClickToMove` and the `NetworkTransform`. The `PlayerMover` is the sole writer of the
+`PlayerWorldPointer` and the `NetworkTransform`. The `PlayerMover` is the sole writer of the
 player's position (see [§7](#7-server-authoritative-movement)
-and [14](14-server-authority-hardening.md)); `PlayerClickToMove` is the owner-side driver that
-submits movement intents to it, and the `NetworkTransform` (owner-authoritative **off**) ships the
+and [14](14-server-authority-hardening.md)); `PlayerMoveInput` streams the owner's keyboard as
+movement intent, `PlayerWorldPointer` turns a world click into an interaction intent, and the
+`NetworkTransform` (owner-authoritative **off**) ships the
 server's result to clients. The camera deliberately does **not** travel with the prefab — the scene's
 single `PersistentCameraController` rig is bound to whichever player this client **owns**, through
 `LocalPlayerCameraTarget`. A tag search is only the fallback, but it is not confined to a scene with no

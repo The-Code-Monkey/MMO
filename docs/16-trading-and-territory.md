@@ -139,9 +139,9 @@ exist.
 ### Bank tellers
 
 A `BankTeller` (`Assets/Scripts/Banking/BankTeller.cs`) is a capsule ("pill") placeholder standing
-in any zone. Clicking one walks the local player to its `StandOffPosition` and opens the bank window
-on arrival — the same click-to-path flow a crafting station uses (`PlayerClickToMove`). The prefab
-is generic: `BankTeller.Kind` decides whether the server opens the personal or the guild bank.
+in any zone. Clicking one sends the open intent; the server refuses it outside
+`BankTeller.InteractRange`, and the pointer adds the "Out of range." advice while still asking. The
+prefab is generic: `BankTeller.Kind` decides whether the server opens the personal or the guild bank.
 
 `PlayerBank` (`Assets/Scripts/Banking/PlayerBank.cs`) owns the personal item grid and the open
 flow. It checks the player is within `BankTeller.InteractRange` of the teller on open **and** on

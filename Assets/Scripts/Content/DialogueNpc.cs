@@ -4,9 +4,9 @@ using UnityEngine;
 namespace MMO.Content
 {
     /// <summary>
-    /// A world NPC that opens a dialogue graph when clicked. The root is a shared asset; the
-    /// server walks it and the client only renders the payload it is sent. A collider is required
-    /// for Unity to deliver <see cref="OnMouseDown"/>.
+    /// A world NPC that opens a dialogue graph when the local player clicks it. The root is a shared
+    /// asset; the server walks it and the client only renders the payload it is sent. A collider is
+    /// required for the pointer's world raycast to find it.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class DialogueNpc : NetworkBehaviour
@@ -22,11 +22,6 @@ namespace MMO.Content
 
         /// <summary>Reconfigures the talk reach (a prefab author or a test).</summary>
         public void SetInteractRange(float range) => _interactRange = Mathf.Max(0f, range);
-
-        private void OnMouseDown()
-        {
-            RequestTalkFromLocalPlayer();
-        }
 
         /// <summary>
         /// The click's local effect: resolve the local player's dialogue shell and ask to talk.

@@ -72,12 +72,6 @@ namespace MMO.Content
             return true;
         }
 
-        /// <summary>Unity click message: ask the local player's inventory to open this chest.</summary>
-        private void OnMouseDown()
-        {
-            RequestOpenFromLocalPlayer();
-        }
-
         /// <summary>
         /// The click's local effect: resolve the local player's inventory and send the intent.
         /// Does nothing on a client that does not own a player, or on a dedicated server.

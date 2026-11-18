@@ -92,7 +92,7 @@ namespace MMO.Tests
         {
             PersistentCameraController rig = LocalCameraBaker.EnsureInActiveScene();
 
-            // PlayerClickToMove raycasts through Camera.main; an untagged camera means clicks
+            // The world pointer raycasts through Camera.main; an untagged camera means clicks
             // silently do nothing.
             Camera camera = rig.GetComponentInChildren<Camera>();
             Assert.IsNotNull(camera, "A rig with no camera has nothing to render through.");

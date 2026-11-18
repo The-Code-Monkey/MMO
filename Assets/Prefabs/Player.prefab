@@ -37,7 +37,7 @@ GameObject:
   - component: {fileID: 5776699264966533658}
   - component: {fileID: 4195154389870068794}
   - component: {fileID: 6135638734937675175}
-  - component: {fileID: 1846663845615058017}
+  - component: {fileID: 1925469697264986621}
   - component: {fileID: 3270781934196745648}
   - component: {fileID: 7017874344155465201}
   - component: {fileID: 3271888801790220287}
@@ -573,7 +573,7 @@ MonoBehaviour:
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
---- !u!114 &1846663845615058017
+--- !u!114 &1925469697264986621
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -582,15 +582,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 1570343646677159205}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a5ede5dd64b9d676182b782a4d362743, type: 3}
+  m_Script: {fileID: 11500000, guid: 1a0619a5748b79e7ba5f655d7e1bcce3, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: MMO.Runtime::MMO.Client.PlayerClickToMove
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Client.PlayerWorldPointer
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}
-  _walkableLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
 --- !u!114 &3270781934196745648
 MonoBehaviour:
   m_ObjectHideFlags: 0

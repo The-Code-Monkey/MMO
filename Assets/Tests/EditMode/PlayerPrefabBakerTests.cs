@@ -308,12 +308,12 @@ namespace MMO.Tests
             PlayerPrefabBaker.EnsurePlayerPrefab();
 
             // Overwrite the asset with a deliberately incomplete copy: a prefab baked before the
-            // factory grew click-to-move would look fine on disk but spawn players that cannot
-            // move, so the baker has to notice and rebuild rather than reuse it.
+            // factory grew the world pointer would look fine on disk but spawn players that cannot
+            // interact, so the baker has to notice and rebuild rather than reuse it.
             NetworkObject stale = PlayerPrefabFactory.Create();
             try
             {
-                Object.DestroyImmediate(stale.GetComponent<PlayerClickToMove>());
+                Object.DestroyImmediate(stale.GetComponent<PlayerWorldPointer>());
                 PrefabUtility.SaveAsPrefabAsset(stale.gameObject, PlayerPrefabBaker.PrefabAssetPath);
             }
             finally
@@ -323,7 +323,7 @@ namespace MMO.Tests
 
             NetworkObject refreshed = PlayerPrefabBaker.EnsurePlayerPrefab();
 
-            Assert.IsNotNull(refreshed.GetComponent<PlayerClickToMove>(),
+            Assert.IsNotNull(refreshed.GetComponent<PlayerWorldPointer>(),
                 "A prefab that has drifted from the factory must be rebuilt, not reused.");
         }
 

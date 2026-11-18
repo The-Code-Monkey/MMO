@@ -171,11 +171,11 @@ namespace MMO.Net
             // the server-only BlocksActions/BlocksMovement properties.
             go.AddComponent<AuraController>();
 
-            // Owner-side click-to-move: turns a mouse click into an intent through
-            // PlayerMover.RequestMoveTo, where the server does the NavMesh validation. After
-            // PlayerMover so it can reference it, and before NetworkTransform and the HUD so
-            // neither of those shifts an index the baked prefab already uses.
-            go.AddComponent<PlayerClickToMove>();
+            // Owner-side world pointer: a press-and-release that did not become a drag activates
+            // the station, node, teller, NPC or chest under it through that object's own intent.
+            // It sits in the slot the old click-to-move driver occupied, so every behaviour after
+            // it keeps the index the baked prefab already uses.
+            go.AddComponent<PlayerWorldPointer>();
 
             // Syncs the server-authoritative transform to clients so movement is visible.
             go.AddComponent<NetworkTransform>();

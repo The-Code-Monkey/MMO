@@ -46,7 +46,7 @@ namespace MMO.Net
             NetworkObject networkObject = go.AddComponent<NetworkObject>();
             go.AddComponent<BankTeller>();
 
-            // OnMouseDown needs a non-trigger collider, and the player should not walk through the
+            // The pointer's raycast needs a non-trigger collider, and the player should not walk through the
             // teller.
             if (go.TryGetComponent(out CapsuleCollider collider))
                 collider.isTrigger = false;
