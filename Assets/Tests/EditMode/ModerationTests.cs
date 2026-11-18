@@ -39,6 +39,16 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void Explanation_HandlesTwoWordActionCodes()
+        {
+            // The bug this pins: splitting on the last underscore makes the category "ANOMALY",
+            // which matches no case and falls back to the neutral sentence.
+            string text = ModerationRules.Explanation("TEMP_BAN_COMBAT_ANOMALY");
+
+            StringAssert.Contains("Combat", text);
+        }
+
+        [Test]
         public void Explain_UnknownCodeFallsBackNeutrally()
         {
             Assert.AreEqual("Your account was actioned by a moderator.",

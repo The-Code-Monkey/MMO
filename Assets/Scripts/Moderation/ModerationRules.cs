@@ -78,6 +78,19 @@ namespace MMO.Moderation
                 _ => "NOTICE",
             };
 
+        /// <summary>
+        /// The action codes with their trailing underscore, longest first so "TEMP_BAN_" is never
+        /// mistaken for a shorter prefix. Used to split a notice code into action and category.
+        /// </summary>
+        private static readonly string[] ActionPrefixes =
+        {
+            "PERM_BAN_",
+            "TEMP_BAN_",
+            "KICK_",
+            "WARN_",
+            "NOTICE_",
+        };
+
         public static string CategoryCode(ModerationCategory category)
             => category switch
             {
@@ -161,11 +174,19 @@ namespace MMO.Moderation
             if (string.IsNullOrEmpty(messageCode))
                 return "Your account was actioned by a moderator.";
 
-            // The category is the *last* segment: TempBan and PermanentBan codes carry the
-            // action in two words ("TEMP_BAN_SCAMMING"), so the first underscore is too early and
-            // would leave "BAN_SCAMMING", which matches no category.
-            int separator = messageCode.LastIndexOf('_');
-            string category = separator >= 0 ? messageCode.Substring(separator + 1) : messageCode;
+            // The category sits after the action, and two actions are two words
+            // ("TEMP_BAN_SCAMMING", "PERM_BAN_OTHER"). Splitting on the first or the last
+            // underscore both get it wrong — the first leaves "BAN_SCAMMING", the last leaves
+            // "ANOMALY" — so the split is on the action prefix itself.
+            string category = messageCode;
+            foreach (string prefix in ActionPrefixes)
+            {
+                if (!messageCode.StartsWith(prefix, StringComparison.Ordinal))
+                    continue;
+
+                category = messageCode.Substring(prefix.Length);
+                break;
+            }
 
             switch (category)
             {
