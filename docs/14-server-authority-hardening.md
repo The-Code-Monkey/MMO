@@ -45,20 +45,25 @@ NetworkBehaviour and RPC index it was assigned.
 
 | Member | Role | Line |
 |---|---|---|
-| `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:51` |
-| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:74` |
-| `RequestMoveIntent(Vector2)` | Owner-side intent: a held walking direction, re-stated while the key is down. A non-owner gets no RPC. | `:87` |
-| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:121` |
-| `RpcRequestMoveIntent(Vector2, tick, sender)` | The `[ServerRpc]` for a held direction: re-checks the sender, cancels any destination in flight, and replaces the last direction. | `:102` |
-| `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:230` |
-| `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:283` |
-| `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:302` |
-| `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:60` |
+| `MaxSpeed` | The server integration speed (`_maxSpeed`, default `6` m/s). | `:57` |
+| `RequestMoveTo(Vector3)` | Owner-side intent: sends a destination; the server plans the route and walks it. | `:81` |
+| `RequestMoveIntent(input, turn, faceCamera, cameraYaw)` | Owner-side intent: the raw keys, re-stated while held. A non-owner gets no RPC. | `:95` |
+| `RpcRequestMoveTo(Vector3, sender)` | The `[ServerRpc]` for a destination: re-checks the sender, samples the destination onto the NavMesh, then plans the route. | `:169` |
+| `RpcRequestMoveIntent(input, turn, faceCamera, cameraYaw, tick, sender)` | The `[ServerRpc]` for the raw keys: re-checks the sender, clamps every axis, cancels any destination in flight. | `:111` |
+| `StepIntent(deltaSeconds)` | Server: turns the intent into a heading and a world direction — heading-relative normally, camera-relative while facing the camera. | `:144` |
+| `ApplyInput(input, deltaSeconds)` | `[Server]`: normalises a too-long direction, then moves `MaxSpeed * dt` in it. | `:281` |
+| `ApplyReportedPosition(position, deltaSeconds)` | `[Server]`: judges a position-bearing message with `MovementRules.IsPlausible`; a teleport snaps back. | `:334` |
+| `Teleport(position)` | `[Server]`: a privileged reposition (ability, respawn) that *moves* the authoritative baseline. | `:353` |
+| `LastAuthoritativePosition` | The last position the server itself observed (live transform before the first tick). | `:66` |
 
-Two intents reach the mover: a destination and a held direction. The direction is camera-relative
-and already scaled by the client (backward and strafe are slower), but the server normalises it and
-integrates it at its own speed, and receiving one cancels any destination in flight — otherwise the
-keyboard and a nav walk would fight over the next step.
+Two intents reach the mover: a destination and the raw keys. The keys are sent as local axes plus a
+turn axis and a face-camera flag, because only the server knows the heading — it alone decides
+whether "forward" means along the heading or along the camera. While the player faces the camera the
+heading is pinned to it and A/D strafe; otherwise A/D turn the heading at 120°/s and the keys are
+relative to it. The server scales backward and strafe, normalises, and integrates at its own speed;
+receiving any intent cancels a destination in flight, so the keyboard and a nav walk cannot fight
+over the next step. The heading is written only here and replicated by the `NetworkTransform`, which
+is what keeps the server-side attack cone and the player's view agreeing.
 
 The player object ships a `CharacterController`, so a move is collision-aware: the body is swept
 and a wall stops it. The mover still works without one — the transform is moved directly — which is

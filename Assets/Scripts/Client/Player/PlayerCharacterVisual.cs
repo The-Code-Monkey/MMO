@@ -97,10 +97,11 @@ namespace MMO.Client
             _speed = Mathf.Lerp(_speed, targetSpeed, 1f - Mathf.Exp(-_speedDamping * deltaTime));
             _animator.SetFloat(SpeedParameter, _speed);
 
-            if (!_dead && horizontal.sqrMagnitude > 0.0001f)
+            // The root's forward is the authoritative heading, and a strafing body keeps facing it
+            // instead of turning to lead with its side.
+            if (!_dead && _root.rotation != transform.rotation)
             {
-                Quaternion targetRotation =
-                    Quaternion.LookRotation(horizontal, Vector3.up) * Quaternion.Euler(0f, _modelYawOffset, 0f);
+                Quaternion targetRotation = _root.rotation * Quaternion.Euler(0f, _modelYawOffset, 0f);
                 transform.rotation = Quaternion.RotateTowards(
                     transform.rotation,
                     targetRotation,

@@ -33,6 +33,10 @@ namespace MMO.Client
             AddButton(map, GameAction.MoveBack, "<Keyboard>/s");
             AddButton(map, GameAction.StrafeLeft, "<Keyboard>/q");
             AddButton(map, GameAction.StrafeRight, "<Keyboard>/e");
+            AddButton(map, GameAction.TurnLeft, "<Keyboard>/a");
+            AddButton(map, GameAction.TurnRight, "<Keyboard>/d");
+            AddButton(map, GameAction.OrbitCamera, "<Mouse>/leftButton");
+            AddButton(map, GameAction.FaceCamera, "<Mouse>/rightButton");
             AddButton(map, GameAction.Mount, "<Keyboard>/g");
             AddButton(map, GameAction.Interact, "<Keyboard>/e");
             AddButton(map, GameAction.Trade, "<Keyboard>/t");

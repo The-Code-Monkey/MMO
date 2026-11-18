@@ -1,4 +1,4 @@
-using MMO.Client;
+using MMO.Gameplay;
 using NUnit.Framework;
 using UnityEngine;
 
