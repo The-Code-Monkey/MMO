@@ -152,6 +152,142 @@ namespace MMO.Tests
             CollectionAssert.IsEmpty(warnings);
         }
 
+
+        [Test]
+        public void AreTiersConnected_Matrix_RejectsTheRiskCliffs()
+        {
+            Assert.IsFalse(TopologyRules.AreTiersConnected(ZoneRiskTier.Safe, ZoneRiskTier.Red));
+            Assert.IsFalse(TopologyRules.AreTiersConnected(ZoneRiskTier.Safe, ZoneRiskTier.Black));
+            Assert.IsFalse(TopologyRules.AreTiersConnected(ZoneRiskTier.Yellow, ZoneRiskTier.Black));
+            Assert.IsTrue(TopologyRules.AreTiersConnected(ZoneRiskTier.Safe, ZoneRiskTier.Yellow));
+            Assert.IsTrue(TopologyRules.AreTiersConnected(ZoneRiskTier.Red, ZoneRiskTier.Black));
+            Assert.IsTrue(TopologyRules.AreTiersConnected(ZoneRiskTier.Black, ZoneRiskTier.Black));
+        }
+
+        [Test]
+        public void FindViolations_SafeAdjacentToRed_IsReported()
+        {
+            var world = TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "red-1"),
+                TestWorldTopologies.Node("red-1", ZoneRiskTier.Red, neighbours: "safe-zone"));
+
+            var violations = TopologyRules.FindViolations(world);
+
+            Assert.IsTrue(ContainsMentioning(violations, TopologyRules.ErrorTierPortal, "red-1"));
+        }
+
+        [Test]
+        public void FindViolations_YellowAdjacentToBlack_IsReported()
+        {
+            var world = TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow,
+                    neighbours: new[] { "safe-zone", "black-1" }),
+                TestWorldTopologies.Node("black-1", ZoneRiskTier.Black, neighbours: "yellow-1"));
+
+            var violations = TopologyRules.FindViolations(world);
+
+            Assert.IsTrue(ContainsMentioning(violations, TopologyRules.ErrorTierPortal, "black-1"));
+        }
+
+        [Test]
+        public void FindViolations_SameTierPortals_Pass()
+        {
+            var world = TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow,
+                    neighbours: new[] { "safe-zone", "red-1" }),
+                TestWorldTopologies.Node("red-1", ZoneRiskTier.Red, neighbours: new[] { "yellow-1", "red-2" }),
+                TestWorldTopologies.Node("red-2", ZoneRiskTier.Red, neighbours: "red-1"));
+
+            CollectionAssert.IsEmpty(TopologyRules.FindViolations(world));
+        }
+
+        [Test]
+        public void FindViolations_BlackAdjacentToBlackWithoutChoke_IsReported()
+        {
+            var world = TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow, neighbours: "safe-zone"),
+                TestWorldTopologies.Node("black-1", ZoneRiskTier.Black, neighbours: "black-2"),
+                TestWorldTopologies.Node("black-2", ZoneRiskTier.Black, neighbours: "black-1"));
+
+            var violations = TopologyRules.FindViolations(world);
+
+            Assert.IsTrue(ContainsMentioning(violations, TopologyRules.ErrorBlackPortalWithoutChoke, "black-"));
+        }
+
+        [Test]
+        public void FindViolations_BlackClusterThroughChoke_Passes()
+        {
+            var world = BlackClusterThroughChoke();
+
+            CollectionAssert.IsEmpty(TopologyRules.FindViolations(world));
+        }
+
+        [Test]
+        public void FindViolations_NonChokeBlackWithTwoPortals_IsReported()
+        {
+            var world = TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow, neighbours: "safe-zone"),
+                TestWorldTopologies.Node("red-1", ZoneRiskTier.Red,
+                    neighbours: new[] { "black-1", "pass-1" }),
+                TestWorldTopologies.Node("pass-1", ZoneRiskTier.Black, isChokePoint: true,
+                    neighbours: new[] { "red-1", "black-1" }),
+                TestWorldTopologies.Node("black-1", ZoneRiskTier.Black,
+                    neighbours: new[] { "red-1", "pass-1" }));
+
+            var violations = TopologyRules.FindViolations(world);
+
+            Assert.IsTrue(ContainsMentioning(violations, TopologyRules.ErrorBlackNeedsSinglePortal, "black-1"));
+        }
+
+        [Test]
+        public void FindViolations_ChokeBlackWithThreePortals_Passes()
+        {
+            var violations = TopologyRules.FindViolations(BlackClusterThroughChoke());
+
+            Assert.IsFalse(ContainsMentioning(violations, TopologyRules.ErrorBlackNeedsSinglePortal, "pass-1"));
+        }
+
+        [Test]
+        public void FindViolations_UnassignedTier_IsSkippedByTheGeometryRules()
+        {
+            var world = TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow, neighbours: "safe-zone"),
+                TestWorldTopologies.Node("draft", ZoneRiskTier.Black, tierAssigned: false,
+                    neighbours: new[] { "yellow-1", "safe-zone" }));
+
+            var violations = TopologyRules.FindViolations(world);
+
+            CollectionAssert.IsEmpty(violations);
+        }
+
+        [Test]
+        public void FindViolations_ShippedAsset_IsValid()
+        {
+            var world = UnityEditor.AssetDatabase.LoadAssetAtPath<WorldTopology>(WorldTopology.AssetPath);
+            Assert.IsNotNull(world);
+
+            CollectionAssert.IsEmpty(TopologyRules.FindViolations(world));
+        }
+
+        private static WorldTopology BlackClusterThroughChoke()
+        {
+            return TestWorldTopologies.Topology(
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow,
+                    neighbours: new[] { "safe-zone", "red-1" }),
+                TestWorldTopologies.Node("red-1", ZoneRiskTier.Red,
+                    neighbours: new[] { "yellow-1", "pass-1" }),
+                TestWorldTopologies.Node("pass-1", ZoneRiskTier.Black, isChokePoint: true,
+                    neighbours: new[] { "red-1", "black-1", "black-2" }),
+                TestWorldTopologies.Node("black-1", ZoneRiskTier.Black, neighbours: "pass-1"),
+                TestWorldTopologies.Node("black-2", ZoneRiskTier.Black, neighbours: "pass-1"));
+        }
+
         private static bool ContainsMentioning(
             IReadOnlyList<string> messages,
             string code,

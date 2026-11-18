@@ -20,6 +20,9 @@ namespace MMO.Content
         public const string ErrorUnknownNeighbour = "unknown neighbour";
         public const string ErrorAsymmetricPortal = "portal is declared on one side only";
         public const string ErrorSelfPortal = "zone lists itself as a neighbour";
+        public const string ErrorTierPortal = "portal joins incompatible tiers";
+        public const string ErrorBlackPortalWithoutChoke = "black zones are joined without a choke point";
+        public const string ErrorBlackNeedsSinglePortal = "non-choke black zone must have exactly one portal";
 
         public const string WarningNoPortals = "zone has no portals";
         public const string WarningTierUnassigned = "zone tier is not assigned";
@@ -42,8 +45,31 @@ namespace MMO.Content
 
             ReportDuplicateScenes(nodes, violations);
             ReportNeighbourProblems(nodes, byId, violations);
+            ReportTierGeometry(nodes, byId, violations);
 
             return violations;
+        }
+
+        /// <summary>
+        /// The tier adjacency matrix. Two zones may share a portal only when one of these pairs
+        /// matches; every pair not listed is forbidden. See the world-map chapter, section 4a.
+        /// </summary>
+        public static bool AreTiersConnected(ZoneRiskTier from, ZoneRiskTier to)
+        {
+            return (from, to) switch
+            {
+                (ZoneRiskTier.Safe, ZoneRiskTier.Safe) => true,
+                (ZoneRiskTier.Safe, ZoneRiskTier.Yellow) => true,
+                (ZoneRiskTier.Yellow, ZoneRiskTier.Safe) => true,
+                (ZoneRiskTier.Yellow, ZoneRiskTier.Yellow) => true,
+                (ZoneRiskTier.Yellow, ZoneRiskTier.Red) => true,
+                (ZoneRiskTier.Red, ZoneRiskTier.Yellow) => true,
+                (ZoneRiskTier.Red, ZoneRiskTier.Red) => true,
+                (ZoneRiskTier.Red, ZoneRiskTier.Black) => true,
+                (ZoneRiskTier.Black, ZoneRiskTier.Red) => true,
+                (ZoneRiskTier.Black, ZoneRiskTier.Black) => true,
+                _ => false,
+            };
         }
 
         /// <summary>Findings that do not make the map wrong, but are worth knowing.</summary>
@@ -126,6 +152,55 @@ namespace MMO.Content
                     if (!neighbour.Neighbours.Contains(node.ZoneId, StringComparer.Ordinal))
                         violations.Add($"{ErrorAsymmetricPortal}: {node.ZoneId} -> {neighbourId}");
                 }
+            }
+        }
+
+        private static void ReportTierGeometry(
+            IReadOnlyList<ZoneNode> nodes,
+            IReadOnlyDictionary<string, ZoneNode> byId,
+            List<string> violations)
+        {
+            foreach (var node in nodes)
+            {
+                if (!node.TierAssigned)
+                    continue;
+
+                int doors = 0;
+
+                foreach (var neighbourId in node.Neighbours)
+                {
+                    if (!byId.TryGetValue(neighbourId, out var neighbour) ||
+                        string.Equals(neighbour.ZoneId, node.ZoneId, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    doors++;
+
+                    // Each portal is judged once: on the zone whose id sorts first.
+                    if (string.CompareOrdinal(node.ZoneId, neighbour.ZoneId) >= 0 ||
+                        !neighbour.TierAssigned)
+                    {
+                        continue;
+                    }
+
+                    if (!AreTiersConnected(node.Tier, neighbour.Tier))
+                    {
+                        violations.Add(
+                            $"{ErrorTierPortal}: {node.ZoneId} ({node.Tier}) -> " +
+                            $"{neighbour.ZoneId} ({neighbour.Tier})");
+                    }
+                    else if (node.Tier == ZoneRiskTier.Black &&
+                             neighbour.Tier == ZoneRiskTier.Black &&
+                             !node.IsChokePoint &&
+                             !neighbour.IsChokePoint)
+                    {
+                        violations.Add($"{ErrorBlackPortalWithoutChoke}: {node.ZoneId} -> {neighbour.ZoneId}");
+                    }
+                }
+
+                if (node.Tier == ZoneRiskTier.Black && !node.IsChokePoint && doors != 1)
+                    violations.Add($"{ErrorBlackNeedsSinglePortal}: {node.ZoneId}");
             }
         }
 
