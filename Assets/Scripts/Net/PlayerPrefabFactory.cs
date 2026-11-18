@@ -153,6 +153,9 @@ namespace MMO.Net
             go.AddComponent<PlayerFriends>();
             go.AddComponent<PlayerRaid>();
 
+            // The mailbox shell: owner-checked read/claim/send intents over the hub's MailService.
+            go.AddComponent<PlayerMail>();
+
             // Direct trade and territory capture: both resolve the same join-cache account id and
             // sit after the bag they read.
             go.AddComponent<PlayerTrade>();

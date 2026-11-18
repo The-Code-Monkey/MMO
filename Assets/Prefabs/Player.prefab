@@ -32,6 +32,7 @@ GameObject:
   - component: {fileID: 4450440193228018919}
   - component: {fileID: 7521036685658105553}
   - component: {fileID: 6029447911960091984}
+  - component: {fileID: 4963669423176183348}
   - component: {fileID: 4153704203982789784}
   - component: {fileID: 5752686486092475792}
   - component: {fileID: 5776699264966533658}
@@ -491,6 +492,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8c5edb0afbf64f7db7e734cb05343fdd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerRaid
+  _componentIndexCache: 255
+  _addedNetworkObject: {fileID: 5132567845639072608}
+  _networkObjectCache: {fileID: 0}
+--- !u!114 &4963669423176183348
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1570343646677159205}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d40eff7bb97f7093a99791d0a0e496ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: MMO.Runtime::MMO.Social.PlayerMail
   _componentIndexCache: 255
   _addedNetworkObject: {fileID: 5132567845639072608}
   _networkObjectCache: {fileID: 0}

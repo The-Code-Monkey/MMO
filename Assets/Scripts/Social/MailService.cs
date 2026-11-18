@@ -20,6 +20,11 @@ namespace MMO.Social
         private readonly LocalPlayerRegistry _players;
         private readonly int _casRetries;
 
+        // Server-memory cooldowns, the same shape ChatService uses: not persisted, because a
+        // restart is not a send amplification vector and a stale timestamp must not lock a player
+        // out forever.
+        private readonly Dictionary<string, double> _lastSentSeconds = new();
+
         public MailService(
             Func<ISocialRepository> repository,
             Func<Task<bool>> ensureConnected,
@@ -116,6 +121,61 @@ namespace MMO.Social
                 await repository.SaveInboxAsync(inbox, ct);
                 return MailRule.Ok;
             }, ct);
+        }
+
+        /// <summary>
+        /// Reads one player's inbox for the mailbox UI. Returns null when the backend is unavailable
+        /// or the account has never received a message; the caller shows an empty box, not an error.
+        /// </summary>
+        public async Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(accountId) || !await _ensureConnected())
+                return null;
+
+            return await _repository().LoadInboxAsync(accountId, ct);
+        }
+
+        /// <summary>
+        /// Player-to-player mail: resolves the recipient's display name to an account, applies the
+        /// pure cooldown/validation gate, then reuses the system delivery path. The target never
+        /// learns who reported or blocked them; a refusal is returned only to the sender.
+        /// </summary>
+        public async Task<MailRule> SendPlayerAsync(
+            string fromAccountId,
+            string toName,
+            string subject,
+            string body,
+            double nowSeconds,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(fromAccountId) || string.IsNullOrWhiteSpace(toName))
+                return MailRule.InvalidRecipient;
+
+            if (!await _ensureConnected())
+                return MailRule.BackendUnavailable;
+
+            string targetId = await _repository().ResolveNameAsync(
+                SocialAccountResolver.Normalize(toName), ct);
+            if (string.IsNullOrEmpty(targetId))
+                return MailRule.NotFound;
+
+            _lastSentSeconds.TryGetValue(fromAccountId, out double lastSent);
+            MailRule gate = MailRules.CanSendPlayerMail(
+                fromAccountId, targetId, subject, body, nowSeconds, lastSent);
+            if (gate != MailRule.Ok)
+                return gate;
+
+            MailRule result = await SendAsync(
+                targetId,
+                fromAccountId,
+                MailRules.Clean(subject, MailRules.MaxSubjectLength),
+                MailRules.Clean(body, MailRules.MaxBodyLength),
+                ct: ct);
+
+            if (result == MailRule.Ok)
+                _lastSentSeconds[fromAccountId] = nowSeconds;
+
+            return result;
         }
 
         /// <summary>

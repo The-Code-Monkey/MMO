@@ -766,6 +766,23 @@ namespace MMO.Social
             => _mail.FindMailIdByBodyAsync(accountId, body);
 
         /// <summary>Delivers a message to the recipient's inbox, offline-first.</summary>
+        /// <summary>Reads an account's inbox for the mailbox view; null when unavailable or empty.</summary>
+        public Task<MailInbox> LoadInboxAsync(string accountId, CancellationToken ct = default)
+            => _mail.LoadInboxAsync(accountId, ct);
+
+        /// <summary>
+        /// Player-to-player mail: resolves the recipient's name, applies the cooldown gate and
+        /// delivers through the same offline-first inbox write as system mail.
+        /// </summary>
+        public Task<MailRule> SendPlayerMailAsync(
+            string fromAccountId,
+            string toName,
+            string subject,
+            string body,
+            double nowSeconds,
+            CancellationToken ct = default)
+            => _mail.SendPlayerAsync(fromAccountId, toName, subject, body, nowSeconds, ct);
+
         public Task<MailRule> SendMailAsync(
             string toAccountId,
             string fromAccountId,

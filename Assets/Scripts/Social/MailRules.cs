@@ -10,6 +10,12 @@ namespace MMO.Social
         NotClaimable,
         BagFull,
         Conflict,
+
+        /// <summary>The sender tried again before the player-mail cooldown elapsed.</summary>
+        RateLimited,
+
+        /// <summary>The recipient is blank, is the sender, or the message body/subject is empty.</summary>
+        InvalidRecipient,
     }
 
     /// <summary>
@@ -21,6 +27,15 @@ namespace MMO.Social
         public const int MaxInbox = 50;
         public const int MaxAttachments = 6;
 
+        /// <summary>Longest player-authored subject, in characters.</summary>
+        public const int MaxSubjectLength = 60;
+
+        /// <summary>Longest player-authored body, in characters.</summary>
+        public const int MaxBodyLength = 1000;
+
+        /// <summary>Seconds between player-to-player sends from one account.</summary>
+        public const double MinSecondsBetweenSends = 5d;
+
         /// <summary>True when <paramref name="currentCount"/> is under the inbox cap.</summary>
         public static bool CanSend(int currentCount) => currentCount < MaxInbox;
 
@@ -31,6 +46,45 @@ namespace MMO.Social
         /// <summary>True when the message may still be claimed: not claimed and not expired.</summary>
         public static bool Claimable(MailMessage message, long nowTicks)
             => message != null && message.State != MailState.Claimed && !IsExpired(message, nowTicks);
+
+        /// <summary>
+        /// The player-to-player gate, pure and clock-injected: a non-empty subject and body, a
+        /// different recipient, and no send inside the cooldown. Inbox capacity is checked by the
+        /// delivery path once the recipient's inbox is loaded, so the rule here does not need it.
+        /// </summary>
+        public static MailRule CanSendPlayerMail(
+            string fromAccountId,
+            string toAccountId,
+            string subject,
+            string body,
+            double nowSeconds,
+            double lastSentSeconds)
+        {
+            if (string.IsNullOrEmpty(fromAccountId)
+                || string.IsNullOrEmpty(toAccountId)
+                || fromAccountId == toAccountId)
+            {
+                return MailRule.InvalidRecipient;
+            }
+
+            if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
+                return MailRule.InvalidRecipient;
+
+            if (lastSentSeconds > 0d && nowSeconds - lastSentSeconds < MinSecondsBetweenSends)
+                return MailRule.RateLimited;
+
+            return MailRule.Ok;
+        }
+
+        /// <summary>Trims and caps a player-authored field at <paramref name="maxLength"/>.</summary>
+        public static string Clean(string value, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            string trimmed = value.Trim();
+            return trimmed.Length <= maxLength ? trimmed : trimmed.Substring(0, maxLength);
+        }
 
         /// <summary>Normalises an unknown enum value (a newer client's state) to <see cref="MailState.Unread"/>.</summary>
         public static MailState NormalizeState(int state)

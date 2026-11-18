@@ -29,6 +29,7 @@ namespace MMO.UI
         private BankFrameView _bankFrame;
         private TradeFrameView _tradeFrame;
         private CraftingPanelView _craftingPanel;
+        private MailFrameView _mailFrame;
         private CollapsiblePanelView _inventoryWindow;
         private CollapsiblePanelView _equipmentWindow;
         private EquipmentPanelView _equipmentPanel;
@@ -56,6 +57,9 @@ namespace MMO.UI
 
         /// <summary>The direct-trade window, or null when the factory was told to omit it.</summary>
         public TradeFrameView TradeFrame => _tradeFrame;
+
+        /// <summary>The mailbox window, or null before views were assigned.</summary>
+        public MailFrameView MailFrame => _mailFrame;
 
         /// <summary>The one unified crafting window, or null before views were assigned.</summary>
         public CraftingPanelView CraftingPanel => _craftingPanel;
@@ -124,6 +128,13 @@ namespace MMO.UI
         {
             _craftingPanel = craftingPanel;
             _craftingPanel?.Conceal();
+        }
+
+        /// <summary>Gives the HUD the mailbox window the factory built; starts concealed.</summary>
+        public void SetMailFrame(MailFrameView mailFrame)
+        {
+            _mailFrame = mailFrame;
+            _mailFrame?.Conceal();
         }
 
         /// <summary>Gives the HUD the dialogue panel the factory built; starts concealed.</summary>
