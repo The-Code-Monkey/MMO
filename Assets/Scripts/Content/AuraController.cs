@@ -174,7 +174,16 @@ namespace MMO.Content
                 if (_npcStats != null)
                     _npcStats.ApplyDamage(tick.Damage, tick.State.Source);
                 else if (_playerStats != null)
+                {
+                    // A damage-over-time tick is still player-versus-player damage when a player
+                    // applied it: the same tier-and-flag verdict gates every tick, so an aura
+                    // cannot outlive the target's consent.
+                    if (!CanHarmFromSource(tick.State.Source))
+                        return;
+
                     _playerStats.TakeDamage(tick.Damage);
+                }
+
                 return;
             }
 
@@ -185,6 +194,21 @@ namespace MMO.Content
                 else if (_playerStats != null)
                     _playerStats.Heal(tick.Heal);
             }
+        }
+
+        /// <summary>
+        /// True when the applier of this aura may still damage the wearer. An NPC applier, or a
+        /// wearer with no <see cref="PlayerPvP"/> (a bare test object), is not PvP and keeps the
+        /// pre-PvP behaviour.
+        /// </summary>
+        private bool CanHarmFromSource(PlayerInventory source)
+        {
+            PlayerPvP attacker = source != null ? source.GetComponent<PlayerPvP>() : null;
+            PlayerPvP target = GetComponent<PlayerPvP>();
+            if (attacker == null || target == null)
+                return true;
+
+            return attacker.TryEngage(target, transform.position);
         }
 
         private void RecalculateBonuses()
