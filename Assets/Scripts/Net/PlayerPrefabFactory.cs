@@ -211,6 +211,10 @@ namespace MMO.Net
             // Appended for the same reason as the mailbox.
             go.AddComponent<MMO.Moderation.PlayerModeration>();
 
+            // Owner-side walking: reads W/S/Q/E through ClientInput and streams a camera-relative
+            // direction to the mover. Appended last; a dedicated server reads no keyboard.
+            go.AddComponent<PlayerMoveInput>();
+
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.
             PrimitiveAppearance.ApplyRenderPipelineMaterial(go);
