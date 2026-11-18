@@ -65,22 +65,22 @@ MonoBehaviour:
     _tierAssigned: 0
     _neighbours:
     - yellow-2
-    - black-1
+    - red-2
+    - pass-1
     _isChokePoint: 0
   - _zoneId: red-2
     _sceneName: 
     _tier: 2
     _tierAssigned: 0
     _neighbours:
-    - black-2
     - yellow-1
+    - red-1
     _isChokePoint: 0
   - _zoneId: black-1
     _sceneName: 
     _tier: 3
     _tierAssigned: 0
     _neighbours:
-    - red-1
     - pass-1
     _isChokePoint: 0
   - _zoneId: black-2
@@ -89,13 +89,13 @@ MonoBehaviour:
     _tierAssigned: 0
     _neighbours:
     - pass-1
-    - red-2
     _isChokePoint: 0
   - _zoneId: pass-1
     _sceneName: 
     _tier: 3
     _tierAssigned: 0
     _neighbours:
+    - red-1
     - black-1
     - black-2
     _isChokePoint: 1
