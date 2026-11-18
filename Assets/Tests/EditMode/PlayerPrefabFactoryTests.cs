@@ -250,12 +250,12 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(31, behaviours.Length,
+            Assert.AreEqual(32, behaviours.Length,
                 "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
                 "death, the wallet and auction house, quests, dialogue and achievements, the save " +
-                "trigger, starter items, the party/guild/chat/friend/raid/mail/trade/territory " +
-                "surfaces, the server-authoritative mover, mount, auras, click-to-move, the " +
-                "NetworkTransform, the HUD, the personal bank and the zone-transfer intent.");
+                "trigger, starter items, the party/guild/chat/friend/raid/mail/moderation/trade/" +
+                "territory surfaces, the server-authoritative mover, mount, auras, click-to-move, " +
+                "the NetworkTransform, the HUD, the personal bank and the zone-transfer intent.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -278,20 +278,22 @@ namespace MMO.Tests
             Assert.IsInstanceOf<MMO.Social.PlayerRaid>(behaviours[18]);
             Assert.IsInstanceOf<MMO.Social.PlayerMail>(behaviours[19],
                 "The mailbox rides after the raid surface, where it resolves the join-cache account.");
-            Assert.IsInstanceOf<MMO.Social.PlayerTrade>(behaviours[20]);
-            Assert.IsInstanceOf<MMO.Social.PlayerTerritory>(behaviours[21]);
-            Assert.IsInstanceOf<PlayerMover>(behaviours[22]);
-            Assert.IsInstanceOf<PlayerMount>(behaviours[23]);
-            Assert.IsInstanceOf<AuraController>(behaviours[24]);
-            Assert.IsInstanceOf<PlayerClickToMove>(behaviours[25]);
-            Assert.IsInstanceOf<NetworkTransform>(behaviours[26]);
-            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[27],
+            Assert.IsInstanceOf<MMO.Moderation.PlayerModeration>(behaviours[20],
+                "Moderation rides after the mailbox, before the trade surface.");
+            Assert.IsInstanceOf<MMO.Social.PlayerTrade>(behaviours[21]);
+            Assert.IsInstanceOf<MMO.Social.PlayerTerritory>(behaviours[22]);
+            Assert.IsInstanceOf<PlayerMover>(behaviours[23]);
+            Assert.IsInstanceOf<PlayerMount>(behaviours[24]);
+            Assert.IsInstanceOf<AuraController>(behaviours[25]);
+            Assert.IsInstanceOf<PlayerClickToMove>(behaviours[26]);
+            Assert.IsInstanceOf<NetworkTransform>(behaviours[27]);
+            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[28],
                 "The local-camera binding rides the prefab so it registers by ownership, not by tag.");
-            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[28],
+            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[29],
                 "The HUD is added late so the behaviours it builds a screen for already exist.");
-            Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[29],
+            Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[30],
                 "The personal bank is appended after the HUD, so every earlier index is unchanged.");
-            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[30],
+            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[31],
                 "Zone transfer is appended last: its ServerRpc must not shift an existing index.");
 
             foreach (NetworkBehaviour behaviour in behaviours)

@@ -6,6 +6,7 @@ using MMO.Content;
 using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
+using MMO.Moderation;
 using MMO.Social;
 using MMO.UI;
 using UnityEngine;
@@ -41,6 +42,8 @@ namespace MMO.Client
         private ClientInput _input;
         private ClientEffects _effects;
         private SettingsPanelView _settingsPanel;
+        private ModerationNoticeOverlay _moderationOverlay;
+        private PlayerModeration _moderation;
 
         /// <summary>This client's HUD, or null when none was built (a remote player, or a server).</summary>
         public NetworkHud Hud => _hud;
@@ -173,6 +176,16 @@ namespace MMO.Client
             if (_bank != null)
                 _bank.BankOpened += OnBankOpened;
 
+            // Moderation outcomes are pushed once, or replayed on reconnect: build the banner and
+            // ask for anything still in force. A player with no notices sees nothing.
+            _moderationOverlay = ModerationNoticeOverlay.Create(_hud.transform);
+            _moderation = GetComponent<PlayerModeration>();
+            if (_moderation != null)
+            {
+                _moderation.NoticeReceived += OnModerationNotice;
+                _moderation.RequestNotices();
+            }
+
             return _hud;
         }
 
@@ -187,6 +200,9 @@ namespace MMO.Client
                 ? clickToMove.AimPoint()
                 : transform.position + transform.forward * 5f;
         }
+
+        private void OnModerationNotice(ModerationNotice notice)
+            => _moderationOverlay?.Show(notice);
 
         private void OnBankOpened(BankKind kind)
         {
@@ -227,6 +243,14 @@ namespace MMO.Client
 
             _settingsPanel = null;
             _hud.MailFrame?.Unbind();
+
+            if (_moderation != null)
+            {
+                _moderation.NoticeReceived -= OnModerationNotice;
+                _moderation = null;
+            }
+
+            _moderationOverlay = null;
 
             if (_input != null)
             {

@@ -156,6 +156,10 @@ namespace MMO.Net
             // The mailbox shell: owner-checked read/claim/send intents over the hub's MailService.
             go.AddComponent<PlayerMail>();
 
+            // Player-facing moderation: report intents and the notice delivered at kick/warn time.
+            // It resolves the same join-cache account id and talks to the backend through the hub.
+            go.AddComponent<MMO.Moderation.PlayerModeration>();
+
             // Direct trade and territory capture: both resolve the same join-cache account id and
             // sit after the bag they read.
             go.AddComponent<PlayerTrade>();

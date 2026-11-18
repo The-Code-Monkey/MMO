@@ -197,6 +197,25 @@ item *impossible to hold twice*.
 The registry makes the in-process race impossible; the backend CAS makes the cross-process race
 settle in exactly one winner.
 
+## 3a. Player-facing moderation notices
+
+Detection and enforcement are separate from communication. `MMO.Moderation` gives the server one
+service and the player one shell:
+
+- `ModerationRules` (pure) defines the stable `ACTION_CATEGORY` message code, the plain-language
+  explanation for it, and the report throttle (`MaxReportsPerHour`, rolling window, same-target
+  dedupe). A notice carries a code and an expiry, never detector evidence — telling a cheater what
+  tripped the detector teaches the cheat.
+- `ModerationService` files throttled reports into `moderation_reports` and stores notices in
+  `moderation_notices`, both through `IModerationRepository` with the same optimistic version check
+  as every other record. `NakamaModerationRepository` is the production implementation.
+- `PlayerModeration` is the intent shell on the player prefab: `[ServerRpc]` report intents re-check
+  ownership and resolve the reporter from the join cache, and notices return over
+  `[TargetRpc]` JSON. `NotifyAsync` is what a kick/warn calls before disconnecting; `RequestNotices`
+  replays anything still in force on reconnect.
+- `ModerationNoticeOverlay` on the owning client prints `ModerationRules.Describe(notice)`. There is
+  deliberately no unban or appeal path in this surface.
+
 ## 4. Testing these guarantees
 
 The hard decisions are pure, so they are pinned in EditMode; the networked shells get PlayMode
