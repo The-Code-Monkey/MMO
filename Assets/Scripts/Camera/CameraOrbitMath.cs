@@ -24,6 +24,24 @@ namespace MMO.Client
         /// <summary>Degrees of orbit per pixel of pointer travel.</summary>
         public const float Sensitivity = 0.15f;
 
+        /// <summary>Closest the arm may come to the pivot, in metres.</summary>
+        public const float MinDistance = 0.3f;
+
+        /// <summary>Furthest the arm may extend, in metres.</summary>
+        public const float MaxDistance = 15f;
+
+        /// <summary>Metres of arm added per scroll notch.</summary>
+        public const float ZoomStep = 1.5f;
+
+        /// <summary>SmoothDamp time for the arm, in seconds.</summary>
+        public const float ZoomSmoothTime = 0.12f;
+
+        /// <summary>Radius of the sphere swept back from the pivot against geometry.</summary>
+        public const float ClipRadius = 0.25f;
+
+        /// <summary>Closer than this, the local avatar is hidden rather than seen from inside.</summary>
+        public const float AvatarHideDistance = 1.2f;
+
         /// <summary>
         /// The pivot in world space. The player root is the centre of the capsule, so the neck is
         /// half a body above it, not a whole one: a literal +1.6 would put the eye above the head.
@@ -59,6 +77,50 @@ namespace MMO.Client
         /// </summary>
         public static Quaternion Rotation(float yaw, float pitch)
             => Quaternion.Euler(pitch, yaw, 0f);
+
+        /// <summary>Zoom target after a scroll, clamped to the legible range.</summary>
+        public static float ApplyZoom(
+            float currentTarget, float scrollNotches, float step = ZoomStep)
+            => Mathf.Clamp(
+                currentTarget + scrollNotches * step,
+                MinDistance,
+                MaxDistance);
+
+        /// <summary>
+        /// One damped step of the arm toward its target. Damping, not a snap: a wheel notch is a
+        /// request, and the camera eases into it.
+        /// </summary>
+        public static float DampDistance(
+            float current,
+            float target,
+            ref float velocity,
+            float deltaSeconds,
+            float smoothTime = ZoomSmoothTime)
+        {
+            if (deltaSeconds <= 0f)
+                return current;
+
+            return Mathf.SmoothDamp(
+                current,
+                Mathf.Clamp(target, MinDistance, MaxDistance),
+                ref velocity,
+                Mathf.Max(0.0001f, smoothTime),
+                Mathf.Infinity,
+                deltaSeconds);
+        }
+
+        /// <summary>
+        /// The arm length that keeps the eye out of the wall the spherecast found: the hit minus the
+        /// sphere's radius, never below the minimum.
+        /// </summary>
+        public static float ClipDistance(float desired, float hitDistance, float radius = ClipRadius)
+        {
+            float clear = hitDistance - Mathf.Max(0f, radius);
+            return Mathf.Clamp(Mathf.Min(desired, clear), MinDistance, MaxDistance);
+        }
+
+        /// <summary>True when the eye is close enough to be inside the local avatar.</summary>
+        public static bool HidesAvatar(float distance) => distance < AvatarHideDistance;
 
         /// <summary>World position of the eye for a pivot, orbit and arm length.</summary>
         public static Vector3 EyePosition(Vector3 pivot, float yaw, float pitch, float distance)

@@ -58,6 +58,50 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void ApplyZoom_ClampsToTheLegibleRange()
+        {
+            Assert.AreEqual(CameraOrbitMath.MaxDistance,
+                CameraOrbitMath.ApplyZoom(6f, 100f), 0.0001f);
+            Assert.AreEqual(CameraOrbitMath.MinDistance,
+                CameraOrbitMath.ApplyZoom(6f, -100f), 0.0001f);
+            Assert.AreEqual(7.5f, CameraOrbitMath.ApplyZoom(6f, 1f), 0.0001f);
+        }
+
+        [Test]
+        public void DampDistance_EasesTowardTheTarget()
+        {
+            float velocity = 0f;
+            float step = CameraOrbitMath.DampDistance(6f, 9f, ref velocity, 1f / 60f);
+
+            Assert.Greater(step, 6f);
+            Assert.Less(step, 9f, "One frame of damping must not snap to the target.");
+        }
+
+        [Test]
+        public void DampDistance_DoesNothingWithoutTime()
+        {
+            float velocity = 0f;
+            Assert.AreEqual(6f, CameraOrbitMath.DampDistance(6f, 9f, ref velocity, 0f), 0.0001f);
+        }
+
+        [Test]
+        public void ClipDistance_KeepsTheEyeOutOfTheWall()
+        {
+            Assert.AreEqual(2.75f, CameraOrbitMath.ClipDistance(6f, 3f), 0.0001f,
+                "The eye stops one sphere radius short of the hit.");
+            Assert.AreEqual(CameraOrbitMath.MinDistance, CameraOrbitMath.ClipDistance(6f, 0.1f), 0.0001f,
+                "A wall at the pivot cannot pull the arm below its minimum.");
+            Assert.AreEqual(6f, CameraOrbitMath.ClipDistance(6f, 10f), 0.0001f);
+        }
+
+        [Test]
+        public void HidesAvatar_OnlyInsideTheBody()
+        {
+            Assert.IsTrue(CameraOrbitMath.HidesAvatar(1.19f));
+            Assert.IsFalse(CameraOrbitMath.HidesAvatar(CameraOrbitMath.AvatarHideDistance));
+        }
+
+        [Test]
         public void EyePosition_RisesWhenTheCameraLooksDown()
         {
             Vector3 eye = CameraOrbitMath.EyePosition(Vector3.zero, 0f, 45f, 6f);
