@@ -108,8 +108,8 @@ Rules of thumb
  * To execute the suites, activate a license (unity license activate) or let
    .github/workflows/unity-tests.yml run EditMode + PlayMode
    on a licensed runner. That is the only source of truth for passing tests.
- * Do not commit .meta files. Assets/**/*.meta is gitignored; let Unity generate them on
-   import and leave them untracked.
+ * `.meta` files are tracked in this repo. Commit them alongside the assets they describe and
+   never hand-edit a GUID inside one.
 5. Autonomous Agent Batch Processing Workflow
 When operating as an autonomous agent processing tasks via MCP (Model Context Protocol), strictly adhere to the following master execution loop and constraints to prevent context-switching, scope creep, and environment corruption.
 Master Execution Prompt
