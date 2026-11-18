@@ -94,6 +94,9 @@ The most useful pattern to understand is that almost every gameplay system is sp
   `InventoryGrid`, `InventoryValidator`, `CraftingValidator`, `CraftingOfferRules`, `GatheringRules`,
   `JoinPolicy`, and the
   anti-cheat rules `MovementRules` and `SightRules` (see [14](14-server-authority-hardening.md)).
+  Movement, the orbit camera and world clicks follow the same shape, with their arithmetic in
+  `MoveIntentMath`, `HeadingMath`, `JumpMath`, `CameraOrbitMath` and `WorldClickRules` — see
+  [18](18-player-controls.md).
 - A **networked shell** — a FishNet `NetworkBehaviour` (a component that can replicate over the
   network) that holds the real clock and world references and calls into the pure core. Examples:
   `PlayerStats`, `PlayerInventory`, `PlayerAbilities`, `PlayerGathering`, `ResourceNode`,

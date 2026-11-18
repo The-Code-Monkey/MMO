@@ -64,8 +64,10 @@ rules method, stop and pass `now` in instead.
 - **Replication drives the UI through events**, never polling. Views subscribe to `VitalsChanged`,
   `SlotsChanged`, `ContainersChanged`, `StateChanged`, etc. No view defines `Update`.
 - **Gameplay keys are read through `ClientInput`**, not checked directly, so a rebind reaches every
-  consumer. Local preference files (settings and bindings) fall back to defaults on a missing,
-  corrupt or unwritable file and never stop the client.
+  consumer — `WasPressed` for edges, `IsHeld` for continuous input. Local preference files (settings
+  and bindings) fall back to defaults on a missing, corrupt or unwritable file and never stop the
+  client. The whole scheme, including the camera and pointer, is in
+  [18](18-player-controls.md).
 
 ## 4. Data is data
 
