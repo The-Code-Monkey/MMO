@@ -2,6 +2,16 @@ name: Unity Tests
 
 on:
   pull_request:
+    # Explicitly every base branch: a stacked PR targets another feature branch, and its checks
+    # must run there too (see the push trigger for why that is not sufficient on its own).
+    branches: ['**']
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  # GitHub does not run pull_request workflows on a PR that has a merge conflict, which a stacked
+  # PR gets the moment its base is rebased. Runs on the branch itself keep that commit covered.
+  push:
+    branches-ignore: [main]
     paths-ignore:
       - 'docs/**'
       - '**.md'
