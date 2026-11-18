@@ -1,15 +1,18 @@
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:e08659bfe3c541e3496822b8c4bbb35be1fb11caa5c060864406a97efe43cf1b -->
+
 # 19 — World map and zone topology
 
 The world is not one open landscape. It is a web of **zones** joined by portals, and the roads
 between them are deliberately arranged so that reward rises with risk. This chapter is the macro
 map: the capital, the low-tier roads, the contested ring and the bottlenecks that gate full-loot
-PvP. It also describes the data asset that encodes the same map, which is what the tools and the
-build guard actually read.
+PvP. It also describes the planned data asset and tools that will encode and check the same map.
 
-The map is written down twice on purpose. This chapter is the human artefact — why the world is
-shaped this way. The **topology asset** is the machine artefact — which zones exist, which portals
-join them, and which tier each zone carries. When the two disagree, the asset wins for
-connectivity and this chapter must be corrected in the same pull request.
+This chapter currently records the intended map. Once implemented, the **topology asset** will be
+the machine artefact — which zones exist, which portals join them, and which tier each zone carries.
+The asset will then be authoritative for connectivity, and disagreements with this chapter must be
+corrected in the same pull request.
 
 ## 1. What a zone is
 
@@ -44,8 +47,8 @@ repeated here.
 |---|---|---|
 | `Safe` | none | gear dent, repair with gold |
 | `Yellow` | PvE unless the player's PvP flag is on | heavier repair bill, no permanent loss |
-| `Red` | forced PvP | respawn, keep loot, durability loss |
-| `Black` | forced PvP | drop carried and worn gear, durability loss |
+| `Red` | forced PvP | respawn, permanent loss of progress, keep loot, durability loss |
+| `Black` | forced PvP | drop carried and worn gear, profile wipe, durability loss |
 
 "Blue zone" is the genre term for what this project calls **`Yellow`**. There is no `Blue` tier and
 no resource-tier data in this chapter — resource rarity is a separate concern.
@@ -59,23 +62,36 @@ Risk escalates outward from the capital. Low-tier roads fan out from the safe hu
 ring, and every full-loot zone sits behind a single door.
 
 ```
-Built today — one connected group          Planned — a separate group, not yet linked
+Built today — one connected group
 
-        tutorial                                 yellow-1 ──────── red-1 ─────── black-1
-           │                                        │                             │   (1 door)
-           ▼                                        │                          pass-1
-        safe-zone ◄────► wilderness (Red)           │                             │   (black choke)
-           ▲                                        ▼                             ▼
-           └────────────►  test-zone              yellow-2 ──────── red-2 ─────── black-2
-                                                                                   (1 door)
+        tutorial
+           │
+           ▼
+        safe-zone ◄────► wilderness (Red)
+           ▲
+           └────────────► test-zone
+
+Planned — a separate group, not yet linked to the built group
+
+        yellow-1 ─── red-1             black-1 (1 door)
+           │              \           /
+           │               pass-1 (Black choke)
+           │              /           \
+        yellow-2 ─── red-2             black-2 (1 door)
 ```
 
-`◄────►` is one portal pair, usable in both directions. Planned links:
+`◄────►` is one portal pair, usable in both directions. Every planned line also represents a
+two-way portal pair. Planned links:
 
-- `yellow-1 ↔ yellow-2 ↔ red-1 ↔ black-1`
-- `red-2 ↔ yellow-1`
-- `red-2 ↔ black-2`
+- `yellow-1 ↔ yellow-2`
+- `yellow-1 ↔ red-1`
+- `yellow-2 ↔ red-2`
+- `red-1 ↔ pass-1`
+- `red-2 ↔ pass-1`
 - `black-1 ↔ pass-1 ↔ black-2`
+
+Both red zones enter the shared black choke, `pass-1`; each non-choke black zone has only its
+single portal to that choke, as required by section 4b.
 
 The two groups have **no portal between them yet**. A player cannot walk from the capital into the
 planned cluster, and that is intentional: the cluster is a design in progress, not content.
@@ -85,8 +101,8 @@ scenes will eventually exist; none is baked yet.
 
 ## 4. Road rules
 
-The shape of the map is not freeform. Three rules constrain it, and the topology validator enforces
-them.
+The shape of the intended map is not freeform. Three rules constrain it; the planned topology
+validator will enforce them once implemented.
 
 ### 4a. The tier adjacency matrix
 
@@ -121,21 +137,26 @@ blocked inside it.
 
 - **Zones may be unreachable.** Some zones are planned before their roads exist, and the map must
   be able to describe them. An isolated zone is reported as a warning, never an error.
-- **Portals are two-way.** Both zones must list each other. One-way links are not supported today;
-  see [Deferred](#deferred).
+
+- **Portals are intended to be two-way.** Both zones will list each other in the planned topology.
+  The built group currently has an exception: `Tutorial → SafeZone` has no return portal
+  (`ZoneSceneBaker.BuildTutorial` and `BuildSafeZone`). The planned symmetric model cannot represent
+  that existing one-way link; see [Deferred](#deferred).
+
 - **Tiers may be undecided.** A node records whether its tier has been settled. An unsettled node
   warns and is skipped by the geometry rules, so a draft map never fails on data that has not been
   chosen yet.
 
 ## 5. The topology asset
 
-`WorldTopology` is a ScriptableObject holding one `ZoneNode` per zone. It lives at
-`Assets/Data/World/WorldTopology.asset` and is created from `Assets > Create > MMO > World Topology`.
-It is **editor-consumed only**: it is not under `Resources`, nothing loads it at runtime, and the
-tier a player actually dies under still comes from the scene's `ZoneRiskConfig`
-(`Assets/Scripts/Gameplay/ZoneRiskConfig.cs:17`).
+`WorldTopology`, `ZoneNode`, the asset, and its creation menu are **planned, not implemented**.
+The proposed ScriptableObject will hold one `ZoneNode` per zone at
+`Assets/Data/World/WorldTopology.asset`, created from the planned
+`Assets > Create > MMO > World Topology` menu.
+It will be **editor-consumed only**, outside `Resources`. The tier a player actually dies under
+comes from the scene's `ZoneRiskConfig` (`Assets/Scripts/Gameplay/ZoneRiskConfig.cs:17`).
 
-Each node carries:
+Each proposed node will carry:
 
 | Field | Meaning |
 |---|---|
@@ -146,26 +167,27 @@ Each node carries:
 | `Neighbours` | The other zones it shares a portal with, listed on both sides. |
 | `IsChokePoint` | True for the narrow zones of section 4b. |
 
-The four built zones are recorded with the tier their scenes actually carry, but with their tiers
-marked unsettled: the capital currently opens straight onto `wilderness` (`Red`), which the matrix
+The planned asset will record the four built zones with the tiers their scenes actually carry,
+but mark those tiers unsettled: the capital currently opens straight onto `wilderness` (`Red`), which the matrix
 in section 4a forbids. Making that geography legal is a design task, tracked with the planned
 cluster's tier assignment in #249.
 
 ## 6. What checks the map
 
-Two pieces keep the asset honest:
+The following checks are **planned, not implemented**:
 
-- **Topology rules** — a pure static class that reports every structural and geometric problem as a
-  list of errors plus a list of warnings. It touches no engine state, so every branch is an EditMode
-  test.
-- **Topology build guard** — a build preprocessor that refuses to produce a build when the topology
-  asset is missing, has any error, or names a scene that is not in enabled Build Settings. Warnings
-  are logged, not fatal.
-
-Tests also assert that every zone id in the asset is mentioned in this chapter, so the prose and the
-data cannot drift apart.
+- **Topology rules / validator** — a pure static class that will report structural and geometric
+  problems as errors and warnings. It will touch no engine state and will have EditMode coverage.
+- **Topology build guard** — a build preprocessor that will reject a missing topology asset, any
+  topology error, or a named scene absent from enabled Build Settings. Warnings will be logged.
+- **Chapter coverage test** — a test that will assert every zone id in the asset appears in this
+  chapter, to detect drift between prose and data.
 
 ## 7. Common tasks
+
+These workflows apply **only after the topology asset, creation menu, validator, build guard and
+coverage test have been implemented**. Today, use section 3 for the intended map and
+`ZoneSceneBaker` for the built portals.
 
 - **Add a planned zone** — add a node to the topology asset, add its portals on both sides, and add
   it to the map in section 3. Unsettled tiers are fine; the validator will skip them.
@@ -180,13 +202,18 @@ data cannot drift apart.
 
 ## Deferred
 
-- **The topology does not yet drive scene baking.** `ZoneSceneBaker` still hard-codes the four
-  zones and their tiers. Making the baker read the topology is a follow-up to #67; until then the
-  same fact exists in two places.
-- **One-way links.** Only two-way portals are modelled. A one-way teleport will need an explicit
-  direction on the edge and a relaxation of the symmetry rule.
+- **Topology tooling and scene baking.** The topology asset and checks in sections 5–6 still need
+  implementation. `ZoneSceneBaker` hard-codes the four zones and their tiers; making it read the
+  future topology is a follow-up to #67.
+- **One-way links in the topology model.** The planned model supports only two-way portals. To
+  represent the existing `Tutorial → SafeZone` exception, it will need an explicit edge direction
+  and a relaxation of the symmetry rule, or the built portals must be made symmetric.
+
 - **PvP rules.** The flag lifecycle and per-tier PvP enforcement are specified in #250.
 - **Tier assignment for both groups.** #249 settles the planned cluster and the built group's
   capital-to-wilderness clash.
 - **Terrain and biomes** (#76) and **population** (#78) decide what the zones look like and contain.
 - **Lore and faction identity** (#75) explain why the geography is shaped this way.
+
+
+<!-- /coderabbit-ai-generated:v1 -->
