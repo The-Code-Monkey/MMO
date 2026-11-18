@@ -165,6 +165,11 @@ namespace MMO.Social
             if (gate != MailRule.Ok)
                 return gate;
 
+            // Reserve the slot before the delivery await. Reading the cooldown and writing the
+            // reservation happen without yielding, so two overlapping sends from one account to
+            // different recipients cannot both pass the gate — the second sees the reservation.
+            _lastSentSeconds[fromAccountId] = nowSeconds;
+
             MailRule result = await SendAsync(
                 targetId,
                 fromAccountId,
@@ -172,8 +177,14 @@ namespace MMO.Social
                 MailRules.Clean(body, MailRules.MaxBodyLength),
                 ct: ct);
 
-            if (result == MailRule.Ok)
-                _lastSentSeconds[fromAccountId] = nowSeconds;
+            // A rejected delivery does not consume the cooldown, so the sender may retry at once.
+            if (result != MailRule.Ok)
+            {
+                if (lastSent > 0d)
+                    _lastSentSeconds[fromAccountId] = lastSent;
+                else
+                    _lastSentSeconds.Remove(fromAccountId);
+            }
 
             return result;
         }
@@ -274,7 +285,7 @@ namespace MMO.Social
                 for (int i = 0; i < inbox.Messages.Count; i++)
                 {
                     MailMessage message = inbox.Messages[i];
-                    if (!MailRules.Claimable(message, now))
+                    if (!MailRules.Claimable(message, now) || !MailRules.HasRewards(message))
                         continue;
 
                     PlayerSaveMapper.ApplyBank(message.Attachments, out List<ItemInstance> items, out _);

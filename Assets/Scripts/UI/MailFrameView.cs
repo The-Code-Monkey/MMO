@@ -28,6 +28,7 @@ namespace MMO.UI
         private Text _detailSubject;
         private Text _detailMeta;
         private Text _detailBody;
+        private Text _status;
         private Button _claimButton;
         private Button _claimAllButton;
         private Button _closeButton;
@@ -55,6 +56,7 @@ namespace MMO.UI
             Text detailSubject,
             Text detailMeta,
             Text detailBody,
+            Text status,
             Button claimButton,
             Button claimAllButton,
             Button closeButton)
@@ -64,6 +66,7 @@ namespace MMO.UI
             _detailSubject = detailSubject;
             _detailMeta = detailMeta;
             _detailBody = detailBody;
+            _status = status;
             _claimButton = claimButton;
             _claimAllButton = claimAllButton;
             _closeButton = closeButton;
@@ -86,6 +89,7 @@ namespace MMO.UI
 
             _mail.InboxReceived += SetInbox;
             _mail.Sent += OnSent;
+            _mail.RuleFailed += OnRuleFailed;
         }
 
         /// <summary>Stops listening; the built rows stay on screen until the next bind repaints.</summary>
@@ -95,6 +99,7 @@ namespace MMO.UI
             {
                 _mail.InboxReceived -= SetInbox;
                 _mail.Sent -= OnSent;
+                _mail.RuleFailed -= OnRuleFailed;
             }
 
             _mail = null;
@@ -129,6 +134,7 @@ namespace MMO.UI
 
             RepaintRows();
             RepaintDetail();
+            SetStatus(string.Empty);
         }
 
         /// <summary>Selects a message locally; nothing is sent to the server.</summary>
@@ -153,12 +159,20 @@ namespace MMO.UI
 
         private void OnSent() => RepaintRows();
 
+        private void OnRuleFailed(MailRule rule) => SetStatus(MailUiFormat.RuleMessage(rule));
+
+        private void SetStatus(string text)
+        {
+            if (_status != null)
+                _status.text = text;
+        }
+
         private void RepaintRows()
         {
             ClearRows();
 
             if (_title != null)
-                _title.text = MailUiFormat.Title(MailUiFormat.UnreadCount(_inbox));
+                _title.text = MailUiFormat.Title(MailUiFormat.UnreadCount(_inbox, System.DateTime.UtcNow.Ticks));
 
             if (_listContent == null || _inbox?.Messages == null)
                 return;

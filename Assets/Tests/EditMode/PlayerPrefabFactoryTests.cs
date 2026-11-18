@@ -253,9 +253,9 @@ namespace MMO.Tests
             Assert.AreEqual(32, behaviours.Length,
                 "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
                 "death, the wallet and auction house, quests, dialogue and achievements, the save " +
-                "trigger, starter items, the party/guild/chat/friend/raid/mail/moderation/trade/" +
-                "territory surfaces, the server-authoritative mover, mount, auras, click-to-move, " +
-                "the NetworkTransform, the HUD, the personal bank and the zone-transfer intent.");
+                "trigger, starter items, the party/guild/chat/friend/raid/trade/territory surfaces, " +
+                "the server-authoritative mover, mount, auras, click-to-move, the NetworkTransform, " +
+                "the HUD, the personal bank, the zone-transfer intent, the mailbox and moderation.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -276,25 +276,25 @@ namespace MMO.Tests
             Assert.IsInstanceOf<MMO.Social.PlayerChat>(behaviours[16]);
             Assert.IsInstanceOf<MMO.Social.PlayerFriends>(behaviours[17]);
             Assert.IsInstanceOf<MMO.Social.PlayerRaid>(behaviours[18]);
-            Assert.IsInstanceOf<MMO.Social.PlayerMail>(behaviours[19],
-                "The mailbox rides after the raid surface, where it resolves the join-cache account.");
-            Assert.IsInstanceOf<MMO.Moderation.PlayerModeration>(behaviours[20],
-                "Moderation rides after the mailbox, before the trade surface.");
-            Assert.IsInstanceOf<MMO.Social.PlayerTrade>(behaviours[21]);
-            Assert.IsInstanceOf<MMO.Social.PlayerTerritory>(behaviours[22]);
-            Assert.IsInstanceOf<PlayerMover>(behaviours[23]);
-            Assert.IsInstanceOf<PlayerMount>(behaviours[24]);
-            Assert.IsInstanceOf<AuraController>(behaviours[25]);
-            Assert.IsInstanceOf<PlayerClickToMove>(behaviours[26]);
-            Assert.IsInstanceOf<NetworkTransform>(behaviours[27]);
-            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[28],
+            Assert.IsInstanceOf<MMO.Social.PlayerTrade>(behaviours[19]);
+            Assert.IsInstanceOf<MMO.Social.PlayerTerritory>(behaviours[20]);
+            Assert.IsInstanceOf<PlayerMover>(behaviours[21]);
+            Assert.IsInstanceOf<PlayerMount>(behaviours[22]);
+            Assert.IsInstanceOf<AuraController>(behaviours[23]);
+            Assert.IsInstanceOf<PlayerClickToMove>(behaviours[24]);
+            Assert.IsInstanceOf<NetworkTransform>(behaviours[25]);
+            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[26],
                 "The local-camera binding rides the prefab so it registers by ownership, not by tag.");
-            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[29],
+            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[27],
                 "The HUD is added late so the behaviours it builds a screen for already exist.");
-            Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[30],
+            Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[28],
                 "The personal bank is appended after the HUD, so every earlier index is unchanged.");
-            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[31],
-                "Zone transfer is appended last: its ServerRpc must not shift an existing index.");
+            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[29],
+                "Zone transfer is appended after the bank: its ServerRpc must not shift an index.");
+            Assert.IsInstanceOf<MMO.Social.PlayerMail>(behaviours[30],
+                "The mailbox is appended after the zone transfer so later arrivals keep their index.");
+            Assert.IsInstanceOf<MMO.Moderation.PlayerModeration>(behaviours[31],
+                "Moderation is appended last for the same reason.");
 
             foreach (NetworkBehaviour behaviour in behaviours)
             {

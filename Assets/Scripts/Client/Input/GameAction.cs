@@ -17,6 +17,7 @@ namespace MMO.Client
         Interact,
         Trade,
         Auction,
+        Mail,
         OpenSettings,
     }
 
@@ -49,6 +50,7 @@ namespace MMO.Client
                 GameAction.Interact => "Interact",
                 GameAction.Trade => "Trade",
                 GameAction.Auction => "Auction",
+                GameAction.Mail => "Mailbox",
                 GameAction.OpenSettings => "Settings",
                 _ => action.ToString(),
             };

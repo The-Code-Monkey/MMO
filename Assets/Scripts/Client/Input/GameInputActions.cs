@@ -33,6 +33,7 @@ namespace MMO.Client
             AddButton(map, GameAction.Interact, "<Keyboard>/e");
             AddButton(map, GameAction.Trade, "<Keyboard>/t");
             AddButton(map, GameAction.Auction, "<Keyboard>/b");
+            AddButton(map, GameAction.Mail, "<Keyboard>/m");
             AddButton(map, GameAction.OpenSettings, "<Keyboard>/f10");
 
             return asset;
