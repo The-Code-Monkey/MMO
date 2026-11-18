@@ -276,6 +276,16 @@ namespace MMO.Tests
             CollectionAssert.IsEmpty(TopologyRules.FindViolations(world));
         }
 
+        [Test]
+        public void FindWarnings_ShippedAsset_IsEmpty()
+        {
+            var world = UnityEditor.AssetDatabase.LoadAssetAtPath<WorldTopology>(WorldTopology.AssetPath);
+            Assert.IsNotNull(world);
+
+            CollectionAssert.IsEmpty(TopologyRules.FindWarnings(world),
+                "Every shipped zone has a settled tier and a portal; a draft zone here is a decision that was not recorded.");
+        }
+
         private static WorldTopology BlackClusterThroughChoke()
         {
             return TestWorldTopologies.Topology(

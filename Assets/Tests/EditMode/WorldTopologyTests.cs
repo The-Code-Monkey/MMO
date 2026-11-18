@@ -1,10 +1,13 @@
 using System.Linq;
 using System.Reflection;
 using MMO.Content;
+using MMO.Editor;
 using MMO.Gameplay;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace MMO.Tests
 {
@@ -52,8 +55,18 @@ namespace MMO.Tests
 
             Assert.AreEqual(ZoneRiskTier.Safe, nodes["tutorial"].Tier);
             Assert.AreEqual(ZoneRiskTier.Safe, nodes["safe-zone"].Tier);
-            Assert.AreEqual(ZoneRiskTier.Red, nodes["wilderness"].Tier);
+            Assert.AreEqual(ZoneRiskTier.Yellow, nodes["wilderness"].Tier);
             Assert.AreEqual(ZoneRiskTier.Safe, nodes["test-zone"].Tier);
+        }
+
+        [Test]
+        public void ShippedAsset_BuiltZoneTiersMatchTheirScenes()
+        {
+            foreach (var node in Shipped().Nodes.Where(node => node != null && node.HasScene))
+            {
+                Assert.AreEqual(node.Tier, RiskTierOf(node.SceneName),
+                    $"'{node.ZoneId}' is {node.Tier} on the map but its scene declares another tier.");
+            }
         }
 
         [Test]
@@ -99,6 +112,24 @@ namespace MMO.Tests
                 .Select(node => node.ZoneId).ToArray();
 
             CollectionAssert.AreEquivalent(new[] { "pass-1" }, chokePoints);
+        }
+
+        private static ZoneRiskTier RiskTierOf(string scenePath)
+        {
+            Scene scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+            try
+            {
+                GameObject root = scene.GetRootGameObjects()
+                    .First(rootObject => rootObject.name == ZoneSceneBaker.ZoneRootName);
+                Transform config = root.transform.Find(ZoneSceneBaker.RiskConfigName);
+
+                Assert.IsNotNull(config, $"'{scenePath}' declares no zone-root risk tier.");
+                return config.GetComponent<ZoneRiskConfig>().Tier;
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
         }
     }
 }

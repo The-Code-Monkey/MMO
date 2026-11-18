@@ -26,7 +26,7 @@ Four zone scenes exist today, all built by `ZoneSceneBaker` (`Assets/Editor/Zone
 |---|---|---|---|
 | `tutorial` | `Tutorial.unity` | 7772 | `Safe` |
 | `safe-zone` | `SafeZone.unity` | 7770 | `Safe` |
-| `wilderness` | `Wilderness.unity` | 7771 | `Red` |
+| `wilderness` | `Wilderness.unity` | 7771 | `Yellow` |
 | `test-zone` | `TestZone.unity` | 7773 | `Safe` |
 
 All four share one 40 m graybox coordinate space, so a transfer can keep the player's relative
@@ -64,7 +64,7 @@ Built today — one connected group
         tutorial
            │
            ▼
-        safe-zone ◄────► wilderness (Red)
+        safe-zone ◄────► wilderness (Yellow)
            ▲
            │
            └──────►  test-zone
@@ -94,6 +94,24 @@ Planned — a separate group, not yet linked to the built one
 
 The two groups have **no portal between them yet**. A player cannot walk from the capital into the
 planned cluster, and that is intentional: the cluster is a design in progress, not content.
+
+The planned cluster's tiers are settled:
+
+| Zone | Tier | Doors | Role |
+|---|---|---|---|
+| `yellow-1` | `Yellow` | 2 | low-tier hub at the cluster's mouth |
+| `yellow-2` | `Yellow` | 2 | second hub, the first step toward the ring |
+| `red-1` | `Red` | 3 | contested gate to the pass |
+| `red-2` | `Red` | 2 | contested side road |
+| `black-1` | `Black` | 1 | full loot, one door |
+| `black-2` | `Black` | 1 | full loot, one door |
+| `pass-1` | `Black` | 3 | the choke: the only door to either black zone |
+
+"Doors" is the number of portals in `Neighbours`. The built group settles as `Safe` hubs
+(`tutorial`, `safe-zone`, `test-zone`) with the `wilderness` as a `Yellow` hunting ground off the
+capital. A capital road must never open straight onto `Red`, so the `Red`/`Black` ladder belongs to
+the planned cluster; the `wilderness` keeps two `Red` hazard volumes, because `Red` next to
+`Yellow` is a legal pair and the pits are where the `Red` death rule is exercised today.
 
 The map implies **11 zones total** — the four built scenes and seven planned zones. Seven new zone
 scenes will eventually exist; none is baked yet.
@@ -161,10 +179,12 @@ Each node carries:
 | `Neighbours` | The other zones it shares a portal with, listed on both sides. |
 | `IsChokePoint` | True for the narrow zones of section 4b. |
 
-The four built zones are recorded with the tier their scenes actually carry, but with their tiers
-marked unsettled: the capital currently opens straight onto `wilderness` (`Red`), which the matrix
-in section 4a forbids. Making that geography legal is a design task, tracked with the planned
-cluster's tier assignment in #249.
+Every node's tier is settled: `TierAssigned` is true on all eleven, so the matrix and the choke
+rules apply to the whole map and both rules report neither errors nor warnings. The four built zones
+are recorded with the tier their scenes actually carry — `Safe` apart from the `Yellow`
+`wilderness`, which keeps its two `Red` hazard volumes. A test opens each built scene and compares
+its zone-root `ZoneRiskConfig` to the node, so the asset, the chapter and the scenes cannot drift
+apart silently.
 
 ## 6. What checks the map
 
@@ -201,7 +221,5 @@ data cannot drift apart.
 - **One-way links.** Only two-way portals are modelled. A one-way teleport will need an explicit
   direction on the edge and a relaxation of the symmetry rule.
 - **PvP rules.** The flag lifecycle and per-tier PvP enforcement are specified in #250.
-- **Tier assignment for both groups.** #249 settles the planned cluster and the built group's
-  capital-to-wilderness clash.
 - **Terrain and biomes** (#76) and **population** (#78) decide what the zones look like and contain.
 - **Lore and faction identity** (#75) explain why the geography is shaped this way.

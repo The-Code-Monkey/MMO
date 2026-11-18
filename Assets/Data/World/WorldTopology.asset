@@ -16,14 +16,14 @@ MonoBehaviour:
   - _zoneId: tutorial
     _sceneName: Assets/Scenes/Tutorial.unity
     _tier: 0
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - safe-zone
     _isChokePoint: 0
   - _zoneId: safe-zone
     _sceneName: Assets/Scenes/SafeZone.unity
     _tier: 0
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - tutorial
     - wilderness
@@ -31,22 +31,22 @@ MonoBehaviour:
     _isChokePoint: 0
   - _zoneId: wilderness
     _sceneName: Assets/Scenes/Wilderness.unity
-    _tier: 2
-    _tierAssigned: 0
+    _tier: 1
+    _tierAssigned: 1
     _neighbours:
     - safe-zone
     _isChokePoint: 0
   - _zoneId: test-zone
     _sceneName: Assets/Scenes/TestZone.unity
     _tier: 0
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - safe-zone
     _isChokePoint: 0
   - _zoneId: yellow-1
     _sceneName: 
     _tier: 1
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - yellow-2
     - red-2
@@ -54,7 +54,7 @@ MonoBehaviour:
   - _zoneId: yellow-2
     _sceneName: 
     _tier: 1
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - yellow-1
     - red-1
@@ -62,7 +62,7 @@ MonoBehaviour:
   - _zoneId: red-1
     _sceneName: 
     _tier: 2
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - yellow-2
     - red-2
@@ -71,7 +71,7 @@ MonoBehaviour:
   - _zoneId: red-2
     _sceneName: 
     _tier: 2
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - yellow-1
     - red-1
@@ -79,21 +79,21 @@ MonoBehaviour:
   - _zoneId: black-1
     _sceneName: 
     _tier: 3
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - pass-1
     _isChokePoint: 0
   - _zoneId: black-2
     _sceneName: 
     _tier: 3
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - pass-1
     _isChokePoint: 0
   - _zoneId: pass-1
     _sceneName: 
     _tier: 3
-    _tierAssigned: 0
+    _tierAssigned: 1
     _neighbours:
     - red-1
     - black-1

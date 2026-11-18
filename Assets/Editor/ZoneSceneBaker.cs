@@ -171,7 +171,7 @@ namespace MMO.Editor
         [MenuItem("Tools/MMO/Build Wilderness Zone")]
         public static void BuildWilderness() => BuildScene(
             scenePath: WildernessZonePath,
-            risk: ZoneRiskTier.Red,
+            risk: ZoneRiskTier.Yellow,
             port: WildernessZonePort,
             serverId: WildernessServerId,
             templateId: "wilderness",
