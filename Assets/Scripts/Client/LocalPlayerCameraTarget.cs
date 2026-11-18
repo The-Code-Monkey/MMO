@@ -39,6 +39,13 @@ namespace MMO.Client
 
         public override void OnStopNetwork() => UnbindCamera();
 
+        /// <summary>
+        /// True once this copy bound the rig. Only the copy that bound it may clear it: every
+        /// client holds every avatar, and a remote avatar's teardown must not take the local
+        /// player's camera with it.
+        /// </summary>
+        private bool _boundToCamera;
+
         private void BindCamera()
         {
             // A dedicated server is not a client: it owns no local player and has no screen, so it
@@ -47,11 +54,16 @@ namespace MMO.Client
                 return;
 
             ThirdPersonCameraRig.Instance?.SetLocalTarget(transform);
+            _boundToCamera = true;
         }
 
-        private static void UnbindCamera()
+        private void UnbindCamera()
         {
-            ThirdPersonCameraRig.Instance?.ClearLocalTarget();
+            if (!_boundToCamera)
+                return;
+
+            _boundToCamera = false;
+            ThirdPersonCameraRig.Instance?.ClearLocalTarget(transform);
         }
     }
 }

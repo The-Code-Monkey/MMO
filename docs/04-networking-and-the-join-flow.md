@@ -238,10 +238,9 @@ movement intent, `PlayerWorldPointer` turns a world click into an interaction in
 `NetworkTransform` (owner-authoritative **off**) ships the
 server's result to clients. The camera deliberately does **not** travel with the prefab — the scene's
 single `ThirdPersonCameraRig` is bound to whichever player this client **owns**, through
-`LocalPlayerCameraTarget`. A tag search is only the fallback, but it is not confined to a scene with no
-local player: `OnStopNetwork` is not owner-guarded, so any player's teardown — a remote avatar leaving
-the zone — clears the shared binding, and the rig then follows whatever the tag search finds on this
-client until a local player binds again (see [09](09-editor-tooling-and-scenes.md)).
+`LocalPlayerCameraTarget`. A tag search remains only the fallback for a scene with no local player
+yet: unbinding is owner-scoped, so a remote avatar's teardown cannot take the camera with it (see
+[09](09-editor-tooling-and-scenes.md)).
 `PlayerPrefabFactory.Attach` (`:187`) installs a FishNet `PlayerSpawner`, which is what actually
 instantiates the player when the gate admits a connection.
 

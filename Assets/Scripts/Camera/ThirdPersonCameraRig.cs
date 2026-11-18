@@ -204,15 +204,23 @@ namespace MMO.Client
             _avatarHidden = false;
         }
 
-        /// <summary>Clears a local binding, e.g. when this client stops owning a player.</summary>
-        public void ClearLocalTarget()
+        /// <summary>
+        /// Clears the binding, but only for the player it is actually bound to. A copy this client
+        /// does not own has no business taking the camera away from the one it does.
+        /// </summary>
+        /// <returns>True when the caller owned the binding and it was cleared.</returns>
+        public bool ClearLocalTarget(Transform player)
         {
+            if (player == null || player != _localTarget)
+                return false;
+
             if (target == _localTarget)
                 target = null;
 
             _localTarget = null;
             _avatarRenderers = null;
             _avatarHidden = false;
+            return true;
         }
 
         private void HandleOrbit()
