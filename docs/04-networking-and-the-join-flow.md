@@ -237,7 +237,7 @@ and [14](14-server-authority-hardening.md)); `PlayerMoveInput` streams the owner
 movement intent, `PlayerWorldPointer` turns a world click into an interaction intent, and the
 `NetworkTransform` (owner-authoritative **off**) ships the
 server's result to clients. The camera deliberately does **not** travel with the prefab — the scene's
-single `PersistentCameraController` rig is bound to whichever player this client **owns**, through
+single `ThirdPersonCameraRig` is bound to whichever player this client **owns**, through
 `LocalPlayerCameraTarget`. A tag search is only the fallback, but it is not confined to a scene with no
 local player: `OnStopNetwork` is not owner-guarded, so any player's teardown — a remote avatar leaving
 the zone — clears the shared binding, and the rig then follows whatever the tag search finds on this

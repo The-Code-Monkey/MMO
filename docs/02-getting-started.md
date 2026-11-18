@@ -22,7 +22,7 @@ From `Packages/manifest.json`:
 |---|---|---|
 | `com.firstgeargames.fishnet` | `4.7.3` (Git) | The networking library (SyncVars, RPCs, transports, spawners). |
 | `com.unity.render-pipelines.universal` | `17.6.0` | URP, the render pipeline the scenes use. |
-| `com.unity.cinemachine` | `6.6.0` | Present but unused by shipped code; the camera is the scene's `PersistentCameraController`. |
+| `com.unity.cinemachine` | `6.6.0` | Present but unused by shipped code; the camera is the scene's `ThirdPersonCameraRig`. |
 | `com.unity.inputsystem` | `1.20.0` | New input system (the UI event system prefers it). |
 | `com.unity.ugui` | `2.6.0` | The UI toolkit used by the code-built screens. |
 | `com.unity.test-framework` | `1.8.0` | Unity Test Framework + NUnit, which run the test suites. |

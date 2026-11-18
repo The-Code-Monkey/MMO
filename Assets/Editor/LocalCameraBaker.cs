@@ -1,3 +1,4 @@
+using MMO.Client;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -7,7 +8,7 @@ namespace MMO.Editor
 {
     /// <summary>
     /// Puts a copy of <c>Assets/Prefabs/Camera/CameraRig.prefab</c> — the scene's single
-    /// <see cref="PersistentCameraController"/> and its child camera — into the active scene so it
+    /// <see cref="ThirdPersonCameraRig"/> and its child camera — into the active scene so it
     /// can be authored and tuned in the inspector, the same way <see cref="PlayerPrefabBaker"/>
     /// makes the player object a reusable asset.
     ///
@@ -36,7 +37,7 @@ namespace MMO.Editor
         [MenuItem(MenuPath)]
         public static void CreateCameraRigInScene()
         {
-            PersistentCameraController rig = EnsureInActiveScene();
+            ThirdPersonCameraRig rig = EnsureInActiveScene();
             if (rig == null)
                 return;
 
@@ -48,11 +49,11 @@ namespace MMO.Editor
         /// The scene's camera rig, creating one if the scene has none.
         /// Idempotent: a second call reuses the existing rig rather than adding a second camera.
         /// </summary>
-        public static PersistentCameraController EnsureInActiveScene()
+        public static ThirdPersonCameraRig EnsureInActiveScene()
         {
             Scene scene = SceneManager.GetActiveScene();
 
-            if (TryFind(scene, out PersistentCameraController existing))
+            if (TryFind(scene, out ThirdPersonCameraRig existing))
                 return existing;
 
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabAssetPath);
@@ -74,25 +75,25 @@ namespace MMO.Editor
             Undo.RegisterCreatedObjectUndo(rig, "Create Camera Rig");
             EditorSceneManager.MarkSceneDirty(scene);
 
-            return rig.GetComponent<PersistentCameraController>();
+            return rig.GetComponent<ThirdPersonCameraRig>();
         }
 
         /// <summary>
         /// True when the scene has a root GameObject named "CameraRig" carrying a
-        /// <see cref="PersistentCameraController"/>.
+        /// <see cref="ThirdPersonCameraRig"/>.
         /// </summary>
         /// <remarks>
         /// Name as well as component, mirroring <see cref="NetworkManagerSceneBaker.TryFind"/>: the
         /// rig has to be recognisable in the hierarchy, not merely present.
         /// </remarks>
-        public static bool TryFind(Scene scene, out PersistentCameraController rig)
+        public static bool TryFind(Scene scene, out ThirdPersonCameraRig rig)
         {
             foreach (GameObject root in scene.GetRootGameObjects())
             {
                 if (root.name != GameObjectName)
                     continue;
 
-                PersistentCameraController found = root.GetComponent<PersistentCameraController>();
+                ThirdPersonCameraRig found = root.GetComponent<ThirdPersonCameraRig>();
                 if (found != null)
                 {
                     rig = found;
@@ -115,10 +116,10 @@ namespace MMO.Editor
         /// <returns>False with a human readable <paramref name="error"/> when it is missing.</returns>
         public static bool Validate(Scene scene, out string error)
         {
-            if (!TryFind(scene, out PersistentCameraController rig))
+            if (!TryFind(scene, out ThirdPersonCameraRig rig))
             {
                 error = $"Scene '{scene.name}' has no GameObject named " +
-                        $"\"{GameObjectName}\" with a PersistentCameraController. " +
+                        $"\"{GameObjectName}\" with a ThirdPersonCameraRig. " +
                         $"Run '{MenuPath}' to author one.";
                 return false;
             }

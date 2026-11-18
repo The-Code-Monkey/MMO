@@ -4,6 +4,7 @@ using System.Linq;
 using FishNet.Component.Spawning;
 using FishNet.Managing;
 using FishNet.Transporting.Tugboat;
+using MMO.Client;
 using MMO.Editor;
 using MMO.Gameplay;
 using MMO.Net;
@@ -142,7 +143,7 @@ namespace MMO.Tests
                     Assert.IsFalse(
                         root.name == "LocalCameraRig"
                         || (root.name == LocalCameraBaker.GameObjectName
-                            && root.GetComponent<PersistentCameraController>() != null),
+                            && root.GetComponent<ThirdPersonCameraRig>() != null),
                         $"Scene '{scene.name}' must not carry a '{root.name}'; the zone scenes own " +
                         "the camera.");
                 }
