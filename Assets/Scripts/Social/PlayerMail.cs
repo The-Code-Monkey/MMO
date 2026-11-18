@@ -161,7 +161,19 @@ namespace MMO.Social
             if (hub == null || sender == null)
                 return;
 
-            MailInbox inbox = await hub.LoadInboxAsync(_accountId);
+            MailInbox inbox;
+            try
+            {
+                inbox = await hub.LoadInboxAsync(_accountId);
+            }
+            catch (Exception e)
+            {
+                // Without an answer the window would sit on its last snapshot showing nothing.
+                Debug.LogError($"[PlayerMail] Inbox load failed: {e.Message}");
+                TargetRpcRule(sender, (int)MailRule.BackendUnavailable);
+                return;
+            }
+
             TargetRpcInbox(sender, JsonUtility.ToJson(inbox ?? new MailInbox { AccountId = _accountId }));
         }
 

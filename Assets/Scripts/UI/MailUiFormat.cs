@@ -9,7 +9,7 @@ namespace MMO.UI
     public static class MailUiFormat
     {
         /// <summary>Messages still unread; claimed and expired messages do not count.</summary>
-        public static int UnreadCount(MailInbox inbox)
+        public static int UnreadCount(MailInbox inbox, long nowTicks)
         {
             if (inbox?.Messages == null)
                 return 0;
@@ -17,8 +17,13 @@ namespace MMO.UI
             int count = 0;
             for (int i = 0; i < inbox.Messages.Count; i++)
             {
-                if (inbox.Messages[i] != null && inbox.Messages[i].State == MailState.Unread)
+                MailMessage message = inbox.Messages[i];
+                if (message != null
+                    && message.State == MailState.Unread
+                    && !MailRules.IsExpired(message, nowTicks))
+                {
                     count++;
+                }
             }
 
             return count;
@@ -38,6 +43,23 @@ namespace MMO.UI
             }
 
             return count;
+        }
+
+        /// <summary>The player-facing text for a refusal the server answered with.</summary>
+        public static string RuleMessage(MailRule rule)
+        {
+            return rule switch
+            {
+                MailRule.InboxFull => "That mailbox is full.",
+                MailRule.BagFull => "Your bags are full. Make room before claiming.",
+                MailRule.NotClaimable => "That message cannot be claimed.",
+                MailRule.RateLimited => "You are sending mail too quickly.",
+                MailRule.InvalidRecipient => "Check the recipient, subject and message.",
+                MailRule.NotFound => "That message or recipient no longer exists.",
+                MailRule.Conflict => "The mailbox changed. Try again.",
+                MailRule.BackendUnavailable => "The mail service is unavailable. Try again shortly.",
+                _ => string.Empty,
+            };
         }
 
         /// <summary>"Mailbox" or "Mailbox (3)" — the HUD's unread badge.</summary>

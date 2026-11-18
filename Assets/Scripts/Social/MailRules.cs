@@ -48,6 +48,15 @@ namespace MMO.Social
             => message != null && message.State != MailState.Claimed && !IsExpired(message, nowTicks);
 
         /// <summary>
+        /// True when the message carries something to claim. Text-only player mail has nothing to
+        /// collect, so an automatic claim must leave it unread until the player opens it.
+        /// </summary>
+        public static bool HasRewards(MailMessage message)
+            => message != null
+               && (message.Currency > 0
+                   || (message.Attachments != null && message.Attachments.Count > 0));
+
+        /// <summary>
         /// The player-to-player gate, pure and clock-injected: a non-empty subject and body, a
         /// different recipient, and no send inside the cooldown. Inbox capacity is checked by the
         /// delivery path once the recipient's inbox is loaded, so the rule here does not need it.

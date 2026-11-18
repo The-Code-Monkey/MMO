@@ -124,8 +124,17 @@ namespace MMO.Client
                 _hud.TradeFrame.OpenNearest();
 
             // The mailbox window hides itself while closed, so the persistent HUD owns its key.
-            if (_hud.MailFrame != null && Input.GetKeyDown(_hud.MailFrame.OpenKey))
-                _hud.MailFrame.Toggle();
+            // Read through ClientInput like every other action, or typing "m" in chat would open
+            // the mailbox and the binding could not be rebound.
+            if (_hud.MailFrame != null)
+            {
+                bool mailPressed = _input != null
+                    ? _input.WasPressed(GameAction.Mail)
+                    : Input.GetKeyDown(_hud.MailFrame.OpenKey);
+
+                if (mailPressed)
+                    _hud.MailFrame.Toggle();
+            }
         }
 
         /// <summary>

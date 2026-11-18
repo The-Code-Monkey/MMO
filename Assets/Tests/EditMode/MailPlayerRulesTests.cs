@@ -61,8 +61,41 @@ namespace MMO.Tests
                 NewMail(MailState.Unread),
                 NewMail(MailState.Claimed));
 
-            Assert.AreEqual(2, MailUiFormat.UnreadCount(inbox));
-            Assert.AreEqual(0, MailUiFormat.UnreadCount(null));
+            Assert.AreEqual(2, MailUiFormat.UnreadCount(inbox, NowTicks));
+            Assert.AreEqual(0, MailUiFormat.UnreadCount(null, NowTicks));
+        }
+
+        [Test]
+        public void UnreadCount_IgnoresExpiredMessages()
+        {
+            MailInbox inbox = Inbox(
+                NewMail(MailState.Unread),
+                NewMail(MailState.Unread, expiresAtTicks: NowTicks - 1));
+
+            Assert.AreEqual(1, MailUiFormat.UnreadCount(inbox, NowTicks),
+                "An expired message cannot be opened, so it must not badge the mailbox.");
+        }
+
+        [Test]
+        public void HasRewards_DistinguishesRewardMailFromTextOnlyMail()
+        {
+            Assert.IsFalse(MailRules.HasRewards(NewMail(MailState.Unread)),
+                "A plain message has nothing to claim.");
+
+            MailMessage withGold = NewMail(MailState.Unread);
+            withGold.Currency = 25;
+            Assert.IsTrue(MailRules.HasRewards(withGold));
+
+            MailMessage withItem = NewMail(MailState.Unread);
+            withItem.Attachments.Add(new MMO.Persistence.ItemSaveData());
+            Assert.IsTrue(MailRules.HasRewards(withItem));
+        }
+
+        [Test]
+        public void RuleMessage_ExplainsARefusal()
+        {
+            StringAssert.Contains("bags", MailUiFormat.RuleMessage(MailRule.BagFull).ToLowerInvariant());
+            Assert.AreEqual(string.Empty, MailUiFormat.RuleMessage(MailRule.Ok));
         }
 
         [Test]

@@ -153,13 +153,6 @@ namespace MMO.Net
             go.AddComponent<PlayerFriends>();
             go.AddComponent<PlayerRaid>();
 
-            // The mailbox shell: owner-checked read/claim/send intents over the hub's MailService.
-            go.AddComponent<PlayerMail>();
-
-            // Player-facing moderation: report intents and the notice delivered at kick/warn time.
-            // It resolves the same join-cache account id and talks to the backend through the hub.
-            go.AddComponent<MMO.Moderation.PlayerModeration>();
-
             // Direct trade and territory capture: both resolve the same join-cache account id and
             // sit after the bag they read.
             go.AddComponent<PlayerTrade>();
@@ -207,6 +200,16 @@ namespace MMO.Net
             // Zone-gate prompt and E intent. Appended after the bank for the same reason: its
             // ServerRpc index must not shift any behaviour the baked prefab already carries.
             go.AddComponent<PlayerZoneTransfer>();
+
+            // The mailbox shell: owner-checked read/claim/send intents over the hub's MailService.
+            // Appended rather than sat with the other social surfaces: it landed after the prefab
+            // was baked, and inserting it mid-list shifted every later behaviour's index.
+            go.AddComponent<PlayerMail>();
+
+            // Player-facing moderation: report intents and the notice delivered at kick/warn time.
+            // It resolves the same join-cache account id and talks to the backend through the hub.
+            // Appended for the same reason as the mailbox.
+            go.AddComponent<MMO.Moderation.PlayerModeration>();
 
             // The material swap is shared with the other primitive factories, so a player and a
             // dummy never end up with different pipeline handling.

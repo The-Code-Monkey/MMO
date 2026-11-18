@@ -32,7 +32,8 @@ namespace MMO.UI
             Text title = CreateLabel(frame.transform, "Title", 300f, 26f, new Vector2(16f, -8f), 16);
             title.text = MailUiFormat.Title(0);
 
-            Button close = CreateButton(frame.transform, "Close", 64f, 26f, new Vector2(-16f, -8f), "X");
+            Button close = CreateButton(
+                frame.transform, "Close", 64f, 26f, new Vector2(FrameWidth - 16f - 64f, -8f), "X");
 
             // Message list: a masked, scrolling column of code-built rows.
             GameObject scrollObject = CreateRect(
@@ -79,10 +80,48 @@ namespace MMO.UI
 
             Text subject = CreateLabel(detail.transform, "Subject", 320f, 26f, new Vector2(8f, -6f), 16);
             Text meta = CreateLabel(detail.transform, "Meta", 320f, 54f, new Vector2(8f, -34f), 12);
-            Text body = CreateLabel(detail.transform, "Body", 320f, 240f, new Vector2(8f, -94f), 13);
+            // Body: a masked, scrolling pane. A fixed Text truncated long messages with no way
+            // to reach the end of them.
+            GameObject bodyScrollObject = CreateRect(
+                detail.transform, "BodyScroll", new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(8f, -94f), new Vector2(320f, 240f));
+
+            // The scroll pane needs a raycast target of its own or a drag falls through to the
+            // detail panel and never scrolls; a clear image is enough.
+            bodyScrollObject.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0f);
+
+            GameObject bodyViewportObject = CreateStretch(bodyScrollObject.transform, "Viewport");
+            RectTransform bodyViewport = (RectTransform)bodyViewportObject.transform;
+            bodyViewportObject.AddComponent<RectMask2D>();
+
+            GameObject bodyContentObject = new GameObject(
+                "Content", typeof(RectTransform), typeof(ContentSizeFitter));
+            RectTransform bodyContent = (RectTransform)bodyContentObject.transform;
+            bodyContent.SetParent(bodyViewport, false);
+            bodyContent.anchorMin = new Vector2(0f, 1f);
+            bodyContent.anchorMax = new Vector2(1f, 1f);
+            bodyContent.pivot = new Vector2(0.5f, 1f);
+            bodyContent.anchoredPosition = Vector2.zero;
+            bodyContent.sizeDelta = Vector2.zero;
+
+            ContentSizeFitter bodyFitter = bodyContentObject.GetComponent<ContentSizeFitter>();
+            bodyFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            Text body = bodyContentObject.AddComponent<Text>();
+            body.font = UIFont.Default;
+            body.fontSize = 13;
             body.alignment = TextAnchor.UpperLeft;
+            body.color = Color.white;
+            body.raycastTarget = false;
             body.horizontalOverflow = HorizontalWrapMode.Wrap;
-            body.verticalOverflow = VerticalWrapMode.Truncate;
+            body.verticalOverflow = VerticalWrapMode.Overflow;
+
+            ScrollRect bodyScroll = bodyScrollObject.AddComponent<ScrollRect>();
+            bodyScroll.viewport = bodyViewport;
+            bodyScroll.content = bodyContent;
+            bodyScroll.horizontal = false;
+            bodyScroll.vertical = true;
+            bodyScroll.movementType = ScrollRect.MovementType.Clamped;
 
             Button claim = CreateButton(
                 detail.transform, "Claim", 140f, 30f, new Vector2(8f, -342f), "Claim");
@@ -90,8 +129,11 @@ namespace MMO.UI
             Button claimAll = CreateButton(
                 frame.transform, "ClaimAll", 140f, 30f, new Vector2(16f, -432f), "Claim All");
 
+            Text status = CreateLabel(frame.transform, "Status", 440f, 30f, new Vector2(170f, -432f), 12);
+            status.color = new Color(1f, 0.65f, 0.6f);
+
             MailFrameView view = frame.AddComponent<MailFrameView>();
-            view.SetHosts(title, content, subject, meta, body, claim, claimAll, close);
+            view.SetHosts(title, content, subject, meta, body, status, claim, claimAll, close);
             view.Conceal();
             return view;
         }
