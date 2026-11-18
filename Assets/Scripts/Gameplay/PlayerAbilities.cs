@@ -60,6 +60,7 @@ namespace MMO.Gameplay
         private PlayerStats _stats;
         private IServerSight _sight;
         private AuraController _auras;
+        private PlayerPvP _pvp;
         private PlayerInventory _inventory;
         private readonly List<PlayerStats> _playerBuffer = new();
         private readonly List<NPCStats> _npcBuffer = new();
@@ -263,6 +264,11 @@ namespace MMO.Gameplay
             Vector3 eye = transform.position + Vector3.up * PhysicsSight.DefaultEyeHeight;
             victims = AbilityEffects.SelectVisibleVictims(eye, victims, Sight);
 
+            // PvP gate: a safe zone refuses every player victim, a yellow zone refuses anyone
+            // who has not opted in, and the forced tiers allow everyone. Pure verdict, applied
+            // before any damage exists to take back.
+            victims = SelectPvPVictims(victims);
+
             int power = AbilityEffects.ComputePower(ability);
             for (int i = 0; i < victims.Count; i++)
                 victims[i].TakeDamage(power);
@@ -298,6 +304,9 @@ namespace MMO.Gameplay
             List<PlayerStats> players = AbilityEffects.SelectVictims(
                 origin, ability.EffectRadius, caster, _playerBuffer);
             players = AbilityEffects.SelectVisibleVictims(eye, players, Sight);
+
+            // The same gate as a direct hit: an aura is not a way around an unflagged target.
+            players = SelectPvPVictims(players);
 
             for (int i = 0; i < players.Count; i++)
             {
@@ -351,6 +360,34 @@ namespace MMO.Gameplay
         }
 
         private AuraController Auras => _auras != null ? _auras : _auras = GetComponent<AuraController>();
+
+        private PlayerPvP PvP => _pvp != null ? _pvp : _pvp = GetComponent<PlayerPvP>();
+
+        /// <summary>
+        /// Drops every player this caster may not harm right now, and lets
+        /// <see cref="PlayerPvP.TryEngage"/> apply the consent rules to the rest — in a yellow
+        /// zone the first legal hit flags an unflagged attacker.
+        ///
+        /// A victim with no <see cref="PlayerPvP"/> component is not a real player (a bare
+        /// <see cref="PlayerStats"/> in a test), so it keeps the pre-PvP behaviour rather than
+        /// becoming silently immune.
+        /// </summary>
+        private List<PlayerStats> SelectPvPVictims(List<PlayerStats> victims)
+        {
+            PlayerPvP attacker = PvP;
+            for (int i = victims.Count - 1; i >= 0; i--)
+            {
+                PlayerStats victim = victims[i];
+                PlayerPvP target = victim != null ? victim.GetComponent<PlayerPvP>() : null;
+                if (attacker == null || target == null)
+                    continue;
+
+                if (!attacker.TryEngage(target, victim.transform.position))
+                    victims.RemoveAt(i);
+            }
+
+            return victims;
+        }
 
         private PlayerInventory Inventory => _inventory != null ? _inventory : _inventory = GetComponent<PlayerInventory>();
 

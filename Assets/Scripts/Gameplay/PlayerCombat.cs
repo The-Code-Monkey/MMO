@@ -16,9 +16,10 @@ namespace MMO.Gameplay
     /// clear line of sight (see <see cref="SightRules"/> / <see cref="IServerSight"/>), so a shot
     /// cannot pass through a wall.
     ///
-    /// <see cref="Attack"/> understands the two damageable shapes this project owns: the
-    /// networked <see cref="NPCStats"/> every zone enemy carries, and the older
-    /// <see cref="TargetDummy"/> the combat tests and training dummy use.
+    /// <see cref="Attack"/> understands the three damageable shapes this project owns: the
+    /// networked <see cref="NPCStats"/> every zone enemy carries, the older
+    /// <see cref="TargetDummy"/> the combat tests and training dummy use, and another player —
+    /// the one shape whose legality depends on the zone tier and both players' PvP flags.
     /// </summary>
     public sealed class PlayerCombat : NetworkBehaviour
     {
@@ -35,6 +36,7 @@ namespace MMO.Gameplay
         [SerializeField] private float _attackHalfAngleDegrees = 60f;
 
         private IServerSight _sight;
+        private PlayerPvP _pvp;
 
         /// <summary>
         /// The line-of-sight check the server consults before a hit lands. Defaults to a real
@@ -117,6 +119,7 @@ namespace MMO.Gameplay
 
             NPCStats npc = null;
             TargetDummy dummy = null;
+            PlayerStats player = null;
             Vector3 targetPosition;
             GameObject targetObject;
 
@@ -129,6 +132,11 @@ namespace MMO.Gameplay
             {
                 targetPosition = dummy.transform.position;
                 targetObject = dummy.gameObject;
+            }
+            else if (target.TryGetComponent(out player) && !IsSelf(player))
+            {
+                targetPosition = player.transform.position;
+                targetObject = player.gameObject;
             }
             else
             {
@@ -156,10 +164,32 @@ namespace MMO.Gameplay
                 return;
 
             if (npc != null)
+            {
                 npc.ApplyDamage(damage, inventory);
+            }
+            else if (player != null)
+            {
+                // Player-versus-player is a zone-tier decision, not a client one: the server
+                // asks the attacker's own flag state and the target's before the hit exists.
+                PlayerPvP attacker = PvP;
+                PlayerPvP targetPvP = player.GetComponent<PlayerPvP>();
+                if (attacker == null || targetPvP == null)
+                    return;
+
+                if (!attacker.TryEngage(targetPvP, player.transform.position))
+                    return;
+
+                player.TakeDamage(damage);
+            }
             else
+            {
                 dummy.TakeDamage(damage);
+            }
         }
+
+        private PlayerPvP PvP => _pvp != null ? _pvp : _pvp = GetComponent<PlayerPvP>();
+
+        private bool IsSelf(PlayerStats candidate) => candidate != null && candidate.gameObject == gameObject;
 
         /// <summary>
         /// The whole visibility verdict in one pure function: in range, inside the facing cone and

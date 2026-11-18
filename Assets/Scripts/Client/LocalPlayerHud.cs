@@ -42,6 +42,7 @@ namespace MMO.Client
         private ClientInput _input;
         private ClientEffects _effects;
         private SettingsPanelView _settingsPanel;
+        private PvPFlagView _pvpFlag;
         private ModerationNoticeOverlay _moderationOverlay;
         private PlayerModeration _moderation;
 
@@ -174,6 +175,10 @@ namespace MMO.Client
             _input = ClientInput.Ensure(transform);
             _settingsPanel = SettingsPanelFactory.Create(_hud.transform, _input);
 
+            // The PvP toggle: painted from the replicated flag, never written locally.
+            _pvpFlag = PvPFlagView.Create(_hud.transform);
+            _pvpFlag.Bind(GetComponent<PlayerPvP>());
+
             // Ability clicks and hotkeys now aim at the mouse rather than the world origin.
             _hud.ActionBar?.SetCastTarget(AimPoint);
 
@@ -251,6 +256,8 @@ namespace MMO.Client
             _bankSource = null;
 
             _settingsPanel = null;
+            _pvpFlag?.Unbind();
+            _pvpFlag = null;
             _hud.MailFrame?.Unbind();
 
             if (_moderation != null)

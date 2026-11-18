@@ -19,6 +19,7 @@ namespace MMO.Persistence
             PlayerWallet wallet,
             PlayerBank bank,
             PlayerAchievements achievements,
+            PlayerPvP pvp,
             Vector3 position)
         {
             PlayerSaveRecord record = PlayerSaveMapper.Capture(
@@ -35,6 +36,7 @@ namespace MMO.Persistence
                 quests != null ? quests.Progress : null);
             wallet?.CaptureToSave(record);
             bank?.CaptureToSave(record);
+            pvp?.CaptureToSave(record);
             record.Achievements = achievements != null
                 ? achievements.CaptureSave()
                 : new System.Collections.Generic.List<AchievementSaveData>();

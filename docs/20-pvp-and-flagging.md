@@ -6,8 +6,9 @@ player opts in and out, and where the server decides. It deliberately does **not
 costs — those belong to the tier and are defined once in
 [05, section 1a](05-gameplay-stats-combat-abilities.md#1a-death-and-the-risk-tiers).
 
-Nothing in this chapter is implemented yet. It is the specification written for #250, and the
-follow-up work is split into #271–#274 (section 7), which name the seams they have to change.
+It was written as the specification for #250 and implemented in #271–#274 (section 7). Where the
+prose below describes a rule, `PvPRules` is the thing that decides it, and the sections name the
+seams it had to reach.
 
 ## 1. Two separate questions
 
@@ -97,16 +98,17 @@ The opt-out timestamp is equally server-owned: it is set when the server applies
 damage, and read when the server validates an opt-out request. A client that lies about its clock
 changes a countdown it draws, not a decision the server makes. The UI state is decoration.
 
-## 5. The three damage sites
+## 5. The damage sites
 
-Player damage reaches a victim in three places today. The spec names them so that a fourth one
-appearing later is a documentation bug, not a silent PvP hole.
+Player damage reaches a victim in four places. The spec names them so that a fifth one appearing
+later is a documentation bug, not a silent PvP hole.
 
 | Site | What it does today | What it must do |
 |---|---|---|
 | `PlayerCombat.Attack` (`Assets/Scripts/Gameplay/PlayerCombat.cs:105`) | resolves the target as `NPCStats` or `TargetDummy` and refuses anything else, so **players cannot be meleed at all** | gain a player branch, gated by `CanHarm` before any damage |
-| `PlayerAbilities.ApplyEffect` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:224`) | takes every `PlayerStats` from `AbilityEffects.SelectVictims` (`Assets/Scripts/Gameplay/AbilityEffects.cs:61`) and calls `TakeDamage` on each — **in every zone, including `Safe`** | filter the victim list through `CanHarm` / `AutoFlags` |
-| `PlayerAbilities.ApplyAura` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:287`) | the same selection for damage-over-time | the same filter, and the aura must not outlive the fight (cleared when the target leaves PvP validity) |
+| `PlayerAbilities.ApplyEffect` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:225`) | takes every `PlayerStats` from `AbilityEffects.SelectVictims` (`Assets/Scripts/Gameplay/AbilityEffects.cs:61`) and calls `TakeDamage` on each — **in every zone, including `Safe`** | filter the victim list through `CanHarm` / `AutoFlags` |
+| `PlayerAbilities.ApplyAura` (`Assets/Scripts/Gameplay/PlayerAbilities.cs:293`) | the same selection, then applies a damage-over-time aura | the same filter when the aura is applied |
+| `AuraController.ApplyTick` (`Assets/Scripts/Content/AuraController.cs:169`) | applies a damage-over-time tick to a player with no PvP check, so an aura outlives the fight that justified it | the same verdict per tick, skipped when the tier or the flags no longer allow it |
 
 `PlayerStats.TakeDamage` (`Assets/Scripts/Gameplay/PlayerStats.cs:149`) stays exactly as it is: a
 source-less `[Server]` mutator. It cannot be the gate because it does not know who is hitting whom,
@@ -116,36 +118,34 @@ rule in this chapter without anyone noticing.
 `EnemyBrain`, auras cast by NPCs and any other non-player damage source are not PvP and are not
 gated by any of this.
 
-## 6. What exists today
+## 6. How it is built
 
-Written down honestly, because the gap is the reason this chapter exists:
+- **The flag** — `PlayerPvP` (`Assets/Scripts/Gameplay/PlayerPvP.cs:27`) carries the `SyncVar<bool>`,
+  the opt-out timestamp, the replicated countdown and the one `ServerRpc` a client may call. It is
+  on the player prefab and is persisted by `PlayerSaveTrigger` through `PlayerSnapshotFactory` and
+  `PlayerSaveApplier`, which is what makes it survive a zone transfer and a reconnect.
+- **The verdict** — `PvPRules` is static, pure and has no engine types. `PlayerPvP.TryEngage` is the
+  only place that pairs it with a position, and every damage site calls it before damage lands.
+- **Area abilities** are gated in `PlayerAbilities` (`SelectPvPVictims`), melee in
+  `PlayerCombat.Attack`, and damage-over-time in `AuraController.CanHarmFromSource`. An unflagged
+  player in a yellow zone is now untouchable by all three.
+- **The HUD** — `PvPFlagView` (`Assets/Scripts/UI/PvPFlagView.cs:15`) is built in code, bound by
+  `LocalPlayerHud` to the player's own `IPvPSource`, and repaints only from replicated state.
+- **Nothing reads the flag for AI, loot or death.** `PlayerDeath` (`Assets/Scripts/Gameplay/PlayerDeath.cs:32`)
+  reads the tier and nothing else, which is correct and stays that way.
 
-- **No flag exists.** No code models it, and `PlayerSaveRecord` has no field for it.
-- **Area abilities are already unrestricted PvP.** A player standing in `safe-zone` can be
-  damaged by another player's ability today. That is the bug the enforcement ticket fixes; until it lands,
-  treat the ability path as PvP-enabled everywhere.
-- **Melee cannot reach players.** `PlayerCombat.Attack` silently returns unless the target carries
-  `NPCStats` or `TargetDummy`, so swords are safe zone-wide. The enforcement ticket adds the player
-  branch and the gate in the same change.
-- **Nothing reads the flag for AI, loot or death.** `PlayerDeath`
-  (`Assets/Scripts/Gameplay/PlayerDeath.cs:32`) reads the tier and nothing else, which is correct and
-  stays that way.
+## 7. How it was split
 
-## 7. Follow-up work
-
-The implementation is split so each ticket is testable on its own and none of them needs the others
-to compile:
+Four tickets, each landing with its own tests:
 
 1. **Pure rules** (#271) — `PvPRules` with `CanHarm`, `AutoFlags` and the opt-out cooldown
-   arithmetic, plus EditMode tests covering every tier and both flag states. No engine types.
-2. **Flag state and persistence** (#272) — `PlayerPvP` on the player prefab (server-written flag,
-   the opt-in/opt-out requests, the combat timestamp), a `bool` on `PlayerSaveRecord` with the
-   schema bump and the load/capture round trip, and a transfer test.
-3. **Enforcement** (#273) — the three sites in section 5, including auto-flagging an unflagged
-   attacker, with tests for a `Safe` zone refusing area damage and a `Yellow` zone refusing an
-   unflagged target.
-4. **HUD** (#274) — the toggle and its cooldown, built by the code-built UI factory pattern of
-   [08](08-ui-main-menu-and-hud.md), showing `forced` in `Red`/`Black` instead of a button.
+   arithmetic. No engine types; every tier and both flag states are pinned in EditMode.
+2. **Flag state and persistence** (#272) — `PlayerPvP` on the player prefab, the `PlayerSaveRecord`
+   field with the schema bump, and the load/capture round trip.
+3. **Enforcement** (#273) — the four sites in section 5, including auto-flagging an unflagged
+   attacker.
+4. **HUD** (#274) — the toggle and its countdown, built by the code-built UI pattern of
+   [08](08-ui-main-menu-and-hud.md), disabled and labelled `forced` in `Red`/`Black`.
 
 ## 8. Common tasks
 
@@ -153,7 +153,7 @@ to compile:
   row in section 2, and add the case to `CanHarm`. A tier without a PvP rule is a compile error by
   design; do not give it a default.
 - **Add a damage site** — add it to the table in section 5 in the same pull request, and gate it
-  before the damage lands. A new site that skips `CanHarm` is the failure mode this chapter exists
+  before the damage lands through `PlayerPvP.TryEngage`. A new site that skips `CanHarm` is the failure mode this chapter exists
   to prevent.
 - **Change the cooldown** — it lives in one place, the opt-out rule in #271. Do not duplicate the
   number into the HUD; the HUD asks the server.

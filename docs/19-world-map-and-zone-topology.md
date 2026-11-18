@@ -222,6 +222,6 @@ data cannot drift apart.
 - **One-way links.** Only two-way portals are modelled. A one-way teleport will need an explicit
   direction on the edge and a relaxation of the symmetry rule.
 - **PvP rules.** The flag lifecycle and per-tier PvP enforcement are specified in
-  [20](20-pvp-and-flagging.md); implementation is split into #271–#274.
+  [20](20-pvp-and-flagging.md) and implemented in #271–#274.
 - **Terrain and biomes** (#76) and **population** (#78) decide what the zones look like and contain.
 - **Lore and faction identity** (#75) explain why the geography is shaped this way.
