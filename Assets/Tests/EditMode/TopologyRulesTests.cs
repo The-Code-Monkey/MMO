@@ -255,8 +255,10 @@ namespace MMO.Tests
         public void FindViolations_UnassignedTier_IsSkippedByTheGeometryRules()
         {
             var world = TestWorldTopologies.Topology(
-                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe, neighbours: "yellow-1"),
-                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow, neighbours: "safe-zone"),
+                TestWorldTopologies.Node("safe-zone", ZoneRiskTier.Safe,
+                    neighbours: new[] { "yellow-1", "draft" }),
+                TestWorldTopologies.Node("yellow-1", ZoneRiskTier.Yellow,
+                    neighbours: new[] { "safe-zone", "draft" }),
                 TestWorldTopologies.Node("draft", ZoneRiskTier.Black, tierAssigned: false,
                     neighbours: new[] { "yellow-1", "safe-zone" }));
 
