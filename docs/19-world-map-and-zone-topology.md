@@ -50,8 +50,9 @@ repeated here.
 "Blue zone" is the genre term for what this project calls **`Yellow`**. There is no `Blue` tier and
 no resource-tier data in this chapter — resource rarity is a separate concern.
 
-The PvP column above is **design intent, not implemented**. No code models a PvP flag yet; the
-specification is tracked in #250 and listed under [Deferred](#deferred).
+The PvP column above is **design intent, not implemented**. Who may harm whom per tier, and how the
+PvP flag works, is specified in [20](20-pvp-and-flagging.md); the implementation is tracked in the
+tickets listed there. No code models the flag yet.
 
 ## 3. The macro map
 
@@ -220,6 +221,7 @@ data cannot drift apart.
   same fact exists in two places.
 - **One-way links.** Only two-way portals are modelled. A one-way teleport will need an explicit
   direction on the edge and a relaxation of the symmetry rule.
-- **PvP rules.** The flag lifecycle and per-tier PvP enforcement are specified in #250.
+- **PvP rules.** The flag lifecycle and per-tier PvP enforcement are specified in
+  [20](20-pvp-and-flagging.md); implementation is split into #271–#274.
 - **Terrain and biomes** (#76) and **population** (#78) decide what the zones look like and contain.
 - **Lore and faction identity** (#75) explain why the geography is shaped this way.

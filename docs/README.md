@@ -31,6 +31,7 @@ If you only have ten minutes, read [01-architecture-overview](01-architecture-ov
 | 17 | [Client performance and settings](17-client-performance-and-settings.md) | Pooled combat VFX, spatial audio with a voice cap, rebindable input, and local settings. |
 | 18 | [Player controls](18-player-controls.md) | WASD/QE/A-D and jump as server intent, the third-person orbit camera, world clicks and cursor capture. |
 | 19 | [World map and zone topology](19-world-map-and-zone-topology.md) | The macro map: risk tiers geographically, the tier adjacency matrix, choke points, and the topology asset the tools read. |
+| 20 | [PvP and the flag](20-pvp-and-flagging.md) | Who may harm whom per risk tier, the PvP flag lifecycle, and the server-side verdict every damage site consults. |
 
 ## The one idea to remember
 
