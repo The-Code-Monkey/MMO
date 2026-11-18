@@ -250,13 +250,13 @@ namespace MMO.Tests
             // NetworkBehaviour-index order, so every one of the project's behaviours belongs here —
             // in the order the factory adds them.
             NetworkBehaviour[] behaviours = nob.GetComponents<NetworkBehaviour>();
-            Assert.AreEqual(33, behaviours.Length,
+            Assert.AreEqual(34, behaviours.Length,
                 "The player carries stats, combat, inventory, ability slots, gathering, crafting, " +
-                "death, the wallet and auction house, quests, dialogue and achievements, the save " +
-                "trigger, starter items, the party/guild/chat/friend/raid/trade/territory surfaces, " +
-                "the server-authoritative mover, mount, auras, click-to-move, the NetworkTransform, " +
-                "the HUD, the personal bank, the zone-transfer intent, the mailbox, moderation " +
-                "and the walking driver.");
+                "death, the wallet and auction house, quests, dialogue and achievements, the PvP " +
+                "flag, the save trigger, starter items, the party/guild/chat/friend/raid/trade/" +
+                "territory surfaces, the server-authoritative mover, mount, auras, click-to-move, " +
+                "the NetworkTransform, the HUD, the personal bank, the zone-transfer intent, the " +
+                "mailbox, moderation and the walking driver.");
             Assert.IsInstanceOf<PlayerStats>(behaviours[0]);
             Assert.IsInstanceOf<PlayerCombat>(behaviours[1]);
             Assert.IsInstanceOf<PlayerInventory>(behaviours[2]);
@@ -270,34 +270,36 @@ namespace MMO.Tests
             Assert.IsInstanceOf<PlayerDialogue>(behaviours[10]);
             Assert.IsInstanceOf<MMO.Progression.PlayerAchievements>(behaviours[11],
                 "Achievements read the stats, quest log, bag and wallet added above them.");
-            Assert.IsInstanceOf<MMO.Persistence.PlayerSaveTrigger>(behaviours[12]);
-            Assert.IsInstanceOf<PlayerStartingItems>(behaviours[13]);
-            Assert.IsInstanceOf<MMO.Social.PlayerParty>(behaviours[14]);
-            Assert.IsInstanceOf<MMO.Social.PlayerGuild>(behaviours[15]);
-            Assert.IsInstanceOf<MMO.Social.PlayerChat>(behaviours[16]);
-            Assert.IsInstanceOf<MMO.Social.PlayerFriends>(behaviours[17]);
-            Assert.IsInstanceOf<MMO.Social.PlayerRaid>(behaviours[18]);
-            Assert.IsInstanceOf<MMO.Social.PlayerTrade>(behaviours[19]);
-            Assert.IsInstanceOf<MMO.Social.PlayerTerritory>(behaviours[20]);
-            Assert.IsInstanceOf<PlayerMover>(behaviours[21]);
-            Assert.IsInstanceOf<PlayerMount>(behaviours[22]);
-            Assert.IsInstanceOf<AuraController>(behaviours[23]);
-            Assert.IsInstanceOf<PlayerWorldPointer>(behaviours[24],
+            Assert.IsInstanceOf<PlayerPvP>(behaviours[12],
+                "The PvP flag sits before the save trigger so a loaded flag is applied on join.");
+            Assert.IsInstanceOf<MMO.Persistence.PlayerSaveTrigger>(behaviours[13]);
+            Assert.IsInstanceOf<PlayerStartingItems>(behaviours[14]);
+            Assert.IsInstanceOf<MMO.Social.PlayerParty>(behaviours[15]);
+            Assert.IsInstanceOf<MMO.Social.PlayerGuild>(behaviours[16]);
+            Assert.IsInstanceOf<MMO.Social.PlayerChat>(behaviours[17]);
+            Assert.IsInstanceOf<MMO.Social.PlayerFriends>(behaviours[18]);
+            Assert.IsInstanceOf<MMO.Social.PlayerRaid>(behaviours[19]);
+            Assert.IsInstanceOf<MMO.Social.PlayerTrade>(behaviours[20]);
+            Assert.IsInstanceOf<MMO.Social.PlayerTerritory>(behaviours[21]);
+            Assert.IsInstanceOf<PlayerMover>(behaviours[22]);
+            Assert.IsInstanceOf<PlayerMount>(behaviours[23]);
+            Assert.IsInstanceOf<AuraController>(behaviours[24]);
+            Assert.IsInstanceOf<PlayerWorldPointer>(behaviours[25],
                 "The world pointer keeps the slot the click-to-move driver used.");
-            Assert.IsInstanceOf<NetworkTransform>(behaviours[25]);
-            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[26],
+            Assert.IsInstanceOf<NetworkTransform>(behaviours[26]);
+            Assert.IsInstanceOf<LocalPlayerCameraTarget>(behaviours[27],
                 "The local-camera binding rides the prefab so it registers by ownership, not by tag.");
-            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[27],
+            Assert.IsInstanceOf<LocalPlayerHud>(behaviours[28],
                 "The HUD is added late so the behaviours it builds a screen for already exist.");
-            Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[28],
+            Assert.IsInstanceOf<MMO.Banking.PlayerBank>(behaviours[29],
                 "The personal bank is appended after the HUD, so every earlier index is unchanged.");
-            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[29],
+            Assert.IsInstanceOf<PlayerZoneTransfer>(behaviours[30],
                 "Zone transfer is appended after the bank: its ServerRpc must not shift an index.");
-            Assert.IsInstanceOf<MMO.Social.PlayerMail>(behaviours[30],
+            Assert.IsInstanceOf<MMO.Social.PlayerMail>(behaviours[31],
                 "The mailbox is appended after the zone transfer so later arrivals keep their index.");
-            Assert.IsInstanceOf<MMO.Moderation.PlayerModeration>(behaviours[31],
+            Assert.IsInstanceOf<MMO.Moderation.PlayerModeration>(behaviours[32],
                 "Moderation is appended after the mailbox for the same reason.");
-            Assert.IsInstanceOf<PlayerMoveInput>(behaviours[32],
+            Assert.IsInstanceOf<PlayerMoveInput>(behaviours[33],
                 "The walking driver is appended last so no earlier index moves.");
 
             foreach (NetworkBehaviour behaviour in behaviours)

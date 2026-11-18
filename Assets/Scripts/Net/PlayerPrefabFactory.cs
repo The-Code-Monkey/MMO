@@ -124,6 +124,11 @@ namespace MMO.Net
             go.AddComponent<PlayerWallet>();
             go.AddComponent<PlayerAuctionHouse>();
 
+            // The PvP flag and its opt-out cooldown. It sits before the save trigger, which
+            // applies the loaded flag on join and captures it on every snapshot, so the flag
+            // survives a zone transfer and a reconnect.
+            go.AddComponent<PlayerPvP>();
+
             // Quest state and the server-walked dialogue session. They sit before the save trigger
             // so a loaded quest state can be applied through them later.
             go.AddComponent<PlayerQuestLog>();

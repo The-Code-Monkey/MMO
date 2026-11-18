@@ -73,7 +73,7 @@ namespace MMO.Persistence
     public class PlayerSaveRecord
     {
         /// <summary>Bump when the shape below stops round-tripping old saves.</summary>
-        public const int CurrentSchemaVersion = 5;
+        public const int CurrentSchemaVersion = 6;
 
         /// <summary>The player's stable account key; the storage key this record lives under.</summary>
         public string UserId;
@@ -89,6 +89,12 @@ namespace MMO.Persistence
 
         /// <summary>Quest/event experience. Not a level curve; the level travels separately.</summary>
         public int Experience = 0;
+
+        /// <summary>
+        /// True when the player has opted into PvP. A preference, not a status: it is irrelevant
+        /// in the forced tiers, survives death and zoning, and older saves simply load unflagged.
+        /// </summary>
+        public bool PvPFlag = false;
 
         /// <summary>Reserved. No movement save exists yet, so it round-trips but is not applied.</summary>
         public Vector3 Position;

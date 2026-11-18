@@ -20,7 +20,8 @@ namespace MMO.Persistence
             PlayerQuestLog quests,
             PlayerWallet wallet,
             PlayerBank bank,
-            PlayerAchievements achievements)
+            PlayerAchievements achievements,
+            PlayerPvP pvp)
         {
             PlayerSaveMapper.Apply(
                 record,
@@ -47,6 +48,7 @@ namespace MMO.Persistence
             wallet?.InitializeFromSave(record);
             bank?.InitializeFromSave(record);
             achievements?.Restore(record?.Achievements);
+            pvp?.InitializeFromSave(record);
         }
     }
 }
