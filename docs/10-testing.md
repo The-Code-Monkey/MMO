@@ -143,9 +143,12 @@ select individual tests. This is the fastest feedback loop.
 
 ### In CI
 
-`.github/workflows/unity-tests.yml` runs the EditMode suite on every push (there is no PlayMode
-suite) using `game-ci/unity-test-runner@v4` with `testMode: editmode` and `unityVersion: auto`
-(which reads the project version). Results are uploaded as one artifact per shard.
+`.github/workflows/unity-tests.yml` runs the EditMode suite (there is no PlayMode suite) for every
+pull request into **any** branch, and for every push to a branch other than `main`. The push run is
+not redundant: GitHub does not run `pull_request` workflows on a PR that has a merge conflict, which
+a stacked PR acquires the moment its base is rebased. The runner is `game-ci/unity-test-runner@v4`
+with `testMode: editmode` and `unityVersion: auto` (which reads the project version). Results are
+uploaded as one artifact per shard.
 
 Eight fixtures bake assets and re-import them once per test, which costs 5–10s per test and used to
 be ~21 of the suite's 22 minutes. They carry `[Category("Bake")]` plus a shard category

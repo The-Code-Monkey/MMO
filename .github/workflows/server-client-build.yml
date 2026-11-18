@@ -3,11 +3,14 @@ name: Server & Client Builds
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
+    # Explicitly every base branch, so a PR stacked on another feature branch is still built.
+    branches: ['**']
     paths-ignore:
       - 'docs/**'
       - '**.md'
+  # A conflicting PR has no pull_request run; a branch push still builds it.
   push:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
 
 # Cancel superseded builds when new commits are pushed to the same PR.
