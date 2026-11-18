@@ -38,8 +38,13 @@ namespace MMO.Tests
         [Test]
         public void NextYaw_Wraps()
         {
-            Assert.AreEqual(10f, CameraOrbitMath.NextYaw(0f, 1000f), 0.0001f);
-            Assert.AreEqual(350f, CameraOrbitMath.NextYaw(0f, -1000f), 0.0001f);
+            // 1000 px at 0.15 degrees per pixel is 150 degrees, not a fraction of a turn.
+            Assert.AreEqual(150f, CameraOrbitMath.NextYaw(0f, 1000f), 0.0001f);
+            Assert.AreEqual(210f, CameraOrbitMath.NextYaw(0f, -1000f), 0.0001f);
+
+            // Across the seam in both directions.
+            Assert.AreEqual(5f, CameraOrbitMath.NextYaw(350f, 100f), 0.0001f);
+            Assert.AreEqual(350f, CameraOrbitMath.NextYaw(5f, -100f), 0.0001f);
         }
 
         [Test]
