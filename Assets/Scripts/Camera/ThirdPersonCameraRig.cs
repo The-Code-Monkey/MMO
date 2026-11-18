@@ -36,10 +36,25 @@ namespace MMO.Client
         /// <summary>Height of the body the pivot is measured against, in metres.</summary>
         [SerializeField] private float capsuleHeight = 2f;
 
+        [Header("Zoom and clip")]
+        [SerializeField] private float zoomStep = CameraOrbitMath.ZoomStep;
+        [SerializeField] private float zoomSmoothTime = CameraOrbitMath.ZoomSmoothTime;
+        [SerializeField] private float clipRadius = CameraOrbitMath.ClipRadius;
+        [SerializeField] private LayerMask clipMask;
+        [SerializeField] private float avatarHideDistance = CameraOrbitMath.AvatarHideDistance;
+
+        /// <summary>Shared buffer for the clip spherecast, so the frame does not allocate a hit array.</summary>
+        private static readonly RaycastHit[] ClipHits = new RaycastHit[8];
+
         private Transform _localTarget;
         private Camera _camera;
         private float _yaw;
         private float _pitch;
+        private float _targetDistance;
+        private float _currentDistance;
+        private float _distanceVelocity;
+        private Renderer[] _avatarRenderers;
+        private bool _avatarHidden;
         private bool _driving;
         private bool _captured;
 
@@ -61,11 +76,19 @@ namespace MMO.Client
                 return;
             }
 
+            // The arm may come closer than a 0.3 m near plane allows, so the eye renders from 5 cm.
+            if (clipMask.value == 0)
+                clipMask = Physics.DefaultRaycastLayers & ~LayerMask.GetMask("Water", "UI");
+
+            _targetDistance = _currentDistance = Mathf.Clamp(
+                distance, CameraOrbitMath.MinDistance, CameraOrbitMath.MaxDistance);
+
             _camera = GetComponentInChildren<Camera>();
             if (_camera != null)
             {
                 _camera.orthographic = false;
-                _camera.transform.localPosition = new Vector3(0f, 0f, -distance);
+                _camera.nearClipPlane = 0.05f;
+                _camera.transform.localPosition = new Vector3(0f, 0f, -_currentDistance);
                 _camera.transform.localRotation = Quaternion.identity;
             }
 
@@ -87,6 +110,7 @@ namespace MMO.Client
             FindTargetIfNeeded();
             HandleCursor();
             HandleOrbit();
+            HandleZoom();
         }
 
         private void LateUpdate()
@@ -94,8 +118,78 @@ namespace MMO.Client
             if (target == null)
                 return;
 
-            transform.position = CameraOrbitMath.Pivot(target.position, capsuleHeight);
-            transform.rotation = CameraOrbitMath.Rotation(_yaw, _pitch);
+            Vector3 pivot = CameraOrbitMath.Pivot(target.position, capsuleHeight);
+            Quaternion rotation = CameraOrbitMath.Rotation(_yaw, _pitch);
+
+            transform.position = pivot;
+            transform.rotation = rotation;
+
+            _currentDistance = CameraOrbitMath.DampDistance(
+                _currentDistance,
+                _targetDistance,
+                ref _distanceVelocity,
+                Time.deltaTime,
+                zoomSmoothTime);
+
+            float arm = ClipArm(pivot, rotation, _currentDistance);
+
+            if (_camera != null)
+                _camera.transform.localPosition = new Vector3(0f, 0f, -arm);
+
+            UpdateAvatar(arm);
+        }
+
+        /// <summary>
+        /// Shortens the arm when geometry sits between the pivot and the eye, so the camera never
+        /// ends up on the far side of a wall. The local avatar is skipped: it is not scenery.
+        /// </summary>
+        private float ClipArm(Vector3 pivot, Quaternion rotation, float desired)
+        {
+            Vector3 back = rotation * Vector3.back;
+            int count = Physics.SphereCastNonAlloc(
+                pivot, clipRadius, back, ClipHits, desired, clipMask, QueryTriggerInteraction.Ignore);
+
+            float nearest = desired;
+            for (int i = 0; i < count; i++)
+            {
+                Collider hit = ClipHits[i].collider;
+                if (hit == null)
+                    continue;
+
+                if (target != null && hit.transform.root == target.root)
+                    continue;
+
+                if (ClipHits[i].distance < nearest)
+                    nearest = ClipHits[i].distance;
+            }
+
+            return nearest < desired
+                ? CameraOrbitMath.ClipDistance(desired, nearest, clipRadius)
+                : desired;
+        }
+
+        /// <summary>
+        /// Hides the local avatar once the eye is inside it. Remote avatars are untouched: this rig
+        /// only ever looks at the player this client owns.
+        /// </summary>
+        private void UpdateAvatar(float arm)
+        {
+            if (target == null)
+                return;
+
+            if (_avatarRenderers == null)
+                _avatarRenderers = target.GetComponentsInChildren<Renderer>(true);
+
+            bool hide = arm < avatarHideDistance;
+            if (hide == _avatarHidden)
+                return;
+
+            _avatarHidden = hide;
+            for (int i = 0; i < _avatarRenderers.Length; i++)
+            {
+                if (_avatarRenderers[i] != null)
+                    _avatarRenderers[i].enabled = !hide;
+            }
         }
 
         /// <summary>
@@ -106,6 +200,8 @@ namespace MMO.Client
         {
             _localTarget = player;
             target = player;
+            _avatarRenderers = null;
+            _avatarHidden = false;
         }
 
         /// <summary>Clears a local binding, e.g. when this client stops owning a player.</summary>
@@ -115,6 +211,8 @@ namespace MMO.Client
                 target = null;
 
             _localTarget = null;
+            _avatarRenderers = null;
+            _avatarHidden = false;
         }
 
         private void HandleOrbit()
@@ -126,9 +224,25 @@ namespace MMO.Client
             Vector2 delta = mouse.delta.ReadValue();
             _yaw = CameraOrbitMath.NextYaw(_yaw, delta.x, sensitivity);
             _pitch = CameraOrbitMath.NextPitch(_pitch, delta.y, sensitivity, minPitch, maxPitch);
+        }
 
-            if (_camera != null)
-                _camera.transform.localPosition = new Vector3(0f, 0f, -Mathf.Max(0f, distance));
+        /// <summary>
+        /// The wheel moves the arm's target; the damping happens in LateUpdate. A raw scroll of
+        /// +/-120 is one notch on a wheel, while a trackpad reports small values that are already
+        /// notches.
+        /// </summary>
+        private void HandleZoom()
+        {
+            Mouse mouse = Mouse.current;
+            if (mouse == null)
+                return;
+
+            float scroll = mouse.scroll.ReadValue().y;
+            if (Mathf.Abs(scroll) < 0.01f)
+                return;
+
+            float notches = Mathf.Abs(scroll) >= 1f ? scroll / 120f : scroll;
+            _targetDistance = CameraOrbitMath.ApplyZoom(_targetDistance, notches, zoomStep);
         }
 
         private void HandleCursor()

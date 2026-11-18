@@ -207,7 +207,13 @@ character's neck (`CameraOrbitMath.NeckHeightAboveFeet`, measured from the feet,
 centre). Dragging either mouse button orbits — yaw around up, pitch between `-35°` and `+70°` — and
 never turns the character; the heading is the mover's business. The pointer is captured only while a
 button is held over the world, and released on release, on Esc, or when a modal takes the keyboard.
-The arm is a fixed length until the zoom ticket wires the wheel to it.
+The wheel moves the arm between `0.3 m` and `15 m` (`CameraOrbitMath.MinDistance`/`MaxDistance`),
+damped rather than snapped. A spherecast back from the pivot shortens the arm when geometry is in
+the way, so the eye never ends up on the far side of a wall; the local avatar is skipped by that
+probe and is instead hidden once the eye is inside it (`AvatarHideDistance`). The camera's near clip
+is `0.05` so the closest arm still renders. The `Environment` layer exists for tighter masks later;
+the default probe excludes `Water`, `UI` and `Ignore Raycast`, which is what makes it correct
+before any geometry is re-layered.
 
 ### ZoneSceneBaker
 
