@@ -239,7 +239,7 @@ its slot; `RequestClaimOrder` (`:299`) retries it through `ClaimOrderAsync` (`:3
 room.
 
 The panel never derives a deadline: it renders `CraftOrderView.RemainingSeconds` from the server,
-which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:569`) while the player
+which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:577`) while the player
 has orders.
 
 ### Cancelling an order
@@ -259,6 +259,23 @@ taken. If the bag cannot take the whole refund the order stays `Cancelled` with 
 claimable and keeps its slot; `RequestClaimOrder` returns it once there is room, exactly once,
 because `MarkClaimed`/`PruneClaimed` run after the refund and a reload that finds `Claimed` does
 nothing.
+
+### Surviving content drift
+
+Recipes and ingredients are data assets, and a balance change can rename or delete one while an order
+is in flight. `PlayerCrafting.RestoreFromSave` (`:485`) first prunes `Claimed` orders and then runs
+`CraftQueueRules.CancelOnContentDrift`: any surviving order whose recipe, or any escrowed
+ingredient, no longer resolves becomes `Cancelled`. Its escrow is untouched, so the normal claim path
+returns the materials instead of the load dropping them.
+
+The refund is rebuilt from the escrow fields (`CraftEscrowItem.ToInstance`), not from an
+`ItemDefinition`, so even an ingredient whose asset is gone comes back with its name, instance id,
+stack count and durability. It comes back exactly once: the claim marks the order `Claimed`, which is
+persisted before the slot is pruned and ignored on a reload.
+
+A refused enqueue speaks too. `TryEnqueue` sends `CraftQueueRules.QueueFullMessage` with the order
+payload, and the panel renders it in its status line: a completed or cancelled order must be claimed
+to free a slot. Every claimable row offers that claim.
 
 ### One ingredient-spend path
 

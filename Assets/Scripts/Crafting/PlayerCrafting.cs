@@ -497,6 +497,14 @@ namespace MMO.Crafting
             }
 
             CraftQueueRules.PruneClaimed(_orders);
+
+            // A balance change may have deleted a recipe or an ingredient asset while this order
+            // was in flight. Cancelling keeps the escrow claimable instead of stranding or dropping
+            // it; the refund rebuilds the items from the escrow fields, not their definitions.
+            CraftQueueRules.CancelOnContentDrift(
+                _orders,
+                recipeName => RecipeRegistry.Resolve(recipeName) != null,
+                itemName => ItemDefinitionRegistry.Resolve(itemName) != null);
         }
 
         [Server]

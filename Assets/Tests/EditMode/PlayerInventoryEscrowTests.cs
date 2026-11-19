@@ -129,6 +129,35 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void TryGrantEscrow_ReturnsAnItemWhoseDefinitionNoLongerResolves()
+        {
+            GameObject go = new GameObject("Player");
+            PlayerInventory inventory = NetworkBehaviourTestFactory.Attach<PlayerInventory>(go);
+
+            ItemDefinition ore = TestItemDefinitions.Create("Iron Ore");
+            ItemDefinition sword = TestItemDefinitions.Create("Iron Sword");
+            inventory.TryAddItem(ore);
+
+            RecipeData recipe = CreateRecipe("Iron Sword", sword, Ingredient(ore, 1));
+            var taken = new List<ItemInstance>();
+            Assert.IsTrue(inventory.TryTakeIngredients(recipe, taken));
+
+            var escrow = new List<CraftEscrowItem> { CraftEscrowItem.From(taken[0]) };
+
+            // The balance change deletes the ingredient asset while the order holds its escrow.
+            ItemDefinitionRegistry.Clear();
+
+            Assert.IsTrue(inventory.TryGrantEscrow(escrow),
+                "a refund is rebuilt from the escrow fields, not from the deleted definition");
+            Assert.AreEqual(1, inventory.Items.Count);
+            Assert.AreEqual("Iron Ore", inventory.Items[0].ItemName);
+            Assert.AreEqual(taken[0].InstanceId, inventory.Items[0].InstanceId);
+
+            Object.DestroyImmediate(recipe);
+            Object.DestroyImmediate(go);
+        }
+
+        [Test]
         public void TryGrantEscrow_EmptyEscrow_IsANoOp()
         {
             GameObject go = new GameObject("Player");
