@@ -239,7 +239,7 @@ its slot; `RequestClaimOrder` (`:299`) retries it through `ClaimOrderAsync` (`:3
 room.
 
 The panel never derives a deadline: it renders `CraftOrderView.RemainingSeconds` from the server,
-which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:591`) while the player
+which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:594`) while the player
 has orders.
 
 ### Cancelling an order

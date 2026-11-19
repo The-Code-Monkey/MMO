@@ -518,6 +518,9 @@ namespace MMO.Crafting
         [Server]
         private void NotifyOrdersChanged()
         {
+            // A refused enqueue is the only producer of a message, and any successful mutation
+            // invalidates it.
+            _message = string.Empty;
             CraftingChanged?.Invoke();
             OrdersChanged?.Invoke();
             SendOrders();
