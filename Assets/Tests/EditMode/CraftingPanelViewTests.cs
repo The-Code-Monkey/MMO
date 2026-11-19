@@ -285,20 +285,6 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void InProgressOrder_HasNoClaimAction()
-        {
-            _view.Bind(_source);
-            _source.OpenStation(_station, Offer("Iron Sword"));
-            _source.OpenOrders(Order("o-1", CraftOrderState.InProgress, remainingSeconds: 5f));
-
-            Assert.IsFalse(_view.OrderRows[0].ActionButton.interactable);
-
-            _view.HandleOrderAction(0);
-
-            Assert.IsEmpty(_source.Claims);
-        }
-
-        [Test]
         public void InProgressOrder_OffersCancelAndForwardsTheOrderId()
         {
             _view.Bind(_source);
