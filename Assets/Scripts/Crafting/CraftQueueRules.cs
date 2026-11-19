@@ -74,6 +74,23 @@ namespace MMO.Crafting
             return true;
         }
 
+        /// <summary>
+        /// InProgress -> Cancelled, and only before the due tick. Completion and cancellation share
+        /// the "only InProgress can move" rule, so a cancel racing a completion in the same tick
+        /// wins or loses as a whole — never both a refund and a grant.
+        /// </summary>
+        public static bool TryCancel(CraftOrder order, DateTime nowUtc)
+        {
+            if (order == null || order.State != CraftOrderState.InProgress)
+                return false;
+
+            if (nowUtc.Ticks >= order.DueUtcTicks)
+                return false;
+
+            order.State = CraftOrderState.Cancelled;
+            return true;
+        }
+
         /// <summary>True when a claim can resolve the order: grant its output or refund its escrow.</summary>
         public static bool IsClaimable(CraftOrder order)
             => order != null &&

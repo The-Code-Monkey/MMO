@@ -285,16 +285,33 @@ namespace MMO.Tests
         }
 
         [Test]
-        public void InProgressOrder_HasNoClaimAction()
+        public void InProgressOrder_OffersCancelAndForwardsTheOrderId()
         {
             _view.Bind(_source);
             _source.OpenStation(_station, Offer("Iron Sword"));
-            _source.OpenOrders(Order("o-1", CraftOrderState.InProgress, remainingSeconds: 5f));
+            _source.OpenOrders(Order("o-1", CraftOrderState.InProgress, remainingSeconds: 12f));
+
+            Assert.AreEqual(12f, _view.OrderRows[0].Order.RemainingSeconds);
+            Assert.IsTrue(_view.OrderRows[0].ActionButton.interactable);
+
+            _view.OrderRows[0].ActionButton.onClick.Invoke();
+
+            CollectionAssert.AreEqual(new[] { "o-1" }, _source.Cancels);
+            Assert.IsEmpty(_source.Claims);
+        }
+
+        [Test]
+        public void DueOrder_OffersNoCancel()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+            _source.OpenOrders(Order("o-1", CraftOrderState.InProgress, remainingSeconds: 0f));
 
             Assert.IsFalse(_view.OrderRows[0].ActionButton.interactable);
 
             _view.HandleOrderAction(0);
 
+            Assert.IsEmpty(_source.Cancels);
             Assert.IsEmpty(_source.Claims);
         }
 
@@ -352,6 +369,7 @@ namespace MMO.Tests
         {
             public readonly List<(CraftingStation Station, string RecipeName)> Crafts = new();
             public readonly List<string> Claims = new();
+            public readonly List<string> Cancels = new();
 
             public int CraftingXp => 0;
             public int CraftingLevel => 1;
@@ -387,6 +405,8 @@ namespace MMO.Tests
                 => Crafts.Add((station, recipeName));
 
             public void RequestClaimOrder(string orderId) => Claims.Add(orderId);
+
+            public void RequestCancelOrder(string orderId) => Cancels.Add(orderId);
         }
 
         /// <summary>Counts repaints so a test can prove they only follow bind/change events.</summary>

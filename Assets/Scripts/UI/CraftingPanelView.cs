@@ -243,10 +243,14 @@ namespace MMO.UI
                 return;
 
             OrderRow entry = _orderRows[row];
-            if (!CraftOrderUiFormat.CanClaim(entry.Order))
+            if (CraftOrderUiFormat.CanClaim(entry.Order))
+            {
+                _source.RequestClaimOrder(entry.Order.OrderId);
                 return;
+            }
 
-            _source.RequestClaimOrder(entry.Order.OrderId);
+            if (CraftOrderUiFormat.CanCancel(entry.Order))
+                _source.RequestCancelOrder(entry.Order.OrderId);
         }
 
         /// <summary>
