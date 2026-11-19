@@ -91,6 +91,13 @@ namespace MMO.Crafting
             return true;
         }
 
+        /// <summary>
+        /// True when a reload found a Completed order: the grant may have been interrupted, so the
+        /// server tick finishes it without waiting for another deadline.
+        /// </summary>
+        public static bool NeedsResume(CraftOrder order)
+            => order != null && order.State == CraftOrderState.Completed;
+
         /// <summary>True when a claim can resolve the order: grant its output or refund its escrow.</summary>
         public static bool IsClaimable(CraftOrder order)
             => order != null &&
@@ -101,6 +108,58 @@ namespace MMO.Crafting
         {
             if (order != null)
                 order.State = CraftOrderState.Claimed;
+        }
+
+        /// <summary>
+        /// Load-time content drift rule: any surviving order whose recipe — or any escrowed
+        /// ingredient — no longer resolves becomes <see cref="CraftOrderState.Cancelled"/> with its
+        /// escrow untouched, so the normal claim path can return the materials. A null resolver
+        /// counts as "cannot resolve". Returns how many orders were cancelled.
+        /// </summary>
+        public static int CancelOnContentDrift(
+            List<CraftOrder> orders,
+            Func<string, bool> recipeResolves,
+            Func<string, bool> itemResolves)
+        {
+            if (orders == null)
+                return 0;
+
+            int cancelled = 0;
+            for (int i = 0; i < orders.Count; i++)
+            {
+                CraftOrder order = orders[i];
+                if (order == null || order.State == CraftOrderState.Claimed)
+                    continue;
+
+                bool unresolved =
+                    string.IsNullOrEmpty(order.RecipeName) ||
+                    recipeResolves == null ||
+                    !recipeResolves(order.RecipeName);
+
+                if (!unresolved && order.Escrow != null)
+                {
+                    for (int e = 0; e < order.Escrow.Count; e++)
+                    {
+                        CraftEscrowItem item = order.Escrow[e];
+                        if (item.IsEmpty)
+                            continue;
+
+                        if (itemResolves == null || !itemResolves(item.ItemName))
+                        {
+                            unresolved = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!unresolved)
+                    continue;
+
+                order.State = CraftOrderState.Cancelled;
+                cancelled++;
+            }
+
+            return cancelled;
         }
 
         /// <summary>Removes null and claimed entries, freeing their queue slots. Returns how many went.</summary>

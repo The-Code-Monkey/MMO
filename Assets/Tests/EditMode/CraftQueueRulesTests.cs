@@ -119,6 +119,56 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void CancelOnContentDrift_CancelsAnOrderWhoseRecipeIsGone()
+        {
+            CraftOrder order = OrderWithEscrow("Deleted Recipe", "Iron Ore");
+            var orders = new List<CraftOrder> { order };
+
+            int cancelled = CraftQueueRules.CancelOnContentDrift(
+                orders, recipe => recipe != "Deleted Recipe", item => item == "Iron Ore");
+
+            Assert.AreEqual(1, cancelled);
+            Assert.AreEqual(CraftOrderState.Cancelled, order.State);
+            Assert.AreEqual(1, order.Escrow.Count, "drift never touches the escrow");
+        }
+
+        [Test]
+        public void CancelOnContentDrift_CancelsAnOrderWhoseIngredientIsGone()
+        {
+            CraftOrder order = OrderWithEscrow("Iron Ingot", "Deleted Ore");
+            var orders = new List<CraftOrder> { order };
+
+            int cancelled = CraftQueueRules.CancelOnContentDrift(
+                orders, recipe => true, item => item != "Deleted Ore");
+
+            Assert.AreEqual(1, cancelled);
+            Assert.AreEqual(CraftOrderState.Cancelled, order.State);
+        }
+
+        [Test]
+        public void CancelOnContentDrift_LeavesResolvableAndClaimedOrdersAlone()
+        {
+            CraftOrder resolvable = OrderWithEscrow("Iron Ingot", "Iron Ore");
+            CraftOrder alreadyClaimed = OrderWithEscrow("Iron Ingot", "Iron Ore");
+            alreadyClaimed.State = CraftOrderState.Claimed;
+            var orders = new List<CraftOrder> { resolvable, alreadyClaimed };
+
+            int cancelled = CraftQueueRules.CancelOnContentDrift(orders, _ => true, _ => true);
+
+            Assert.AreEqual(0, cancelled);
+            Assert.AreEqual(CraftOrderState.InProgress, resolvable.State);
+            Assert.AreEqual(CraftOrderState.Claimed, alreadyClaimed.State);
+        }
+
+        [Test]
+        public void QueueFullMessage_TellsThePlayerHowToFreeASlot()
+        {
+            StringAssert.Contains("claim", CraftQueueRules.QueueFullMessage);
+            StringAssert.Contains("cancel", CraftQueueRules.QueueFullMessage);
+            StringAssert.Contains("slot", CraftQueueRules.QueueFullMessage);
+        }
+
+        [Test]
         public void HasFreeSlot_RefusesTheSixthOrderAndCountsEveryState()
         {
             var orders = new List<CraftOrder>();
@@ -129,6 +179,20 @@ namespace MMO.Tests
 
             Assert.AreEqual(5, CraftQueueRules.MaxOrders);
             Assert.IsFalse(CraftQueueRules.HasFreeSlot(orders));
+        }
+
+        [Test]
+        public void NeedsResume_IsTrueOnlyForACompletedOrder()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+            Assert.IsFalse(CraftQueueRules.NeedsResume(order));
+
+            CraftQueueRules.TryComplete(order, Start.AddSeconds(30));
+            Assert.IsTrue(CraftQueueRules.NeedsResume(order),
+                "a reload that finds Completed must finish the interrupted grant");
+
+            CraftQueueRules.MarkClaimed(order);
+            Assert.IsFalse(CraftQueueRules.NeedsResume(order));
         }
 
         [Test]
@@ -169,6 +233,24 @@ namespace MMO.Tests
             Assert.AreSame(second, CraftQueueRules.Find(orders, second.OrderId));
             Assert.IsNull(CraftQueueRules.Find(orders, "missing"));
             Assert.IsNull(CraftQueueRules.Find(orders, null));
+        }
+
+        private static CraftOrder OrderWithEscrow(string recipeName, string ingredientName)
+        {
+            CraftOrder order = CraftOrder.Create(recipeName, Start.AddSeconds(30).Ticks,
+                new[]
+                {
+                    new CraftEscrowItem
+                    {
+                        ItemName = ingredientName,
+                        InstanceId = "inst-1",
+                        Width = 1,
+                        Height = 1,
+                        StackCount = 1,
+                    },
+                });
+            order.State = CraftOrderState.InProgress;
+            return order;
         }
 
         private static CraftOrder OrderAt(DateTime due)
