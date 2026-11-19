@@ -667,42 +667,56 @@ namespace MMO.Inventory
         }
 
         [Server]
-        public bool TryCraft(MMO.Crafting.RecipeData recipe)
+        public bool TryCraft(RecipeData recipe)
         {
             if (recipe == null || recipe.Output == null)
                 return false;
 
-            _scratch.Clear();
-            for (int i = 0; i < _items.Count; i++)
-                _scratch.Add(_items[i]);
+            // Plan the output against the bag the ingredients would leave behind, so a craft that
+            // cannot fit its own output never spends anything.
+            if (!TryBuildRemainder(recipe.Ingredients, _items, _scratch) ||
+                !_grid.TryFindFreeSpace(_scratch, recipe.Output.GridWidth, recipe.Output.GridHeight,
+                    out int x, out int y, CellLimit))
+                return false;
 
-            var ingredients = recipe.Ingredients;
+            if (!TrySpendIngredients(recipe))
+                return false;
+
+            var registry = Registry;
+            var holder = HolderId;
+
+            for (int outCount = 0; outCount < recipe.OutputCount; outCount++)
+            {
+                var output = ItemInstance.Create(recipe.Output, x, y);
+                _items.Add(output);
+                if (registry != null && !string.IsNullOrEmpty(output.InstanceId))
+                    registry.Grant(output.InstanceId, holder);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Server: removes exactly the ingredient set of <paramref name="recipe"/> from the bag and
+        /// releases the instance ids it consumed. All or nothing — a null ingredient or one the bag
+        /// cannot cover leaves the bag untouched.
+        ///
+        /// <para>
+        /// This is the single spend path. The instant craft calls it, and a queued craft calls it
+        /// when it completes, so the two can never spend different sets for the same recipe.
+        /// </para>
+        /// </summary>
+        [Server]
+        public bool TrySpendIngredients(RecipeData recipe)
+        {
+            if (recipe == null || !TryBuildRemainder(recipe.Ingredients, _items, _scratch))
+                return false;
+
+            IReadOnlyList<RecipeIngredient> ingredients = recipe.Ingredients;
             var consumedInstanceIds = new List<string>();
 
             for (int i = 0; i < ingredients.Count; i++)
             {
-                var ingredient = ingredients[i];
-                if (ingredient.Item == null)
-                    return false;
-
-                for (int n = 0; n < ingredient.Count; n++)
-                {
-                    int index = FindByName(_scratch, ingredient.Item.ItemName);
-                    if (index < 0)
-                        return false;
-                    if (!_scratch[index].IsEmpty && !string.IsNullOrEmpty(_scratch[index].InstanceId))
-                        consumedInstanceIds.Add(_scratch[index].InstanceId);
-                    _scratch.RemoveAt(index);
-                }
-            }
-
-            if (!_grid.TryFindFreeSpace(_scratch, recipe.Output.GridWidth, recipe.Output.GridHeight,
-                    out int x, out int y, CellLimit))
-                return false;
-
-            for (int i = 0; i < ingredients.Count; i++)
-            {
-                var ingredient = ingredients[i];
+                RecipeIngredient ingredient = ingredients[i];
                 for (int n = 0; n < ingredient.Count; n++)
                 {
                     int index = FindByName(_items, ingredient.Item.ItemName);
@@ -725,13 +739,39 @@ namespace MMO.Inventory
                     registry.Release(instanceId, holder);
             }
 
-            for (int outCount = 0; outCount < recipe.OutputCount; outCount++)
+            return true;
+        }
+
+        /// <summary>
+        /// Copies <paramref name="bag"/> into <paramref name="remainder"/> with the recipe's
+        /// ingredient set removed. False when an ingredient names no item or the bag cannot cover
+        /// the set, in which case the partial copy must be discarded. The one definition of what a
+        /// recipe costs, shared by the fit check and <see cref="TrySpendIngredients"/>.
+        /// </summary>
+        private static bool TryBuildRemainder(
+            IReadOnlyList<RecipeIngredient> ingredients,
+            IReadOnlyList<ItemInstance> bag,
+            List<ItemInstance> remainder)
+        {
+            remainder.Clear();
+            for (int i = 0; i < bag.Count; i++)
+                remainder.Add(bag[i]);
+
+            for (int i = 0; i < ingredients.Count; i++)
             {
-                var output = ItemInstance.Create(recipe.Output, x, y);
-                _items.Add(output);
-                if (registry != null && !string.IsNullOrEmpty(output.InstanceId))
-                    registry.Grant(output.InstanceId, holder);
+                RecipeIngredient ingredient = ingredients[i];
+                if (ingredient.Item == null)
+                    return false;
+
+                for (int n = 0; n < ingredient.Count; n++)
+                {
+                    int index = FindByName(remainder, ingredient.Item.ItemName);
+                    if (index < 0)
+                        return false;
+                    remainder.RemoveAt(index);
+                }
             }
+
             return true;
         }
 
