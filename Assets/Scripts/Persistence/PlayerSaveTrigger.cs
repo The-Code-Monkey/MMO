@@ -4,6 +4,7 @@ using FishNet.Object;
 using MMO.Auction;
 using MMO.Banking;
 using MMO.Content;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Progression;
@@ -38,6 +39,7 @@ namespace MMO.Persistence
         private PlayerWallet _wallet;
         private PlayerBank _bank;
         private PlayerAchievements _achievements;
+        private PlayerCrafting _crafting;
         private string _accountId;
         private bool _subscribed;
         private readonly WalletReservationReconciler _walletReconciler = new WalletReservationReconciler();
@@ -73,6 +75,7 @@ namespace MMO.Persistence
             _wallet = GetComponent<PlayerWallet>();
             _bank = GetComponent<PlayerBank>();
             _achievements = GetComponent<PlayerAchievements>();
+            _crafting = GetComponent<PlayerCrafting>();
             if (_stats == null || _inventory == null)
             {
                 Debug.LogError($"{nameof(PlayerSaveTrigger)}: the player prefab is missing PlayerStats or PlayerInventory.", this);
@@ -97,11 +100,11 @@ namespace MMO.Persistence
                 return;
 
             PlayerSaveApplier.Apply(
-                record, _accountId, _stats, _inventory, _quests, _wallet, _bank, _achievements);
+                record, _accountId, _stats, _inventory, _quests, _wallet, _bank, _achievements, _crafting);
 
             service.RegisterLivePlayer(_accountId, Capture);
             _signals.Bind(
-                _stats, _inventory, _quests, _wallet, _bank,
+                _stats, _inventory, _quests, _wallet, _bank, _crafting,
                 OnLevelChanged, OnDebouncedChanged);
             _subscribed = true;
         }
@@ -195,6 +198,7 @@ namespace MMO.Persistence
 
         private PlayerSaveRecord Capture()
             => PlayerSnapshotFactory.Capture(
-                _accountId, _stats, _inventory, _quests, _wallet, _bank, _achievements, transform.position);
+                _accountId, _stats, _inventory, _quests, _wallet, _bank, _achievements, _crafting,
+                transform.position);
     }
 }

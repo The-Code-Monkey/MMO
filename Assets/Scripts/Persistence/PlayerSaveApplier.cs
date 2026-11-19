@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using MMO.Auction;
 using MMO.Banking;
 using MMO.Content;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Progression;
@@ -20,7 +21,8 @@ namespace MMO.Persistence
             PlayerQuestLog quests,
             PlayerWallet wallet,
             PlayerBank bank,
-            PlayerAchievements achievements)
+            PlayerAchievements achievements,
+            PlayerCrafting crafting)
         {
             PlayerSaveMapper.Apply(
                 record,
@@ -47,6 +49,7 @@ namespace MMO.Persistence
             wallet?.InitializeFromSave(record);
             bank?.InitializeFromSave(record);
             achievements?.Restore(record?.Achievements);
+            crafting?.RestoreFromSave(record != null ? record.CraftingXp : 0, record?.CraftOrders);
         }
     }
 }

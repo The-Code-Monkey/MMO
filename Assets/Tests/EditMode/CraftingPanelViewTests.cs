@@ -42,6 +42,7 @@ namespace MMO.Tests
             _view = _panelObject.AddComponent<CraftingPanelView>();
             _view.SetContainer(CreateChild(_panelObject, "Rows"));
             _view.SetTitle(CreateChild(_panelObject, "Title").gameObject.AddComponent<Text>());
+            _view.SetStatus(CreateChild(_panelObject, "Status").gameObject.AddComponent<Text>());
             _panelObject.SetActive(false);
         }
 
@@ -226,6 +227,7 @@ namespace MMO.Tests
                 Assert.IsFalse(panel.IsOpen, "A fresh panel has no station and must not show.");
                 Assert.IsNotNull(panel.RowContainer, "The factory hands over the scroll content.");
                 Assert.IsNotNull(panel.TitleLabel);
+                Assert.IsNotNull(panel.StatusLabel, "The factory hands over the message line.");
 
                 Button close = panel.transform.Find("Close")?.GetComponent<Button>();
                 Assert.IsNotNull(close, "The window needs a way out.");
@@ -237,6 +239,105 @@ namespace MMO.Tests
                 Object.DestroyImmediate(root);
             }
         }
+
+        [Test]
+        public void Orders_AreRenderedWithTheServerProvidedRemainingTime()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+
+            _source.OpenOrders(Order("o-1", CraftOrderState.InProgress, remainingSeconds: 42.2f));
+
+            Assert.AreEqual(1, _view.OrderRows.Count);
+            Assert.AreEqual("Iron Sword", _view.OrderRows[0].NameLabel.text);
+            Assert.AreEqual("43s", _view.OrderRows[0].StatusLabel.text,
+                "The panel shows the server's remaining seconds, rounded up, and never its own clock.");
+        }
+
+        [Test]
+        public void CompletedOrder_OffersClaimAndForwardsTheOrderId()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+            _source.OpenOrders(Order("o-1", CraftOrderState.Completed));
+
+            Assert.AreEqual("Ready", _view.OrderRows[0].StatusLabel.text);
+            Assert.IsTrue(_view.OrderRows[0].ActionButton.interactable);
+
+            _view.OrderRows[0].ActionButton.onClick.Invoke();
+
+            CollectionAssert.AreEqual(new[] { "o-1" }, _source.Claims);
+        }
+
+        [Test]
+        public void CancelledOrder_OffersAClaimForItsEscrow()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+            _source.OpenOrders(Order("o-1", CraftOrderState.Cancelled));
+
+            Assert.AreEqual("Cancelled", _view.OrderRows[0].StatusLabel.text);
+            Assert.IsTrue(_view.OrderRows[0].ActionButton.interactable);
+
+            _view.HandleOrderAction(0);
+
+            CollectionAssert.AreEqual(new[] { "o-1" }, _source.Claims);
+        }
+
+        [Test]
+        public void InProgressOrder_HasNoClaimAction()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+            _source.OpenOrders(Order("o-1", CraftOrderState.InProgress, remainingSeconds: 5f));
+
+            Assert.IsFalse(_view.OrderRows[0].ActionButton.interactable);
+
+            _view.HandleOrderAction(0);
+
+            Assert.IsEmpty(_source.Claims);
+        }
+
+        [Test]
+        public void CraftMessage_IsShownInTheStatusLine()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+
+            _source.SetMessage(CraftQueueRules.QueueFullMessage);
+            _source.RaiseOrdersChanged();
+
+            Assert.AreEqual(CraftQueueRules.QueueFullMessage, _view.StatusLabel.text);
+        }
+
+        [Test]
+        public void Conceal_ClearsTheOrderRows()
+        {
+            _view.Bind(_source);
+            _source.OpenStation(_station, Offer("Iron Sword"));
+            _source.OpenOrders(Order("o-1", CraftOrderState.Completed));
+
+            _view.Conceal();
+
+            Assert.IsEmpty(_view.OrderRows);
+            Assert.IsEmpty(_view.Orders);
+        }
+
+        private static CraftOrderView Order(
+            string orderId,
+            CraftOrderState state,
+            float remainingSeconds = 0f,
+            string recipeName = "Iron Sword",
+            int outputCount = 1)
+            => new CraftOrderView
+            {
+                OrderId = orderId,
+                RecipeName = recipeName,
+                State = state,
+                RemainingSeconds = remainingSeconds,
+                OutputCount = outputCount,
+                OutputItemName = "Iron Sword",
+            };
 
         private static RecipeOffer Offer(string recipeName, int outputCount = 1, bool ingredientsMet = true)
             => new RecipeOffer
@@ -250,14 +351,18 @@ namespace MMO.Tests
         private sealed class FakeCraftingSource : ICraftingSource
         {
             public readonly List<(CraftingStation Station, string RecipeName)> Crafts = new();
+            public readonly List<string> Claims = new();
 
             public int CraftingXp => 0;
             public int CraftingLevel => 1;
             public CraftingStation OpenedStation { get; private set; }
             public IReadOnlyList<RecipeOffer> AvailableRecipes { get; private set; } = Array.Empty<RecipeOffer>();
+            public IReadOnlyList<CraftOrderView> CraftOrders { get; private set; } = Array.Empty<CraftOrderView>();
+            public string CraftMessage { get; private set; } = string.Empty;
 
             public event Action RecipesChanged;
             public event Action<CraftingStation, IReadOnlyList<RecipeOffer>> StationOpened;
+            public event Action OrdersChanged;
 
             public void OpenStation(CraftingStation station, params RecipeOffer[] offers)
             {
@@ -266,10 +371,22 @@ namespace MMO.Tests
                 StationOpened?.Invoke(station, AvailableRecipes);
             }
 
+            public void OpenOrders(params CraftOrderView[] orders)
+            {
+                CraftOrders = orders ?? Array.Empty<CraftOrderView>();
+                OrdersChanged?.Invoke();
+            }
+
+            public void SetMessage(string message) => CraftMessage = message ?? string.Empty;
+
             public void RaiseRecipesChanged() => RecipesChanged?.Invoke();
+
+            public void RaiseOrdersChanged() => OrdersChanged?.Invoke();
 
             public void RequestCraft(CraftingStation station, string recipeName)
                 => Crafts.Add((station, recipeName));
+
+            public void RequestClaimOrder(string orderId) => Claims.Add(orderId);
         }
 
         /// <summary>Counts repaints so a test can prove they only follow bind/change events.</summary>

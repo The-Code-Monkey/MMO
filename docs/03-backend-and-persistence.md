@@ -35,11 +35,12 @@ The unit that travels to and from the database is `PlayerSaveRecord`
 | Field | Type | Meaning | Line |
 |---|---|---|---|
 | `UserId` | `string` | The player's account id. This is the database key. | 62 |
-| `SchemaVersion` | `int` | Format version, currently `4`. Lets future code migrate old saves. | 64 |
+| `SchemaVersion` | `int` | Format version, currently `6`. Lets future code migrate old saves. | 82 |
 | `Level` | `int` | Player level. | 66 |
 | `Health` | `int` | Current health, clamped to the cap when applied. | 69 |
 | `Mana` | `int` | Current mana. | 71 |
-| `Experience` | `int` | Quest/event XP. There is no player level curve yet. | 74 |
+| `Experience` | `int` | Quest/event XP. There is no player level curve yet. | 92 |
+| `CraftingXp` | `int` | Crafting XP; persists so a queued craft's XP is granted exactly once across a reload. | 98 |
 | `Position` | `Vector3` | Reserved. Round-trips but is not applied yet (there is no movement save/load). | 77 |
 | `StorageVersion` | `string` | The backend's revision hash. Not player data; used for safe concurrent writes. | 80 |
 | `Gold` | `long` | Legacy scalar gold. Kept so pre-wallet saves load; the wallet migrates it into `Currencies` and keeps it in sync. | 88 |
@@ -50,6 +51,7 @@ The unit that travels to and from the database is `PlayerSaveRecord`
 | `Items` | `List<ItemSaveData>` | Both inventory containers flattened into one list (bag + worn). | 108 |
 | `CompletedQuestIds` | `List<string>` | Quest ids that have already paid their reward. | 88 |
 | `QuestProgress` | `List<QuestProgressEntry>` | Active objective counters. | 91 |
+| `CraftOrders` | `List<CraftOrder>` | Timed craft orders: recipe name, absolute UTC deadline, state and escrow. | 146 |
 
 Each inventory entry is an `ItemSaveData` (`PlayerSaveRecord.cs:16`):
 

@@ -2,6 +2,7 @@ using System;
 using MMO.Auction;
 using MMO.Banking;
 using MMO.Content;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 
@@ -15,6 +16,7 @@ namespace MMO.Persistence
         private PlayerQuestLog _quests;
         private PlayerWallet _wallet;
         private PlayerBank _bank;
+        private PlayerCrafting _crafting;
         private Action _lastLevelHandler;
         private Action _lastDebouncedHandler;
 
@@ -24,6 +26,7 @@ namespace MMO.Persistence
             PlayerQuestLog quests,
             PlayerWallet wallet,
             PlayerBank bank,
+            PlayerCrafting crafting,
             Action onLevelChanged,
             Action onDebouncedChanged)
         {
@@ -34,6 +37,7 @@ namespace MMO.Persistence
             _quests = quests;
             _wallet = wallet;
             _bank = bank;
+            _crafting = crafting;
             _lastLevelHandler = onLevelChanged;
             _lastDebouncedHandler = onDebouncedChanged;
 
@@ -57,6 +61,14 @@ namespace MMO.Persistence
 
             if (_bank != null)
                 _bank.BankChanged += onDebouncedChanged;
+
+            // XP can wait for the debounce window; a queue mutation is a durability point (escrow
+            // left the bag / an order resolved), so it saves immediately.
+            if (_crafting != null)
+            {
+                _crafting.CraftingChanged += onLevelChanged;
+                _crafting.OrdersChanged += onLevelChanged;
+            }
         }
 
         public void Unbind()
@@ -82,11 +94,18 @@ namespace MMO.Persistence
             if (_bank != null)
                 _bank.BankChanged -= _lastDebouncedHandler;
 
+            if (_crafting != null)
+            {
+                _crafting.CraftingChanged -= _lastLevelHandler;
+                _crafting.OrdersChanged -= _lastLevelHandler;
+            }
+
             _stats = null;
             _inventory = null;
             _quests = null;
             _wallet = null;
             _bank = null;
+            _crafting = null;
             _lastLevelHandler = null;
             _lastDebouncedHandler = null;
         }
