@@ -18,14 +18,15 @@ A recipe is a `ScriptableObject` created with `Assets > Create > MMO > Recipe Da
 | `StationType` | Which station is required. | `:22` |
 | `RequiredCraftingLevel` | Minimum crafting level. | `:23` |
 | `CraftingXp` | XP awarded on success. | `:24` |
+| `CraftDurationSeconds` | Seconds a craft takes; `0` means instant and is the default. | `:25` |
 
 `RecipeIngredient` (`RecipeData.cs:8`) is a small serialisable struct: `Item` (an `ItemDefinition`)
 and `Count`.
 
 ### Self-registration
 
-Like items, recipes self-register. `RecipeData.OnEnable` (`:34`) registers in `RecipeRegistry` when
-named, and `OnDisable` (`:40`) unregisters. `RecipeRegistry`
+Like items, recipes self-register. `RecipeData.OnEnable` (`:44`) registers in `RecipeRegistry` when
+named, and `OnDisable` (`:50`) unregisters. `RecipeRegistry`
 (`Assets/Scripts/Crafting/RecipeRegistry.cs:6`) mirrors `ItemDefinitionRegistry`: `Register` (`:12`),
 `Unregister` (`:31`), `Resolve` (`:40`, falling back to `Resources.Load<RecipeData>` under
 `Resources/Recipes`) and `Clear` (`:57`). `All` (`:65`) returns a snapshot `IReadOnlyList<RecipeData>`
@@ -204,6 +205,20 @@ ingredients) → `PlayerInventory.TryCraft` consumes the ingredients and adds th
 The client only ever sends a **recipe name**; everything else is decided by the server. Because the
 payload is only a display list, a forged or stale recipe name never authorises anything — `TryCraft`
 re-runs the full validation.
+
+### One ingredient-spend path
+
+`PlayerInventory.TrySpendIngredients(recipe)` (`Assets/Scripts/Inventory/PlayerInventory.cs:709`) is
+the only place ingredients leave the bag. It plans the ingredient set on a copy first and removes
+anything only when the bag covers every entry, releasing the consumed instance ids — a failure is a
+no-op, never a partial spend. `TryCraft` (`:670`) checks the output fits in the bag the ingredients
+would leave behind, calls that helper, then grants the output. An instant craft and a queued craft
+both call the same helper, so the two paths cannot spend different sets for the same recipe.
+
+A recipe's `CraftDurationSeconds` (`RecipeData.cs:39`) is what a queued craft will wait on, and it
+defaults to `0`. **`0` means instant**, so every recipe authored before the queue existed still
+crafts in the tick it was requested; `IsInstant` (`:42`) is the read the instant path and the tests
+use. Populate it by hand for a recipe that should take time.
 
 
 ## 6. Gathering data: ResourceDefinition and ResourceNode

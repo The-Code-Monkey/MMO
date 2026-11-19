@@ -22,6 +22,7 @@ namespace MMO.Crafting
         [SerializeField] private CraftingStationType _stationType = CraftingStationType.None;
         [SerializeField, Min(0)] private int _requiredCraftingLevel;
         [SerializeField, Min(0)] private int _craftingXp;
+        [SerializeField, Min(0f)] private float _craftDurationSeconds;
 
         public string RecipeName => _recipeName;
         public IReadOnlyList<RecipeIngredient> Ingredients => _ingredients ?? Array.Empty<RecipeIngredient>();
@@ -30,6 +31,15 @@ namespace MMO.Crafting
         public CraftingStationType StationType => _stationType;
         public int RequiredCraftingLevel => _requiredCraftingLevel;
         public int CraftingXp => _craftingXp;
+
+        /// <summary>
+        /// Seconds a craft of this recipe takes. <c>0</c> means instant, which is the default, so
+        /// every recipe authored before timers existed still crafts in the same tick it was asked.
+        /// </summary>
+        public float CraftDurationSeconds => Mathf.Max(0f, _craftDurationSeconds);
+
+        /// <summary>Whether this recipe resolves without waiting in a craft queue.</summary>
+        public bool IsInstant => CraftDurationSeconds <= 0f;
 
         private void OnEnable()
         {
