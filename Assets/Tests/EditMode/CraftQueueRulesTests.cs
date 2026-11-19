@@ -63,6 +63,62 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void TryCancel_TransitionsBeforeTheDueTickAndOnlyOnce()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+
+            Assert.IsTrue(CraftQueueRules.TryCancel(order, Start.AddSeconds(29)));
+            Assert.AreEqual(CraftOrderState.Cancelled, order.State);
+
+            Assert.IsFalse(CraftQueueRules.TryCancel(order, Start.AddSeconds(28)),
+                "a second cancel must not transition the order again");
+        }
+
+        [Test]
+        public void TryCancel_RefusesAtOrAfterTheDueTick()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+
+            Assert.IsFalse(CraftQueueRules.TryCancel(order, Start.AddSeconds(30)));
+            Assert.IsFalse(CraftQueueRules.TryCancel(order, Start.AddSeconds(31)));
+            Assert.AreEqual(CraftOrderState.InProgress, order.State);
+        }
+
+        [Test]
+        public void CancelThenComplete_ResolvesAsOneOutcome()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+
+            Assert.IsTrue(CraftQueueRules.TryCancel(order, Start.AddSeconds(10)));
+            Assert.IsFalse(CraftQueueRules.TryComplete(order, Start.AddSeconds(30)),
+                "the completion must lose to the cancel that already resolved the order");
+            Assert.AreEqual(CraftOrderState.Cancelled, order.State);
+        }
+
+        [Test]
+        public void CompleteThenCancel_ResolvesAsOneOutcome()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+
+            Assert.IsTrue(CraftQueueRules.TryComplete(order, Start.AddSeconds(30)));
+            Assert.IsFalse(CraftQueueRules.TryCancel(order, Start.AddSeconds(30)),
+                "the cancel must lose to the completion that already resolved the order");
+            Assert.AreEqual(CraftOrderState.Completed, order.State);
+        }
+
+        [Test]
+        public void AClaimedOnceOrderIsNoLongerClaimable()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+            CraftQueueRules.TryCancel(order, Start.AddSeconds(10));
+
+            Assert.IsTrue(CraftQueueRules.IsClaimable(order));
+            CraftQueueRules.MarkClaimed(order);
+            Assert.IsFalse(CraftQueueRules.IsClaimable(order),
+                "a cancelled order returns its escrow exactly once");
+        }
+
+        [Test]
         public void HasFreeSlot_RefusesTheSixthOrderAndCountsEveryState()
         {
             var orders = new List<CraftOrder>();

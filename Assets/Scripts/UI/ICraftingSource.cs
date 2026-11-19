@@ -53,5 +53,8 @@ namespace MMO.UI
 
         /// <summary>An intent to claim <paramref name="orderId"/>'s output or escrow; the server decides.</summary>
         void RequestClaimOrder(string orderId);
+
+        /// <summary>An intent to cancel <paramref name="orderId"/> before it is due; the server decides.</summary>
+        void RequestCancelOrder(string orderId);
     }
 }

@@ -228,9 +228,9 @@ the order is pruned, and a sixth request is refused with `CraftQueueRules.QueueF
 | `Claimed` | Resolved and pruned; a reload that finds it does nothing. |
 | `Cancelled` | Cancelled before its due tick; its escrow is claimable (see *Cancelling an order*). |
 
-`PlayerCrafting.ProcessOrdersAsync` (`:350`) is the server tick. It leaves `InProgress` only through
+`PlayerCrafting.ProcessOrdersAsync` (`:393`) is the server tick. It leaves `InProgress` only through
 `CraftQueueRules.TryComplete`, which refuses a second caller in the same tick, then **persists
-Completed before granting**. `TryGrantCompleted` (`:393`) grants the output and awards the recipe's
+Completed before granting**. `TryGrantCompleted` (`:436`) grants the output and awards the recipe's
 crafting XP in the same step, marks the order `Claimed`, persists again, and finally removes it. A
 reload that finds `Completed` finishes an interrupted grant; one that finds `Claimed` does nothing.
 An order that came due while the player was offline completes on the first server tick after the
@@ -239,8 +239,26 @@ its slot; `RequestClaimOrder` (`:299`) retries it through `ClaimOrderAsync` (`:3
 room.
 
 The panel never derives a deadline: it renders `CraftOrderView.RemainingSeconds` from the server,
-which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:526`) while the player
+which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:569`) while the player
 has orders.
+
+### Cancelling an order
+
+`RequestCancelOrder` (`PlayerCrafting.cs:346`) asks the server to give up an order that has **not** reached its due tick.
+`CraftQueueRules.TryCancel` is the only way into `Cancelled`, and it refuses an order that is not
+`InProgress` or whose deadline has passed; once an order is due the only exit is a claim.
+
+Cancel and completion share that "only `InProgress` can move" rule, and both transitions run before
+any await on the single server thread, so a cancel landing in the same tick as a completion is
+exactly one outcome: whichever ran first changed the state and the other refuses. There is no path
+that both refunds escrow and grants output.
+
+`CancelOrderAsync` (`:370`) persists `Cancelled` before returning the escrow, then refunds through
+`PlayerInventory.TryGrantEscrow` — the same instance ids, stack counts and durability that were
+taken. If the bag cannot take the whole refund the order stays `Cancelled` with its escrow
+claimable and keeps its slot; `RequestClaimOrder` returns it once there is room, exactly once,
+because `MarkClaimed`/`PruneClaimed` run after the refund and a reload that finds `Claimed` does
+nothing.
 
 ### One ingredient-spend path
 

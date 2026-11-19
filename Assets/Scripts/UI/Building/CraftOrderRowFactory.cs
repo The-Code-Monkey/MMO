@@ -34,7 +34,7 @@ namespace MMO.UI
 
             Button actionButton = CreateButton(
                 rowObject.transform, "OrderAction", CraftOrderUiFormat.ActionLabel(order));
-            actionButton.interactable = CraftOrderUiFormat.CanClaim(order);
+            actionButton.interactable = CraftOrderUiFormat.HasAction(order);
             actionButton.onClick.AddListener(() => onAction(index));
 
             return new CraftingPanelView.OrderRow(order, rowObject, nameLabel, statusLabel, actionButton);

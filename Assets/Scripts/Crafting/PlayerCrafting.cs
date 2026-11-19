@@ -342,6 +342,49 @@ namespace MMO.Crafting
             return true;
         }
 
+        /// <summary>Owner-side intent: cancel an order that is not yet due and get its escrow back.</summary>
+        public void RequestCancelOrder(string orderId)
+        {
+            if (!IsOwner || string.IsNullOrEmpty(orderId))
+                return;
+
+            RpcRequestCancelOrder(orderId);
+        }
+
+        [ServerRpc]
+        private void RpcRequestCancelOrder(string orderId, NetworkConnection sender = null)
+        {
+            if (sender == null || !OwnerMatches(sender))
+                return;
+
+            _ = CancelOrderAsync(orderId);
+        }
+
+        /// <summary>
+        /// Server: cancels an order before its due tick through the same transition completion
+        /// uses, so the two can never both resolve it. Cancelled is persisted before the escrow is
+        /// returned; a refund that does not fit leaves the order Cancelled and claimable, still
+        /// holding its slot.
+        /// </summary>
+        [Server]
+        public async Task<bool> CancelOrderAsync(string orderId)
+        {
+            CraftOrder order = CraftQueueRules.Find(_orders, orderId);
+            if (!CraftQueueRules.TryCancel(order, DateTime.UtcNow))
+                return false;
+
+            await PersistAsync();
+
+            if (TryRefund(order))
+            {
+                await PersistAsync();
+                _orders.Remove(order);
+            }
+
+            NotifyOrdersChanged();
+            return true;
+        }
+
         /// <summary>
         /// Server: the queue's clock. Only due InProgress orders move, and each one persists
         /// Completed before anything is granted. A save that fails leaves the order where it is and
