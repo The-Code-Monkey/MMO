@@ -91,6 +91,13 @@ namespace MMO.Crafting
             return true;
         }
 
+        /// <summary>
+        /// True when a reload found a Completed order: the grant may have been interrupted, so the
+        /// server tick finishes it without waiting for another deadline.
+        /// </summary>
+        public static bool NeedsResume(CraftOrder order)
+            => order != null && order.State == CraftOrderState.Completed;
+
         /// <summary>True when a claim can resolve the order: grant its output or refund its escrow.</summary>
         public static bool IsClaimable(CraftOrder order)
             => order != null &&

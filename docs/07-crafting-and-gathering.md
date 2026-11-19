@@ -230,7 +230,7 @@ the order is pruned, and a sixth request is refused with `CraftQueueRules.QueueF
 
 `PlayerCrafting.ProcessOrdersAsync` (`:393`) is the server tick. It leaves `InProgress` only through
 `CraftQueueRules.TryComplete`, which refuses a second caller in the same tick, then **persists
-Completed before granting**. `TryGrantCompleted` (`:436`) grants the output and awards the recipe's
+Completed before granting**. `TryGrantCompleted` (`:444`) grants the output and awards the recipe's
 crafting XP in the same step, marks the order `Claimed`, persists again, and finally removes it. A
 reload that finds `Completed` finishes an interrupted grant; one that finds `Claimed` does nothing.
 An order that came due while the player was offline completes on the first server tick after the
@@ -239,7 +239,7 @@ its slot; `RequestClaimOrder` (`:299`) retries it through `ClaimOrderAsync` (`:3
 room.
 
 The panel never derives a deadline: it renders `CraftOrderView.RemainingSeconds` from the server,
-which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:577`) while the player
+which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:591`) while the player
 has orders.
 
 ### Cancelling an order
@@ -263,7 +263,7 @@ nothing.
 ### Surviving content drift
 
 Recipes and ingredients are data assets, and a balance change can rename or delete one while an order
-is in flight. `PlayerCrafting.RestoreFromSave` (`:485`) first prunes `Claimed` orders and then runs
+is in flight. `PlayerCrafting.RestoreFromSave` (`:493`) first prunes `Claimed` orders and then runs
 `CraftQueueRules.CancelOnContentDrift`: any surviving order whose recipe, or any escrowed
 ingredient, no longer resolves becomes `Cancelled`. Its escrow is untouched, so the normal claim path
 returns the materials instead of the load dropping them.

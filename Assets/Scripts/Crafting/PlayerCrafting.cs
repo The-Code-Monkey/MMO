@@ -404,11 +404,19 @@ namespace MMO.Crafting
                 for (int i = 0; i < pending.Length; i++)
                 {
                     CraftOrder order = pending[i];
-                    if (!_orders.Contains(order) || !CraftQueueRules.TryComplete(order, now))
+                    if (!_orders.Contains(order))
+                        continue;
+
+                    bool due = CraftQueueRules.TryComplete(order, now);
+                    bool resumed = !due && CraftQueueRules.NeedsResume(order);
+                    if (!due && !resumed)
                         continue;
 
                     changed = true;
-                    if (!await PersistAsync())
+
+                    // Completed is made durable before the grant, unless a reload already found it
+                    // Completed — that state is the marker the previous run left behind.
+                    if (due && !await PersistAsync())
                         continue;
 
                     // A claim that resolved the order while the save ran has already claimed it.
@@ -564,8 +572,14 @@ namespace MMO.Crafting
         {
             PlayerSaveTrigger trigger = SaveTrigger;
             PlayerPersistenceService service = PlayerPersistenceService.Instance;
-            if (trigger == null || service == null || string.IsNullOrEmpty(trigger.AccountId))
+
+            // Nothing to save through (tests, a bare scene) is treated as saved. A live player
+            // whose join has not been applied yet is not: ordering matters more than speed here.
+            if (trigger == null || service == null)
                 return true;
+
+            if (string.IsNullOrEmpty(trigger.AccountId))
+                return false;
 
             return await service.FlushAsync(trigger.AccountId);
         }

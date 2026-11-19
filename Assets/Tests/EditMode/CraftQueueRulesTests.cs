@@ -182,6 +182,20 @@ namespace MMO.Tests
         }
 
         [Test]
+        public void NeedsResume_IsTrueOnlyForACompletedOrder()
+        {
+            CraftOrder order = OrderAt(Start.AddSeconds(30));
+            Assert.IsFalse(CraftQueueRules.NeedsResume(order));
+
+            CraftQueueRules.TryComplete(order, Start.AddSeconds(30));
+            Assert.IsTrue(CraftQueueRules.NeedsResume(order),
+                "a reload that finds Completed must finish the interrupted grant");
+
+            CraftQueueRules.MarkClaimed(order);
+            Assert.IsFalse(CraftQueueRules.NeedsResume(order));
+        }
+
+        [Test]
         public void IsClaimable_OnlyCompletedAndCancelledOrders()
         {
             CraftOrder order = OrderAt(Start);
