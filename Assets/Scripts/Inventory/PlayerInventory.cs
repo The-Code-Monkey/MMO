@@ -97,6 +97,10 @@ namespace MMO.Inventory
         // Server-side staging list for "the bag minus one item" checks; never touches replication.
         private readonly List<ItemInstance> _scratch = new();
 
+        // Server-side staging for the instances a spend just took out of the bag, before their
+        // ids are released (instant craft) or escrowed on a craft order.
+        private readonly List<ItemInstance> _taken = new();
+
         private PlayerStats _stats;
 
         /// <summary>Replicated bag contents (read-only view; mutation is server-only).</summary>
@@ -676,23 +680,10 @@ namespace MMO.Inventory
             // cannot fit its own output never spends anything.
             if (!TryBuildRemainder(recipe.Ingredients, _items, _scratch) ||
                 !_grid.TryFindFreeSpace(_scratch, recipe.Output.GridWidth, recipe.Output.GridHeight,
-                    out int x, out int y, CellLimit))
+                    out _, out _, CellLimit))
                 return false;
 
-            if (!TrySpendIngredients(recipe))
-                return false;
-
-            var registry = Registry;
-            var holder = HolderId;
-
-            for (int outCount = 0; outCount < recipe.OutputCount; outCount++)
-            {
-                var output = ItemInstance.Create(recipe.Output, x, y);
-                _items.Add(output);
-                if (registry != null && !string.IsNullOrEmpty(output.InstanceId))
-                    registry.Grant(output.InstanceId, holder);
-            }
-            return true;
+            return TrySpendIngredients(recipe) && TryGrantCraftOutput(recipe);
         }
 
         /// <summary>
@@ -701,42 +692,137 @@ namespace MMO.Inventory
         /// cannot cover leaves the bag untouched.
         ///
         /// <para>
-        /// This is the single spend path. The instant craft calls it, and a queued craft calls it
-        /// when it completes, so the two can never spend different sets for the same recipe.
+        /// This is the instant spend path. It is <see cref="TryTakeIngredients"/> plus releasing the
+        /// ids; a queued craft calls <see cref="TryTakeIngredients"/> instead and keeps the returned
+        /// instances as escrow, so both paths remove the same set for the same recipe.
         /// </para>
         /// </summary>
         [Server]
         public bool TrySpendIngredients(RecipeData recipe)
         {
-            if (recipe == null || !TryBuildRemainder(recipe.Ingredients, _items, _scratch))
+            if (!TryTakeIngredients(recipe, _taken))
                 return false;
 
-            IReadOnlyList<RecipeIngredient> ingredients = recipe.Ingredients;
-            var consumedInstanceIds = new List<string>();
+            var registry = Registry;
+            var holder = HolderId;
 
+            for (int i = 0; i < _taken.Count; i++)
+            {
+                if (registry != null && !string.IsNullOrEmpty(_taken[i].InstanceId))
+                    registry.Release(_taken[i].InstanceId, holder);
+            }
+
+            _taken.Clear();
+            return true;
+        }
+
+        /// <summary>
+        /// Server: removes exactly the ingredient set of <paramref name="recipe"/> from the bag and
+        /// appends the instances it took, in removal order, to <paramref name="taken"/>. Nothing is
+        /// released: a caller that keeps them (a craft queue's escrow) still owns them.
+        ///
+        /// <para>
+        /// All or nothing: a null ingredient or one the bag cannot cover leaves both the bag and
+        /// <paramref name="taken"/> untouched.
+        /// </para>
+        /// </summary>
+        [Server]
+        public bool TryTakeIngredients(RecipeData recipe, List<ItemInstance> taken)
+        {
+            if (taken == null || recipe == null ||
+                !TryBuildRemainder(recipe.Ingredients, _items, _scratch))
+                return false;
+
+            taken.Clear();
+            IReadOnlyList<RecipeIngredient> ingredients = recipe.Ingredients;
             for (int i = 0; i < ingredients.Count; i++)
             {
                 RecipeIngredient ingredient = ingredients[i];
                 for (int n = 0; n < ingredient.Count; n++)
                 {
                     int index = FindByName(_items, ingredient.Item.ItemName);
-                    if (index >= 0)
-                    {
-                        var consumed = _items[index];
-                        if (!consumed.IsEmpty && !string.IsNullOrEmpty(consumed.InstanceId))
-                            consumedInstanceIds.Add(consumed.InstanceId);
-                        _items.RemoveAt(index);
-                    }
+                    taken.Add(_items[index]);
+                    _items.RemoveAt(index);
                 }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Server: grants one recipe's output at the first free spot. False when it does not fit,
+        /// in which case nothing moves. Shared by the instant craft and a completed queue order.
+        /// </summary>
+        [Server]
+        public bool TryGrantCraftOutput(RecipeData recipe)
+        {
+            if (recipe == null || recipe.Output == null)
+                return false;
+
+            if (!_grid.TryFindFreeSpace(_items, recipe.Output.GridWidth, recipe.Output.GridHeight,
+                    out int x, out int y, CellLimit))
+                return false;
+
+            var registry = Registry;
+            var holder = HolderId;
+
+            for (int i = 0; i < recipe.OutputCount; i++)
+            {
+                var output = ItemInstance.Create(recipe.Output, x, y);
+                _items.Add(output);
+                if (registry != null && !string.IsNullOrEmpty(output.InstanceId))
+                    registry.Grant(output.InstanceId, holder);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Server: returns an order's escrow to the bag with the exact instance ids, stack counts
+        /// and durability it was taken with. All or nothing: when the whole set cannot fit, nothing
+        /// moves and the order stays claimable. Items are rebuilt from the escrow fields, not from
+        /// their definitions, so a recipe/ingredient asset that vanished cannot destroy them.
+        /// </summary>
+        [Server]
+        public bool TryGrantEscrow(IReadOnlyList<CraftEscrowItem> escrow)
+        {
+            if (escrow == null || escrow.Count == 0)
+                return true;
+
+            // Plan every placement on a copy, so a bag that can only take part of the refund is
+            // left exactly as it was.
+            _scratch.Clear();
+            for (int i = 0; i < _items.Count; i++)
+                _scratch.Add(_items[i]);
+
+            var positions = new (int X, int Y)[escrow.Count];
+            for (int i = 0; i < escrow.Count; i++)
+            {
+                CraftEscrowItem item = escrow[i];
+                if (item.IsEmpty)
+                    continue;
+
+                if (!_grid.TryFindFreeSpace(
+                        _scratch, Math.Max(1, item.Width), Math.Max(1, item.Height), out int x, out int y,
+                        CellLimit))
+                    return false;
+
+                _scratch.Add(item.ToInstance(x, y));
+                positions[i] = (x, y);
             }
 
             var registry = Registry;
             var holder = HolderId;
 
-            foreach (var instanceId in consumedInstanceIds)
+            for (int i = 0; i < escrow.Count; i++)
             {
-                if (registry != null && !string.IsNullOrEmpty(instanceId))
-                    registry.Release(instanceId, holder);
+                if (escrow[i].IsEmpty)
+                    continue;
+
+                ItemInstance restored = escrow[i].ToInstance(positions[i].X, positions[i].Y);
+                _items.Add(restored);
+                if (registry != null && !string.IsNullOrEmpty(restored.InstanceId))
+                    registry.Grant(restored.InstanceId, holder);
             }
 
             return true;

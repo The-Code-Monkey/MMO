@@ -206,14 +206,52 @@ The client only ever sends a **recipe name**; everything else is decided by the 
 payload is only a display list, a forged or stale recipe name never authorises anything — `TryCraft`
 re-runs the full validation.
 
+### Timed craft orders
+
+A recipe with `CraftDurationSeconds` above zero does not craft inside the click. `TryCraft` (`:223`)
+resolves and validates exactly as above, then calls `TryEnqueue` (`:263`) instead of spending:
+
+- the ingredients leave the bag through `PlayerInventory.TryTakeIngredients` (`PlayerInventory.cs:730`)
+  and become the order's **escrow** — instance ids, stack counts and durability intact — which is
+  what lets a cancel later return the exact same instances;
+- the order carries an **absolute UTC deadline** (`CraftQueueRules.DueAtUtcTicks`), the recipe name
+  and the escrow, and lives on the player's save record (`PlayerSaveRecord.CraftOrders`, next to
+  `CraftingXp`), so a zone transfer, a disconnect and a restart all read the same order.
+
+Five orders share the queue (`CraftQueueRules.MaxOrders`); every state counts against the cap until
+the order is pruned, and a sixth request is refused with `CraftQueueRules.QueueFullMessage`.
+
+| State | Meaning |
+|---|---|
+| `InProgress` | Escrow taken, waiting for the UTC deadline. |
+| `Completed` | Due, but the output has not been granted yet (or did not fit the bag). |
+| `Claimed` | Resolved and pruned; a reload that finds it does nothing. |
+| `Cancelled` | Cancelled before its due tick; its escrow is claimable (see *Cancelling an order*). |
+
+`PlayerCrafting.ProcessOrdersAsync` (`:350`) is the server tick. It leaves `InProgress` only through
+`CraftQueueRules.TryComplete`, which refuses a second caller in the same tick, then **persists
+Completed before granting**. `TryGrantCompleted` (`:393`) grants the output and awards the recipe's
+crafting XP in the same step, marks the order `Claimed`, persists again, and finally removes it. A
+reload that finds `Completed` finishes an interrupted grant; one that finds `Claimed` does nothing.
+An order that came due while the player was offline completes on the first server tick after the
+save is applied at join. A completion that does not fit leaves the order `Completed`, still holding
+its slot; `RequestClaimOrder` (`:299`) retries it through `ClaimOrderAsync` (`:322`) once the bag has
+room.
+
+The panel never derives a deadline: it renders `CraftOrderView.RemainingSeconds` from the server,
+which pushes a fresh order payload once a second (`PlayerCrafting.Update`, `:526`) while the player
+has orders.
+
 ### One ingredient-spend path
 
-`PlayerInventory.TrySpendIngredients(recipe)` (`Assets/Scripts/Inventory/PlayerInventory.cs:709`) is
-the only place ingredients leave the bag. It plans the ingredient set on a copy first and removes
-anything only when the bag covers every entry, releasing the consumed instance ids — a failure is a
-no-op, never a partial spend. `TryCraft` (`:670`) checks the output fits in the bag the ingredients
-would leave behind, calls that helper, then grants the output. An instant craft and a queued craft
-both call the same helper, so the two paths cannot spend different sets for the same recipe.
+`PlayerInventory.TryTakeIngredients(recipe, taken)` (`Assets/Scripts/Inventory/PlayerInventory.cs:730`)
+is the only place ingredients leave the bag. It plans the ingredient set on a copy first and removes
+anything only when the bag covers every entry — a failure is a no-op, never a partial spend — and
+hands the exact instances back to the caller. `TrySpendIngredients` (`:701`) is that take plus
+releasing the ids, for the instant path; a queued craft keeps the instances as escrow instead.
+`TryCraft` (`:674`) checks the output fits in the bag the ingredients would leave behind, spends,
+then grants through `TryGrantCraftOutput` (`:757`). Both paths therefore remove the same set for the
+same recipe, and both grant through the same helper.
 
 A recipe's `CraftDurationSeconds` (`RecipeData.cs:39`) is what a queued craft will wait on, and it
 defaults to `0`. **`0` means instant**, so every recipe authored before the queue existed still

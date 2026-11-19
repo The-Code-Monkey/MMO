@@ -38,6 +38,11 @@ namespace MMO.UI
             Button close = CreateButton(panel.transform, "Close", new Vector2(-16f, -8f), new Vector2(64f, 26f), "X");
             close.onClick.AddListener(() => view.Conceal());
 
+            Text status = CreateLabel(
+                panel.transform, "Status", new Vector2(16f, -32f), new Vector2(PanelWidth - 32f, 20f), 12);
+            status.color = new Color(1f, 0.82f, 0.45f);
+            view.SetStatus(status);
+
             view.SetContainer(CreateScrollView(panel.transform));
             view.Conceal();
             return view;
@@ -48,7 +53,7 @@ namespace MMO.UI
         {
             GameObject scrollObject = CreateRect(
                 parent, "ScrollView", new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(16f, -44f), new Vector2(PanelWidth - 32f, PanelHeight - 60f));
+                new Vector2(16f, -56f), new Vector2(PanelWidth - 32f, PanelHeight - 72f));
 
             GameObject viewportObject = CreateStretch(scrollObject.transform, "Viewport");
             RectTransform viewport = (RectTransform)viewportObject.transform;

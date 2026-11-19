@@ -41,6 +41,9 @@ namespace MMO.UI
         /// <summary>Background of a row the player cannot afford yet.</summary>
         public static readonly Color LockedRowColor = new(0.24f, 0.1f, 0.1f, 0.8f);
 
+        /// <summary>Background of an in-flight or claimable craft order.</summary>
+        public static readonly Color OrderRowColor = new(0.1f, 0.16f, 0.22f, 0.85f);
+
         /// <summary>One built row: the offer it shows and the widgets a repaint touches.</summary>
         public sealed class Row
         {
@@ -69,13 +72,44 @@ namespace MMO.UI
             public Button CraftButton { get; }
         }
 
+        /// <summary>One built order row: the order it shows and the widgets a repaint touches.</summary>
+        public sealed class OrderRow
+        {
+            internal OrderRow(CraftOrderView order, GameObject gameObject, Text nameLabel,
+                Text statusLabel, Button actionButton)
+            {
+                Order = order;
+                GameObject = gameObject;
+                NameLabel = nameLabel;
+                StatusLabel = statusLabel;
+                ActionButton = actionButton;
+            }
+
+            /// <summary>The order this row was built from.</summary>
+            public CraftOrderView Order { get; }
+
+            public GameObject GameObject { get; }
+
+            /// <summary>The recipe/output label.</summary>
+            public Text NameLabel { get; }
+
+            /// <summary>The server-sent countdown or resolved state.</summary>
+            public Text StatusLabel { get; }
+
+            /// <summary>The claim button; disabled when the order has nothing to claim.</summary>
+            public Button ActionButton { get; }
+        }
+
         [SerializeField] private RectTransform _rowContainer;
         [SerializeField] private Text _titleLabel;
+        [SerializeField] private Text _statusLabel;
 
         private readonly List<Row> _rows = new();
+        private readonly List<OrderRow> _orderRows = new();
         private ICraftingSource _source;
         private CraftingStation _station;
         private IReadOnlyList<RecipeOffer> _offers = Array.Empty<RecipeOffer>();
+        private IReadOnlyList<CraftOrderView> _orders = Array.Empty<CraftOrderView>();
 
         /// <summary>Where built rows are parented, when one was set.</summary>
         public RectTransform RowContainer => _rowContainer;
@@ -83,8 +117,17 @@ namespace MMO.UI
         /// <summary>The title label, when one was set.</summary>
         public Text TitleLabel => _titleLabel;
 
-        /// <summary>The built rows, top to bottom.</summary>
+        /// <summary>The status label a refusal (a full queue, for instance) is written to.</summary>
+        public Text StatusLabel => _statusLabel;
+
+        /// <summary>The built recipe rows, top to bottom.</summary>
         public IReadOnlyList<Row> Rows => _rows;
+
+        /// <summary>The built order rows, top to bottom.</summary>
+        public IReadOnlyList<OrderRow> OrderRows => _orderRows;
+
+        /// <summary>The orders the last payload carried.</summary>
+        public IReadOnlyList<CraftOrderView> Orders => _orders;
 
         /// <summary>The station currently open, or null.</summary>
         public CraftingStation Station => _station;
@@ -101,6 +144,9 @@ namespace MMO.UI
         /// <summary>Declares the title label; public so a factory can hand over its header.</summary>
         public void SetTitle(Text titleLabel) => _titleLabel = titleLabel;
 
+        /// <summary>Declares the status label; public so a factory can hand over its message line.</summary>
+        public void SetStatus(Text statusLabel) => _statusLabel = statusLabel;
+
         /// <summary>
         /// Binds the panel: unsubscribes any previous source, subscribes to
         /// <c>RecipesChanged</c>/<c>StationOpened</c>, and shows whatever the source already
@@ -115,8 +161,10 @@ namespace MMO.UI
 
             _source.RecipesChanged += Repaint;
             _source.StationOpened += OnStationOpened;
+            _source.OrdersChanged += Repaint;
 
             _offers = _source.AvailableRecipes ?? Array.Empty<RecipeOffer>();
+            _orders = _source.CraftOrders ?? Array.Empty<CraftOrderView>();
             _station = _source.OpenedStation;
             gameObject.SetActive(_station != null);
 
@@ -130,6 +178,7 @@ namespace MMO.UI
             {
                 _source.RecipesChanged -= Repaint;
                 _source.StationOpened -= OnStationOpened;
+                _source.OrdersChanged -= Repaint;
                 _source = null;
             }
         }
@@ -140,7 +189,11 @@ namespace MMO.UI
             gameObject.SetActive(false);
             _station = null;
             _offers = Array.Empty<RecipeOffer>();
+            _orders = Array.Empty<CraftOrderView>();
+            if (_statusLabel != null)
+                _statusLabel.text = string.Empty;
             ClearRows();
+            ClearOrderRows();
         }
 
         /// <summary>
@@ -150,19 +203,50 @@ namespace MMO.UI
         public virtual void Repaint()
         {
             ClearRows();
+            ClearOrderRows();
 
             if (_source == null || _station == null)
                 return;
 
+            // Pull both snapshots from the source: an OrdersChanged payload arrives without a
+            // station re-open, and the rows must show what the server just sent.
+            _offers = _source.AvailableRecipes ?? Array.Empty<RecipeOffer>();
+            _orders = _source.CraftOrders ?? Array.Empty<CraftOrderView>();
+
             if (_titleLabel != null)
                 _titleLabel.text = _station.StationType.ToString();
 
+            if (_statusLabel != null)
+                _statusLabel.text = _source.CraftMessage ?? string.Empty;
+
+            Transform parent = _rowContainer != null ? _rowContainer : transform;
+
+            for (int i = 0; i < _orders.Count; i++)
+                _orderRows.Add(CraftOrderRowFactory.Create(
+                    _orders[i], parent, _orderRows.Count, HandleOrderAction));
+
             for (int i = 0; i < _offers.Count; i++)
                 _rows.Add(CraftingRowFactory.Create(
-                    _offers[i],
-                    _rowContainer != null ? _rowContainer : transform,
-                    _rows.Count,
-                    HandleRowClicked));
+                    _offers[i], parent, _rows.Count, HandleRowClicked));
+        }
+
+        /// <summary>
+        /// Forwards an order row's action as a claim intent. Virtual so a test can watch it arrive,
+        /// and guarded exactly like <see cref="HandleRowClicked"/>.
+        /// </summary>
+        public virtual void HandleOrderAction(int row)
+        {
+            if (_source == null || _station == null || row < 0 || row >= _orderRows.Count)
+                return;
+
+            if (_source is UnityEngine.Object unityObject && unityObject == null)
+                return;
+
+            OrderRow entry = _orderRows[row];
+            if (!CraftOrderUiFormat.CanClaim(entry.Order))
+                return;
+
+            _source.RequestClaimOrder(entry.Order.OrderId);
         }
 
         /// <summary>
@@ -190,6 +274,9 @@ namespace MMO.UI
         {
             _station = station;
             _offers = offers ?? Array.Empty<RecipeOffer>();
+            _orders = _source != null
+                ? _source.CraftOrders ?? Array.Empty<CraftOrderView>()
+                : Array.Empty<CraftOrderView>();
             gameObject.SetActive(station != null);
 
             Repaint();
@@ -204,6 +291,17 @@ namespace MMO.UI
             }
 
             _rows.Clear();
+        }
+
+        private void ClearOrderRows()
+        {
+            for (int i = 0; i < _orderRows.Count; i++)
+            {
+                if (_orderRows[i].GameObject != null)
+                    ViewObject.Destroy(_orderRows[i].GameObject);
+            }
+
+            _orderRows.Clear();
         }
 
         private void OnDestroy() => Unbind();

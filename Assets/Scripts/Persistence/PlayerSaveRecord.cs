@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MMO.Content;
+using MMO.Crafting;
 using MMO.Economy;
 using MMO.Gameplay;
 using UnityEngine;
@@ -73,7 +74,7 @@ namespace MMO.Persistence
     public class PlayerSaveRecord
     {
         /// <summary>Bump when the shape below stops round-tripping old saves.</summary>
-        public const int CurrentSchemaVersion = 5;
+        public const int CurrentSchemaVersion = 6;
 
         /// <summary>The player's stable account key; the storage key this record lives under.</summary>
         public string UserId;
@@ -89,6 +90,12 @@ namespace MMO.Persistence
 
         /// <summary>Quest/event experience. Not a level curve; the level travels separately.</summary>
         public int Experience = 0;
+
+        /// <summary>
+        /// Crafting XP. Persisted so a queued craft's XP survives a transfer or restart, and so a
+        /// reload cannot award it twice.
+        /// </summary>
+        public int CraftingXp = 0;
 
         /// <summary>Reserved. No movement save exists yet, so it round-trips but is not applied.</summary>
         public Vector3 Position;
@@ -131,5 +138,11 @@ namespace MMO.Persistence
 
         /// <summary>Achievement progress, including which completions have already paid out.</summary>
         public List<AchievementSaveData> Achievements = new List<AchievementSaveData>();
+
+        /// <summary>
+        /// Timed craft orders, each with its escrow and absolute UTC deadline. The state is the
+        /// idempotence marker: Completed means "finish the interrupted grant", Claimed is pruned.
+        /// </summary>
+        public List<CraftOrder> CraftOrders = new List<CraftOrder>();
 }
 }

@@ -1,6 +1,7 @@
 using MMO.Auction;
 using MMO.Banking;
 using MMO.Content;
+using MMO.Crafting;
 using MMO.Gameplay;
 using MMO.Inventory;
 using MMO.Progression;
@@ -19,6 +20,7 @@ namespace MMO.Persistence
             PlayerWallet wallet,
             PlayerBank bank,
             PlayerAchievements achievements,
+            PlayerCrafting crafting,
             Vector3 position)
         {
             PlayerSaveRecord record = PlayerSaveMapper.Capture(
@@ -38,6 +40,10 @@ namespace MMO.Persistence
             record.Achievements = achievements != null
                 ? achievements.CaptureSave()
                 : new System.Collections.Generic.List<AchievementSaveData>();
+            record.CraftingXp = crafting != null ? crafting.CraftingXp : 0;
+            record.CraftOrders = crafting != null
+                ? crafting.CaptureOrders()
+                : new System.Collections.Generic.List<CraftOrder>();
             return record;
         }
     }
