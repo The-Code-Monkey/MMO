@@ -97,9 +97,10 @@ namespace MMO.Tests
             Assert.AreEqual(4, inventory.Items.Count);
 
             inventory.TryAddItem(ingot);
+            inventory.TryAddItem(ingot);
 
             Assert.IsTrue(inventory.TrySpendIngredients(recipe));
-            Assert.AreEqual(2, inventory.Items.Count);
+            Assert.AreEqual(2, inventory.Items.Count, "one ore and one ingot are left");
             Assert.AreEqual(1, CountOf(inventory, "Iron Ore"));
             Assert.AreEqual(1, CountOf(inventory, "Iron Ingot"));
             Assert.AreEqual(0, CountOf(inventory, "Iron Sword"), "spending never grants the output");
