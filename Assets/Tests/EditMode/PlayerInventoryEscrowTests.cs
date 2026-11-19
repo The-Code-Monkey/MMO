@@ -33,6 +33,7 @@ namespace MMO.Tests
             for (int i = 0; i < 4; i++)
                 inventory.TryAddItem(ore);
             inventory.TryAddItem(ingot);
+            inventory.TryAddItem(ingot);
 
             RecipeData recipe = CreateRecipe("Iron Sword", sword, Ingredient(ore, 3), Ingredient(ingot, 1));
 
@@ -62,7 +63,7 @@ namespace MMO.Tests
 
             RecipeData recipe = CreateRecipe("Iron Sword", sword, Ingredient(ore, 3));
 
-            var taken = new List<ItemInstance> { ItemInstance.Empty };
+            var taken = new List<ItemInstance>();
             Assert.IsFalse(inventory.TryTakeIngredients(recipe, taken));
 
             Assert.AreEqual(1, inventory.Items.Count);

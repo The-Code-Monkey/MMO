@@ -208,6 +208,11 @@ namespace MMO.UI
             if (_source == null || _station == null)
                 return;
 
+            // Pull both snapshots from the source: an OrdersChanged payload arrives without a
+            // station re-open, and the rows must show what the server just sent.
+            _offers = _source.AvailableRecipes ?? Array.Empty<RecipeOffer>();
+            _orders = _source.CraftOrders ?? Array.Empty<CraftOrderView>();
+
             if (_titleLabel != null)
                 _titleLabel.text = _station.StationType.ToString();
 
